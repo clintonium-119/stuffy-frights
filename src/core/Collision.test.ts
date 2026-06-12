@@ -8,12 +8,12 @@ function body(x: number, z: number, y = 0): CylinderBody {
 }
 
 describe('ColliderSet.moveBody', () => {
-  it('pushes the body out of a wall along the contact normal', () => {
+  it('stops at the start position when the step would enter a wall', () => {
     const set = new ColliderSet();
     set.add(aabb(-5, 0, -1, 5, 3, 0)); // wall slab from z=-1 to z=0
-    // Walk forward (−Z) into the wall front face (z = 0).
+    // Walk forward (−Z) into the wall: axis displacement reverts.
     const r = set.moveBody(body(0, 1), 0, -1.5, STEP_UP);
-    expect(r.z).toBeCloseTo(0.35, 5); // face + radius
+    expect(r.z).toBeCloseTo(1, 5); // stayed put on the blocked axis
     expect(r.x).toBeCloseTo(0, 5);
   });
 
@@ -22,8 +22,20 @@ describe('ColliderSet.moveBody', () => {
     set.add(aabb(-5, 0, -1, 5, 3, 0));
     // Move diagonally into the wall: −Z blocked, +X free.
     const r = set.moveBody(body(0, 1), 0.8, -1.5, STEP_UP);
-    expect(r.z).toBeCloseTo(0.35, 5);
+    expect(r.z).toBeCloseTo(1, 5);
     expect(r.x).toBeCloseTo(0.8, 5);
+  });
+
+  it('approaches a wall incrementally to within contact distance', () => {
+    const set = new ColliderSet();
+    set.add(aabb(-5, 0, -1, 5, 3, 0));
+    // Small fixed-step moves (5 cm) reach the wall face within one step size.
+    let p = { x: 0, z: 1 };
+    for (let i = 0; i < 40; i++) {
+      p = set.moveBody({ ...body(p.x, p.z) }, 0, -0.05, STEP_UP);
+    }
+    expect(p.z).toBeGreaterThan(0.35 - 1e-9); // never inside face+radius
+    expect(p.z).toBeLessThan(0.35 + 0.06); // but within one step of contact
   });
 
   it('does not block on climbable ledges (≤ stepUp)', () => {
@@ -35,9 +47,19 @@ describe('ColliderSet.moveBody', () => {
 
   it('blocks on ledges above the stepUp threshold', () => {
     const set = new ColliderSet();
-    set.add(aabb(-1, 0, -3, 1, 0.6, -1)); // too-tall block, front face z=-1
+    set.add(aabb(-1, 0, -3, 1, 0.6, -1)); // too-tall block
     const r = set.moveBody(body(0, 0), 0, -2, STEP_UP);
-    expect(r.z).toBeCloseTo(-0.65, 5); // face + radius
+    expect(r.z).toBeCloseTo(0, 5); // axis reverted to start
+  });
+
+  it('extracts a body that starts embedded in a box (pushOut path)', () => {
+    const set = new ColliderSet();
+    set.add(aabb(-1, 0, -1, 1, 3, 1));
+    // Body starts overlapping the box edge; resolution pushes it out.
+    const r = set.moveBody(body(1.2, 0), 0.01, 0, STEP_UP);
+    const dist = Math.hypot(Math.max(0, 1 - Math.abs(r.x)) /* inside x? */, 0);
+    expect(r.x).toBeGreaterThanOrEqual(1.35 - 1e-6); // outside face + radius
+    expect(dist).toBe(0);
   });
 
   it('is unaffected by boxes outside the body height span', () => {

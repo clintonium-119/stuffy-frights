@@ -47,18 +47,12 @@ function clamp(v: number, lo: number, hi: number): number {
 }
 
 /**
- * Push the body horizontally out of one box. When the body center is still
- * outside the rect, push along the contact normal. When the center landed
- * inside (large displacement), push back through the face it entered —
- * derived from the movement direction on the current resolution axis —
- * so fast movement can't tunnel to the far side.
+ * Push an already-embedded body out of one box: along the contact normal
+ * when the center is outside the rect, else through the nearest face.
+ * Reached only for bodies that started the step overlapping (e.g. spawned
+ * inside) — ordinary walking resolves by axis-revert in moveBody().
  */
-function pushOut(
-  body: CylinderBody,
-  box: Aabb,
-  axis: 'x' | 'z',
-  delta: number
-): { x: number; z: number } {
+function pushOut(body: CylinderBody, box: Aabb): { x: number; z: number } {
   const cx = clamp(body.x, box.minX, box.maxX);
   const cz = clamp(body.z, box.minZ, box.maxZ);
   const dx = body.x - cx;
@@ -72,13 +66,7 @@ function pushOut(
     return { x: body.x + (dx / dist) * push, z: body.z + (dz / dist) * push };
   }
 
-  // Center inside the rect: exit through the face it entered.
-  if (axis === 'x' && delta > 0) return { x: box.minX - body.radius, z: body.z };
-  if (axis === 'x' && delta < 0) return { x: box.maxX + body.radius, z: body.z };
-  if (axis === 'z' && delta > 0) return { x: body.x, z: box.minZ - body.radius };
-  if (axis === 'z' && delta < 0) return { x: body.x, z: box.maxZ + body.radius };
-
-  // No movement on this axis (overlap from elsewhere): smallest face push.
+  // Center inside the rect: smallest face push.
   const left = body.x - box.minX + body.radius;
   const right = box.maxX - body.x + body.radius;
   const back = body.z - box.minZ + body.radius;
@@ -105,6 +93,11 @@ export class ColliderSet {
     this.boxes = [];
   }
 
+  remove(box: Aabb): void {
+    const i = this.boxes.indexOf(box);
+    if (i >= 0) this.boxes.splice(i, 1);
+  }
+
   get all(): readonly Aabb[] {
     return this.boxes;
   }
@@ -115,12 +108,18 @@ export class ColliderSet {
    * within stepUp of the body's feet are climbable and don't block
    * horizontally — the caller settles Y afterwards via groundHeight().
    *
+   * Resolution per axis: if the pre-move position was clear of a blocking
+   * box, the axis displacement simply reverts (stop at the obstacle) —
+   * robust for any box shape, including ceiling slabs the head clips.
+   * Only when the body was ALREADY inside the box does pushOut() extract it.
+   *
    * Returns the resolved horizontal position (x, z).
    */
   moveBody(body: CylinderBody, dx: number, dz: number, stepUp: number): { x: number; z: number } {
     let { x, z } = body;
 
     for (const axis of ['x', 'z'] as const) {
+      const pre: CylinderBody = { x, y: body.y, z, radius: body.radius, height: body.height };
       const moved: CylinderBody = {
         x: axis === 'x' ? x + dx : x,
         y: body.y,
@@ -128,14 +127,19 @@ export class ColliderSet {
         radius: body.radius,
         height: body.height,
       };
-      const delta = axis === 'x' ? dx : dz;
       for (const box of this.boxes) {
         if (!overlaps(moved, box)) continue;
         const ledge = box.maxY - moved.y;
         if (ledge > 0 && ledge <= stepUp) continue; // climbable — Y settles later
-        const corrected = pushOut(moved, box, axis, delta);
-        moved.x = corrected.x;
-        moved.z = corrected.z;
+        if (!overlaps(pre, box)) {
+          // Walked into it this step: stop on this axis.
+          moved.x = pre.x;
+          moved.z = pre.z;
+        } else {
+          const corrected = pushOut(moved, box);
+          moved.x = corrected.x;
+          moved.z = corrected.z;
+        }
       }
       x = moved.x;
       z = moved.z;

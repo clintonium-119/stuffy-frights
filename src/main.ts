@@ -1,74 +1,97 @@
 import * as THREE from 'three';
 import { Engine } from './core/Engine';
 import { Input } from './core/Input';
-import { ColliderSet, aabb } from './core/Collision';
 import { PlayerController } from './player/PlayerController';
 import { InteractionSystem } from './player/Interaction';
+import { house } from './world/houseLayout';
+import { HouseBuilder } from './world/HouseBuilder';
+import { worldToCell } from './world/layoutTypes';
+import { HidingSystem } from './systems/HidingSpot';
+import { PassageSystem } from './systems/SecretPassage';
+import { ChargingStation } from './systems/ChargingStation';
+import { ExitDoor, KeyProp } from './world/ExitDoor';
 
-// Controller test arena — replaced by the house in the world phase.
 const canvas = document.getElementById('game') as HTMLCanvasElement;
 const engine = new Engine(canvas);
 const input = new Input();
 input.attach(canvas);
 canvas.addEventListener('click', () => input.requestPointerLock());
 
-engine.scene.background = new THREE.Color(0x0a0a12);
+engine.scene.background = new THREE.Color(0x07070c);
 
-const colliders = new ColliderSet();
-const mat = (color: number) => new THREE.MeshStandardMaterial({ color });
+const world = HouseBuilder.build(house);
+engine.scene.add(world.group);
 
-const floor = new THREE.Mesh(new THREE.PlaneGeometry(30, 30), mat(0x222228));
-floor.rotation.x = -Math.PI / 2;
-floor.receiveShadow = true;
-engine.scene.add(floor);
+// Inspection lighting — replaced by the darkness model in the survival phase.
+engine.scene.add(new THREE.AmbientLight(0x8888aa, 1.6));
+const inspect = new THREE.PointLight(0xffeedd, 50, 30);
+engine.scene.add(inspect);
 
-function box(x: number, y: number, z: number, w: number, h: number, d: number, color: number) {
-  const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat(color));
-  m.position.set(x, y + h / 2, z);
-  m.castShadow = m.receiveShadow = true;
-  engine.scene.add(m);
-  colliders.add(aabb(x - w / 2, y, z - d / 2, x + w / 2, y + h, z + d / 2));
-}
-
-// Walls and obstacles
-box(0, 0, -8, 12, 3, 0.4, 0x554433); // wall
-box(-5, 0, 0, 1.5, 1.5, 1.5, 0x445566); // crate
-box(4, 0, -2, 2, 0.25, 2, 0x666644); // low step (climbable)
-box(6.5, 0, -2, 2, 0.5, 2, 0x666644); // second step
-box(9, 0, -2, 2, 1.2, 2, 0x664444); // too tall to climb
-
-engine.scene.add(new THREE.AmbientLight(0x404060, 1.2));
-const lamp = new THREE.PointLight(0xffcc88, 40);
-lamp.position.set(2, 4, 2);
-lamp.castShadow = true;
-engine.scene.add(lamp);
-
-const player = new PlayerController(engine.camera, input, colliders);
-player.teleport(0, 0, 4);
-
-// Interaction test targets: two glowing orbs
 const interactions = new InteractionSystem();
-let orbACount = 0;
-let orbBCount = 0;
-function orb(x: number, z: number, color: number, name: string, onHit: () => void) {
-  const m = new THREE.Mesh(
-    new THREE.SphereGeometry(0.18, 16, 12),
-    new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 1.5 })
-  );
-  m.position.set(x, 1.1, z);
-  engine.scene.add(m);
-  interactions.add({
-    position: m.position,
-    radius: 2.2,
-    label: `Touch ${name}`,
-    enabled: () => true,
-    onInteract: onHit,
-  });
-}
-orb(-2, 1, 0x44ffaa, 'orb A', () => orbACount++);
-orb(-3.5, 1, 0xff8844, 'orb B', () => orbBCount++);
+const player = new PlayerController(engine.camera, input, world.colliders);
+const spawn = world.markerWorld(house.playerSpawn);
+player.teleport(spawn.x, spawn.y, spawn.z, Math.PI);
 
-// Debug position overlay (removed when real HUD lands)
+const hiding = new HidingSystem(
+  player,
+  interactions,
+  house.hidingSpots.map((def) => ({ def, worldPos: world.markerWorld(def.pos) }))
+);
+const passages = new PassageSystem(house, world.colliders, player, interactions, world.group);
+
+// Charging stations (shells — behavior lands with the battery system).
+const stations = house.chargingStations.map((cell) => {
+  const wp = world.markerWorld(cell);
+  // Mount direction: toward the nearest adjacent wall cell.
+  const grid = house.grids[cell.floor];
+  let dir = new THREE.Vector3(0, 0, 1);
+  for (const [dx, dz] of [
+    [1, 0],
+    [-1, 0],
+    [0, 1],
+    [0, -1],
+  ] as const) {
+    if (grid[cell.z + dz]?.[cell.x + dx] === 'wall') {
+      dir = new THREE.Vector3(dx, 0, dz);
+      break;
+    }
+  }
+  const station = new ChargingStation(cell, wp, dir);
+  station.register(interactions);
+  engine.scene.add(station.group);
+  return station;
+});
+
+// Exit doors (lock logic lands with objectives).
+const exitDoors = house.exits.map((def) => {
+  const door = new ExitDoor(def, house);
+  door.register(interactions);
+  engine.scene.add(door.group);
+  return door;
+});
+
+// Key prop (shown by objectives; debug force-show via __game).
+const keyProp = new KeyProp();
+engine.scene.add(keyProp.group);
+
+// Dev handle for scripted verification (guarded; not part of gameplay).
+if (import.meta.env.DEV) {
+  (window as unknown as Record<string, unknown>).__game = {
+    player,
+    engine,
+    house,
+    world,
+    hiding,
+    passages,
+    interactions,
+    input,
+    stations,
+    exitDoors,
+    keyProp,
+  };
+}
+
+// Debug overlay (removed when the real HUD lands)
 const ui = document.getElementById('ui') as HTMLDivElement;
 const debug = document.createElement('div');
 debug.style.cssText =
@@ -78,14 +101,32 @@ ui.appendChild(debug);
 engine.addUpdatable({
   update(dt: number) {
     player.update(dt);
+
+    // World queries: current floor + forced crouch inside vent bores
+    // (hiding poses also force the crouch).
+    player.floorIndex = world.floorIndexOfY(player.position.y);
+    const cell = worldToCell(player.position.x, player.position.z);
+    const kind = house.grids[player.floorIndex]?.[cell.z]?.[cell.x];
+    const hidingCrouch =
+      hiding.active !== null && (hiding.active.kind === 'underBed' || hiding.active.kind === 'cabinet');
+    player.forceCrouch = kind === 'vent' || hidingCrouch;
+
+    passages.update();
     interactions.update(player.position, player.viewDir());
-    if (input.justPressed('KeyE')) interactions.interact();
-    const target = interactions.activeTarget;
-    const label = target ? (typeof target.label === 'function' ? target.label() : target.label) : '-';
+    if (input.justPressed('KeyE')) {
+      // Hidden players exit first; otherwise normal interaction.
+      if (!hiding.exit()) interactions.interact();
+    }
+
+    inspect.position.set(player.position.x, player.position.y + 2.2, player.position.z);
+    for (const s of stations) s.updateVisual(dt);
+    keyProp.updateVisual(dt);
+
     debug.textContent =
-      `pos ${player.position.x.toFixed(2)}, ${player.position.y.toFixed(2)}, ` +
-      `${player.position.z.toFixed(2)} | ${player.mode}${player.sprinting ? ' sprint' : ''}` +
-      ` | noise ${player.noiseLevel} | target: ${label} | A:${orbACount} B:${orbBCount}`;
+      `floor ${player.floorIndex} cell ${cell.x},${cell.z} | ` +
+      `pos ${player.position.x.toFixed(1)}, ${player.position.y.toFixed(1)}, ` +
+      `${player.position.z.toFixed(1)} | ${player.isCrouched ? 'crouched' : 'standing'}` +
+      `${player.sprinting ? ' sprint' : ''}`;
     input.endStep();
   },
 });
