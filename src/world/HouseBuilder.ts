@@ -140,6 +140,8 @@ export interface BuiltWorld {
   /** "floor:x,z" cells filled by solid props — excluded from enemy navigation. */
   solidCells: Set<string>;
   windowPanes: THREE.Mesh[];
+  /** Flickering fixture bulbs: call per frame for the flicker. */
+  updateFixtures(dt: number): void;
   markerWorld(pos: { floor: number; x: number; z: number }, height?: number): THREE.Vector3;
   floorIndexOfY(y: number): number;
 }
@@ -448,12 +450,65 @@ export class HouseBuilder {
       }
     }
 
+    // ---- Moonlight pools: small cool lights at a few windows (no shadows).
+    const moonPositions = [
+      { floor: 1, x: 6, z: 0.6 }, // back hall window
+      { floor: 1, x: 6, z: 13.4 }, // foyer-side front window
+      { floor: 2, x: 10, z: 0.6 }, // master window
+      { floor: 2, x: 10, z: 13.4 }, // playroom window
+    ];
+    for (const m of moonPositions) {
+      const light = new THREE.PointLight(0x4a5d8a, 3.2, 7, 1.8);
+      const { x, z } = cellToWorld(m.x, Math.round(m.z));
+      light.position.set(x, floorY(m.floor) + 2.0, m.z < 7 ? z + 1 : z - 1);
+      group.add(light);
+    }
+
+    // ---- Flickering fixtures: bare bulbs in basement hall and attic.
+    const fixtures: { light: THREE.PointLight; bulb: THREE.Mesh; phase: number; drop: number }[] =
+      [];
+    const fixtureSpots = [
+      { floor: 0, x: 7, z: 5 },
+      { floor: 3, x: 7, z: 6 },
+    ];
+    for (const spot of fixtureSpots) {
+      const { x, z } = cellToWorld(spot.x, spot.z);
+      const y = floorY(spot.floor) + WALL_HEIGHT - 0.35;
+      const bulbMat = new THREE.MeshStandardMaterial({
+        color: 0x886622,
+        emissive: 0xcc9944,
+        emissiveIntensity: 1.4,
+      });
+      const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.07, 10, 8), bulbMat);
+      bulb.position.set(x, y, z);
+      const cord = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.012, 0.012, 0.3, 6),
+        new THREE.MeshStandardMaterial({ color: 0x1a1a1a })
+      );
+      cord.position.set(x, y + 0.2, z);
+      const light = new THREE.PointLight(0xcc9944, 4.5, 9, 1.6);
+      light.position.set(x, y - 0.1, z);
+      group.add(bulb, cord, light);
+      fixtures.push({ light, bulb, phase: 0, drop: 1 });
+    }
+
     return {
       group,
       colliders,
       slabHoles,
       solidCells,
       windowPanes,
+      updateFixtures(dt: number) {
+        for (const fx of fixtures) {
+          fx.phase -= dt;
+          if (fx.phase <= 0) {
+            fx.phase = 0.08 + Math.random() * 0.7;
+            fx.drop = Math.random() < 0.25 ? 0.1 + Math.random() * 0.5 : 1;
+          }
+          fx.light.intensity = 4.5 * fx.drop;
+          (fx.bulb.material as THREE.MeshStandardMaterial).emissiveIntensity = 1.4 * fx.drop;
+        }
+      },
       markerWorld(pos, height = 0) {
         const { x, z } = cellToWorld(pos.x, pos.z);
         return new THREE.Vector3(x, floorY(pos.floor) + height, z);

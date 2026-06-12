@@ -3,6 +3,8 @@ import { Engine } from './core/Engine';
 import { Input } from './core/Input';
 import { PlayerController } from './player/PlayerController';
 import { InteractionSystem } from './player/Interaction';
+import { Flashlight } from './player/Flashlight';
+import { config } from './core/config';
 import { house } from './world/houseLayout';
 import { HouseBuilder } from './world/HouseBuilder';
 import { worldToCell } from './world/layoutTypes';
@@ -10,6 +12,8 @@ import { HidingSystem } from './systems/HidingSpot';
 import { PassageSystem } from './systems/SecretPassage';
 import { ChargingStation } from './systems/ChargingStation';
 import { ExitDoor, KeyProp } from './world/ExitDoor';
+import { Battery } from './systems/Battery';
+import { ChargingSystem } from './systems/Charging';
 
 const canvas = document.getElementById('game') as HTMLCanvasElement;
 const engine = new Engine(canvas);
@@ -17,15 +21,25 @@ const input = new Input();
 input.attach(canvas);
 canvas.addEventListener('click', () => input.requestPointerLock());
 
-engine.scene.background = new THREE.Color(0x07070c);
+engine.scene.background = new THREE.Color(config.visibility.fogColor);
+engine.scene.fog = new THREE.FogExp2(
+  config.visibility.fogColor,
+  config.visibility.fogDensityByFloor[1]
+);
+engine.renderer.toneMappingExposure = config.visibility.toneExposure;
 
 const world = HouseBuilder.build(house);
 engine.scene.add(world.group);
 
-// Inspection lighting — replaced by the darkness model in the survival phase.
-engine.scene.add(new THREE.AmbientLight(0x8888aa, 1.6));
-const inspect = new THREE.PointLight(0xffeedd, 50, 30);
-engine.scene.add(inspect);
+// The gloom: never pitch black, never comfortable.
+engine.scene.add(
+  new THREE.AmbientLight(config.visibility.ambientColor, config.visibility.ambientIntensity)
+);
+engine.scene.add(
+  new THREE.HemisphereLight(0x303a52, 0x14100c, config.visibility.hemisphereIntensity)
+);
+
+const flashlight = new Flashlight(engine.scene);
 
 const interactions = new InteractionSystem();
 const player = new PlayerController(engine.camera, input, world.colliders);
@@ -38,6 +52,15 @@ const hiding = new HidingSystem(
   house.hidingSpots.map((def) => ({ def, worldPos: world.markerWorld(def.pos) }))
 );
 const passages = new PassageSystem(house, world.colliders, player, interactions, world.group);
+
+// Concealment systems read and force the light state.
+hiding.isLightOn = () => flashlight.isOn;
+hiding.forceLightOff = () => flashlight.setOn(false);
+passages.isLightOn = () => flashlight.isOn;
+
+// Battery economy + vulnerable charging.
+const battery = new Battery();
+const charging = new ChargingSystem(battery, player, input, () => flashlight.setOn(false));
 
 // Charging stations (shells — behavior lands with the battery system).
 const stations = house.chargingStations.map((cell) => {
@@ -57,6 +80,7 @@ const stations = house.chargingStations.map((cell) => {
     }
   }
   const station = new ChargingStation(cell, wp, dir);
+  station.onPlugIn = () => charging.plugIn(station);
   station.register(interactions);
   engine.scene.add(station.group);
   return station;
@@ -88,6 +112,9 @@ if (import.meta.env.DEV) {
     stations,
     exitDoors,
     keyProp,
+    flashlight,
+    battery,
+    charging,
   };
 }
 
@@ -97,6 +124,15 @@ const debug = document.createElement('div');
 debug.style.cssText =
   'position:absolute;top:8px;left:8px;color:#8f8;font:12px monospace;text-shadow:0 0 2px #000';
 ui.appendChild(debug);
+
+// Functional battery bar (restyled by the real HUD phase).
+const batteryWrap = document.createElement('div');
+batteryWrap.style.cssText =
+  'position:absolute;bottom:18px;left:18px;width:140px;height:12px;border:1px solid #555;background:#111a';
+const batteryBar = document.createElement('div');
+batteryBar.style.cssText = 'height:100%;width:100%;background:#7a6;transition:background .3s';
+batteryWrap.appendChild(batteryBar);
+ui.appendChild(batteryWrap);
 
 engine.addUpdatable({
   update(dt: number) {
@@ -113,12 +149,27 @@ engine.addUpdatable({
 
     passages.update();
     interactions.update(player.position, player.viewDir());
-    if (input.justPressed('KeyE')) {
+    if (input.justPressed('KeyE') && !charging.isCharging) {
       // Hidden players exit first; otherwise normal interaction.
+      // (While charging, E is consumed by the unplug in charging.update.)
       if (!hiding.exit()) interactions.interact();
     }
+    if (input.justPressed('KeyF') && hiding.active === null && !charging.isCharging) {
+      if (battery.canLight() || flashlight.isOn) flashlight.toggle();
+    }
+    charging.update(dt);
+    battery.update(dt, flashlight.isOn);
+    flashlight.setLevel(battery.level);
+    flashlight.setFlickering(battery.isLow && !battery.isEmpty);
+    batteryBar.style.width = `${(battery.level * 100).toFixed(1)}%`;
+    batteryBar.style.background = battery.isLow ? '#c33' : '#7a6';
 
-    inspect.position.set(player.position.x, player.position.y + 2.2, player.position.z);
+    // Fog tracks the player's floor (basement/attic are thicker).
+    const fog = engine.scene.fog as THREE.FogExp2;
+    fog.density = config.visibility.fogDensityByFloor[player.floorIndex];
+
+    flashlight.update(dt, engine.camera);
+    world.updateFixtures(dt);
     for (const s of stations) s.updateVisual(dt);
     keyProp.updateVisual(dt);
 
