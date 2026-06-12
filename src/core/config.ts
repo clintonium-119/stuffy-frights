@@ -26,6 +26,19 @@ export interface GameConfig {
     startCharge: number;
   };
 
+  enemy: {
+    /** Within this distance (m) the face turns menacing. */
+    threatRadius: number;
+    /** Seconds a mood is held before it may flip back (anti-flicker). */
+    expressionHold: number;
+    /** Contact distance (m) that triggers the catch. */
+    contactRadius: number;
+    /** Jumpscare beats, seconds. */
+    jumpscareTurn: number;
+    jumpscareLunge: number;
+    jumpscareBlackout: number;
+  };
+
   visibility: {
     /** Hex color + intensity of the global gloom (never zero — "not pitch black"). */
     ambientColor: number;
@@ -84,6 +97,15 @@ export const config: GameConfig = {
     chargeRatio: 3,
     /** Run-start charge fraction. */
     startCharge: 1.0,
+  },
+
+  enemy: {
+    threatRadius: 5,
+    expressionHold: 0.6,
+    contactRadius: 0.85,
+    jumpscareTurn: 0.12,
+    jumpscareLunge: 0.85,
+    jumpscareBlackout: 0.45,
   },
 
   flashlight: {

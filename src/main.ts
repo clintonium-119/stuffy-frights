@@ -14,6 +14,11 @@ import { ChargingStation } from './systems/ChargingStation';
 import { ExitDoor, KeyProp } from './world/ExitDoor';
 import { Battery } from './systems/Battery';
 import { ChargingSystem } from './systems/Charging';
+import { Charles } from './enemies/Charles';
+import { Poo } from './enemies/Poo';
+import { NewYama } from './enemies/NewYama';
+import { Fuggie } from './enemies/Fuggie';
+import { Jumpscare } from './enemies/Jumpscare';
 
 const canvas = document.getElementById('game') as HTMLCanvasElement;
 const engine = new Engine(canvas);
@@ -98,6 +103,90 @@ const exitDoors = house.exits.map((def) => {
 const keyProp = new KeyProp();
 engine.scene.add(keyProp.group);
 
+// TEMP enemy showcase for visual verification — replaced by Director
+// spawning in the AI phase. Lined up in the living room.
+const enemies = [new Charles(), new Poo(), new NewYama(), new Fuggie()];
+enemies.forEach((enemy, i) => {
+  enemy.position.set(2.6 + i * 2.2, 3.5, 23.5); // living room line-up
+  enemy.group.rotation.y = 0; // model fronts are +Z — face the camera spot south
+  engine.scene.add(enemy.group);
+});
+
+// The catch → jumpscare → game over chain. Blackout overlay + debug
+// restart until the real game-state machine lands.
+const jumpscare = new Jumpscare();
+const blackout = document.createElement('div');
+blackout.style.cssText =
+  'position:absolute;inset:0;background:#000;opacity:0;pointer-events:none';
+(document.getElementById('ui') as HTMLDivElement).appendChild(blackout);
+jumpscare.onBlackout = (a) => (blackout.style.opacity = String(a));
+jumpscare.onGameOver = (enemyId) => {
+  // Debug flow: brief hold, then respawn a fresh attempt.
+  console.warn(`GAME OVER — caught by ${enemyId} (debug respawn)`);
+  setTimeout(() => {
+    jumpscare.reset();
+    const sp = world.markerWorld(house.playerSpawn);
+    player.teleport(sp.x, sp.y, sp.z, Math.PI);
+    player.movementLocked = false;
+    player.lookLocked = false;
+    for (const enemy of enemies) enemy.catchEnabled = true;
+  }, 800);
+};
+for (const enemy of enemies) {
+  enemy.onCatch = () => {
+    if (!jumpscare.trigger(enemy, engine.camera)) return;
+    player.movementLocked = true;
+    player.lookLocked = true;
+  };
+}
+
+// Dev screenshot poses: ?pose=x,y,z,yaw,pitch&light=1&mood=menacing&warp=8
+// lets headless-Chrome captures frame any view (guarded; dev only).
+if (import.meta.env.DEV) {
+  const params = new URLSearchParams(location.search);
+  const pose = params.get('pose');
+  if (pose) {
+    const [px, py, pz, yaw = '0', pitch = '0'] = pose.split(',');
+    player.teleport(Number(px), Number(py), Number(pz), Number(yaw));
+    player.pitch = Number(pitch);
+  }
+  if (params.get('light') === '1') flashlight.setOn(true);
+  if (params.get('mood') === 'menacing') {
+    for (const enemy of enemies) enemy.isChasing = true;
+  }
+  const warp = Number(params.get('warp') ?? '0');
+  if (warp > 0) {
+    // Pre-roll the simulation so gaits/moods settle before the screenshot.
+    for (let i = 0; i < warp * 60; i++) {
+      for (const enemy of enemies) enemy.update(1 / 60, player.position, false);
+    }
+  }
+  if (pose) {
+    // Settle the camera + beam immediately (no lag frames in headless).
+    player.update(1 / 60);
+    flashlight.update(10, engine.camera);
+  }
+  if (params.get('scare')) {
+    // Freeze a deterministic mid-lunge frame for screenshot review.
+    const which = enemies.find((e) => e.id === params.get('scare')) ?? enemies[3];
+    player.update(1 / 60);
+    jumpscare.trigger(which, engine.camera);
+    const preroll = config.enemy.jumpscareTurn + config.enemy.jumpscareLunge * 0.55;
+    for (let i = 0; i < Math.round(preroll * 60); i++) {
+      jumpscare.update(1 / 60, engine.camera);
+    }
+    engine.simulationRunning = false;
+  }
+  if (params.get('showcase') === '1') {
+    // Bright neutral light for model-likeness review only.
+    engine.scene.add(new THREE.AmbientLight(0xffffff, 2.2));
+    const keyLight = new THREE.DirectionalLight(0xfff2e0, 2.5);
+    keyLight.position.set(8, 10, 30);
+    engine.scene.add(keyLight);
+    engine.scene.fog = null;
+  }
+}
+
 // Dev handle for scripted verification (guarded; not part of gameplay).
 if (import.meta.env.DEV) {
   (window as unknown as Record<string, unknown>).__game = {
@@ -115,6 +204,8 @@ if (import.meta.env.DEV) {
     flashlight,
     battery,
     charging,
+    enemies,
+    jumpscare,
   };
 }
 
@@ -157,6 +248,9 @@ engine.addUpdatable({
     if (input.justPressed('KeyF') && hiding.active === null && !charging.isCharging) {
       if (battery.canLight() || flashlight.isOn) flashlight.toggle();
     }
+    const catchable = hiding.active === null && !jumpscare.running;
+    for (const enemy of enemies) enemy.update(dt, player.position, catchable);
+    jumpscare.update(dt, engine.camera);
     charging.update(dt);
     battery.update(dt, flashlight.isOn);
     flashlight.setLevel(battery.level);
@@ -165,8 +259,8 @@ engine.addUpdatable({
     batteryBar.style.background = battery.isLow ? '#c33' : '#7a6';
 
     // Fog tracks the player's floor (basement/attic are thicker).
-    const fog = engine.scene.fog as THREE.FogExp2;
-    fog.density = config.visibility.fogDensityByFloor[player.floorIndex];
+    const fog = engine.scene.fog as THREE.FogExp2 | null;
+    if (fog) fog.density = config.visibility.fogDensityByFloor[player.floorIndex];
 
     flashlight.update(dt, engine.camera);
     world.updateFixtures(dt);
