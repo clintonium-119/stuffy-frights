@@ -19,12 +19,19 @@ import { NavGraph } from './ai/NavGraph';
 import { Director } from './ai/Director';
 import { NoiseBus, PlayerSnapshot, canSee } from './ai/Perception';
 import { Rng } from './core/rng';
+import { GameState } from './core/GameState';
+import { Objectives } from './systems/Objectives';
+import { MapOverlay } from './ui/MapOverlay';
+import { HUD } from './ui/HUD';
+import { Menus } from './ui/Menus';
+import { AudioEngine } from './audio/AudioEngine';
 
+// ---------------------------------------------------------------- bootstrap
 const canvas = document.getElementById('game') as HTMLCanvasElement;
+const ui = document.getElementById('ui') as HTMLDivElement;
 const engine = new Engine(canvas);
 const input = new Input();
 input.attach(canvas);
-canvas.addEventListener('click', () => input.requestPointerLock());
 
 engine.scene.background = new THREE.Color(config.visibility.fogColor);
 engine.scene.fog = new THREE.FogExp2(
@@ -36,16 +43,12 @@ engine.renderer.toneMappingExposure = config.visibility.toneExposure;
 const world = HouseBuilder.build(house);
 engine.scene.add(world.group);
 
-// The gloom: never pitch black, never comfortable.
 engine.scene.add(
   new THREE.AmbientLight(config.visibility.ambientColor, config.visibility.ambientIntensity)
 );
-engine.scene.add(
-  new THREE.HemisphereLight(0x303a52, 0x14100c, config.visibility.hemisphereIntensity)
-);
+engine.scene.add(new THREE.HemisphereLight(0x303a52, 0x14100c, config.visibility.hemisphereIntensity));
 
 const flashlight = new Flashlight(engine.scene);
-
 const interactions = new InteractionSystem();
 const player = new PlayerController(engine.camera, input, world.colliders);
 const spawn = world.markerWorld(house.playerSpawn);
@@ -58,53 +61,14 @@ const hiding = new HidingSystem(
 );
 const passages = new PassageSystem(house, world.colliders, player, interactions, world.group);
 
-// Concealment systems read and force the light state.
 hiding.isLightOn = () => flashlight.isOn;
 hiding.forceLightOff = () => flashlight.setOn(false);
 passages.isLightOn = () => flashlight.isOn;
 
-// Battery economy + vulnerable charging.
 const battery = new Battery();
 const charging = new ChargingSystem(battery, player, input, () => flashlight.setOn(false));
 
-// Charging stations (shells — behavior lands with the battery system).
-const stations = house.chargingStations.map((cell) => {
-  const wp = world.markerWorld(cell);
-  // Mount direction: toward the nearest adjacent wall cell.
-  const grid = house.grids[cell.floor];
-  let dir = new THREE.Vector3(0, 0, 1);
-  for (const [dx, dz] of [
-    [1, 0],
-    [-1, 0],
-    [0, 1],
-    [0, -1],
-  ] as const) {
-    if (grid[cell.z + dz]?.[cell.x + dx] === 'wall') {
-      dir = new THREE.Vector3(dx, 0, dz);
-      break;
-    }
-  }
-  const station = new ChargingStation(cell, wp, dir);
-  station.onPlugIn = () => charging.plugIn(station);
-  station.register(interactions);
-  engine.scene.add(station.group);
-  return station;
-});
-
-// Exit doors (lock logic lands with objectives).
-const exitDoors = house.exits.map((def) => {
-  const door = new ExitDoor(def, house);
-  door.register(interactions);
-  engine.scene.add(door.group);
-  return door;
-});
-
-// Key prop (shown by objectives; debug force-show via __game).
-const keyProp = new KeyProp();
-engine.scene.add(keyProp.group);
-
-// The AI: nav graph, noise bus, and the Director spawning the four
-// residents at their home-floor markers.
+// ------------------------------------------------------------------- AI
 const rng = new Rng((Math.random() * 0xffffffff) >>> 0);
 const nav = new NavGraph(house, world.solidCells);
 const noiseBus = new NoiseBus();
@@ -117,7 +81,6 @@ const director = new Director(
   {
     hiding,
     onFoundHidden: (spot, enemy) => {
-      // Yanked out of hiding: pop the player out, then the catch lands.
       hiding.exit();
       noiseBus.emit({ position: spot.position, floor: player.floorIndex, radius: 8 });
       (enemy as { catchEnabled?: boolean }).catchEnabled = true;
@@ -129,7 +92,6 @@ const director = new Director(
 );
 const enemies = director.residents.map((r) => r.enemy);
 
-// Concealment witnessing: brains that can SEE the entry moment record it.
 function witnessSnapshot(at: THREE.Vector3): PlayerSnapshot {
   return {
     position: at,
@@ -137,10 +99,11 @@ function witnessSnapshot(at: THREE.Vector3): PlayerSnapshot {
     lightOn: flashlight.isOn,
     crouched: player.isCrouched,
     noiseLevel: player.noiseLevel,
-    hidden: false, // the entry moment itself is visible
+    hidden: false,
   };
 }
 hiding.onEnter = (spot) => {
+  audio.hideRustle();
   for (const r of director.residents) {
     const witnessed = canSee(
       house,
@@ -153,13 +116,16 @@ hiding.onEnter = (spot) => {
   }
 };
 hiding.onExit = (spot) => {
-  // Unhide fumble: a soft noise.
+  audio.hideRustle();
   noiseBus.emit({ position: spot.position, floor: player.floorIndex, radius: 4 });
 };
 passages.onPlayerEnter = (passage) => {
   const tracked = passage as unknown as {
     vent?: { floor: number; cells: { x: number; z: number }[] };
-    chute?: { from: { floor: number; x: number; z: number }; to: { floor: number; x: number; z: number } };
+    chute?: {
+      from: { floor: number; x: number; z: number };
+      to: { floor: number; x: number; z: number };
+    };
   };
   let at: THREE.Vector3;
   let exit: THREE.Vector3;
@@ -185,9 +151,11 @@ passages.onPlayerEnter = (passage) => {
   }
 };
 passages.onOpen = () => {
+  audio.grateCreak(player.position);
   noiseBus.emit({ position: player.position.clone(), floor: player.floorIndex, radius: 7 });
 };
 charging.onHumTick = (station) => {
+  audio.chargeHum(station.position);
   noiseBus.emit({
     position: station.position.clone(),
     floor: station.cell.floor,
@@ -201,37 +169,248 @@ noiseBus.subscribe((e) => {
   }
 });
 
-// The catch → jumpscare → game over chain. Blackout overlay + debug
-// restart until the real game-state machine lands.
+// -------------------------------------------------------- objectives + UI
+const gs = new GameState();
+const seed = (Math.random() * 0xffffffff) >>> 0;
+const objectives = new Objectives(house, seed);
+const keyProp = new KeyProp();
+engine.scene.add(keyProp.group);
+const keyWorld = world.markerWorld(objectives.setup.keyLocation);
+keyProp.showAt(keyWorld);
+director.setKeyLocation(keyWorld);
+
+const hud = new HUD(ui);
+const menus = new Menus(ui);
+const map = new MapOverlay(house, ui);
+const audio = new AudioEngine();
+
+interactions.add({
+  position: keyWorld.clone().add(new THREE.Vector3(0, 0.5, 0)),
+  radius: 1.9,
+  label: 'Take the keys',
+  enabled: () => !objectives.hasKey,
+  onInteract: () => {
+    objectives.takeKey();
+    keyProp.hide();
+    audio.keyJingle(player.position);
+    hud.setHasKey(true);
+    director.notifyKeyTaken();
+  },
+});
+
+const exitDoors = house.exits.map((def) => {
+  const door = new ExitDoor(def, house);
+  door.tryOpen = () => {
+    const result = objectives.tryExit(def.id);
+    if (result === 'locked') audio.doorRattle(door.position);
+    else if (result === 'wrongKey') audio.wrongKeyClunk(door.position);
+    else audio.doorOpenWin();
+    return result;
+  };
+  door.register(interactions);
+  engine.scene.add(door.group);
+  return door;
+});
+
+const stations = house.chargingStations.map((cell) => {
+  const wp = world.markerWorld(cell);
+  const grid = house.grids[cell.floor];
+  let dir = new THREE.Vector3(0, 0, 1);
+  for (const [dx, dz] of [
+    [1, 0],
+    [-1, 0],
+    [0, 1],
+    [0, -1],
+  ] as const) {
+    if (grid[cell.z + dz]?.[cell.x + dx] === 'wall') {
+      dir = new THREE.Vector3(dx, 0, dz);
+      break;
+    }
+  }
+  const station = new ChargingStation(cell, wp, dir);
+  station.onPlugIn = () => charging.plugIn(station);
+  station.register(interactions);
+  engine.scene.add(station.group);
+  return station;
+});
+
+// ------------------------------------------------------ jumpscare + flow
 const blackout = document.createElement('div');
-blackout.style.cssText =
-  'position:absolute;inset:0;background:#000;opacity:0;pointer-events:none';
-(document.getElementById('ui') as HTMLDivElement).appendChild(blackout);
+blackout.style.cssText = 'position:absolute;inset:0;background:#000;opacity:0;pointer-events:none';
+ui.appendChild(blackout);
 jumpscare.onBlackout = (a) => (blackout.style.opacity = String(a));
+jumpscare.onSting = () => audio.sting();
 jumpscare.onGameOver = (enemyId) => {
-  // Debug flow: brief hold, then respawn a fresh attempt.
-  console.warn(`GAME OVER — caught by ${enemyId} (debug respawn)`);
-  setTimeout(() => {
-    jumpscare.reset();
-    const sp = world.markerWorld(house.playerSpawn);
-    player.teleport(sp.x, sp.y, sp.z, Math.PI);
-    player.movementLocked = false;
-    player.lookLocked = false;
-    for (const enemy of enemies) enemy.catchEnabled = true;
-  }, 800);
+  gs.transition('gameOverShown');
+  menus.showGameOver(enemyId);
+  input.exitPointerLock();
 };
 for (const enemy of enemies) {
   enemy.onCatch = () => {
-    if (!jumpscare.trigger(enemy, engine.camera)) return;
-    player.movementLocked = true;
-    player.lookLocked = true;
+    if (!gs.transition('caught')) return;
+    map.close();
+    jumpscare.trigger(enemy, engine.camera);
   };
+  enemy.onGaitBeat = (kind) => audio.gaitBeat(kind, enemy.position);
 }
 
-// Dev screenshot poses: ?pose=x,y,z,yaw,pitch&light=1&mood=menacing&warp=8
-// lets headless-Chrome captures frame any view (guarded; dev only).
+let runSeconds = 0;
+objectives.onMessage = (text) => hud.showMessage(text);
+objectives.onWin = () => {
+  gs.transition('win');
+  hud.show(false);
+  window.setTimeout(() => {
+    menus.showWin({ seconds: runSeconds, exitsTried: objectives.triedExits.size });
+    input.exitPointerLock();
+  }, 1400);
+};
+
+battery.onChange = (level) => hud.setBattery(level, battery.isLow);
+battery.onLowWarning = () => hud.showMessage('The flashlight is dying…');
+charging.onPlugChange = (on) => hud.setCharging(on);
+interactions.onPromptChange = (label) => hud.setPrompt(label);
+
+menus.onFirstInteraction = () => audio.unlock();
+menus.onStart = () => {
+  if (!gs.transition('start')) return;
+  menus.hide();
+  hud.show(true);
+  hud.setBattery(battery.level, battery.isLow);
+  input.requestPointerLock();
+};
+menus.onResume = () => {
+  if (!gs.transition('resume')) return;
+  menus.hide();
+  input.requestPointerLock();
+};
+menus.onRetry = () => window.location.reload(); // fresh seed, fresh house
+
+// Browser Esc exits pointer lock — make it a clean pause instead of chaos.
+input.onPointerLockLost = () => {
+  if (gs.state === 'playing' || gs.state === 'mapOpen') {
+    map.close();
+    if (gs.transition('pause')) menus.showPause();
+  }
+};
+canvas.addEventListener('click', () => {
+  if (gs.state === 'playing' || gs.state === 'mapOpen') input.requestPointerLock();
+});
+
+menus.showTitle();
+
+// ------------------------------------------------------------- main loop
+let footstepDistance = 0;
+const prevPos = new THREE.Vector3().copy(player.position);
+
+engine.addUpdatable({
+  update(dt: number) {
+    if (!gs.simulationTicks) {
+      input.endStep();
+      return;
+    }
+    runSeconds += dt;
+
+    // Movement/look gating from every source of truth.
+    player.movementLocked =
+      !gs.movementAllowed || hiding.active !== null || charging.isCharging || jumpscare.running;
+    player.lookLocked = !gs.lookAllowed || jumpscare.running;
+
+    player.update(dt);
+    player.floorIndex = world.floorIndexOfY(player.position.y);
+    const cell = worldToCell(player.position.x, player.position.z);
+    const kind = house.grids[player.floorIndex]?.[cell.z]?.[cell.x];
+    const hidingCrouch =
+      hiding.active !== null && (hiding.active.kind === 'underBed' || hiding.active.kind === 'cabinet');
+    player.forceCrouch = kind === 'vent' || hidingCrouch;
+
+    passages.update();
+    interactions.update(player.position, player.viewDir());
+
+    if (gs.state === 'playing') {
+      if (input.justPressed('KeyE') && !charging.isCharging) {
+        if (!hiding.exit()) interactions.interact();
+      }
+      if (input.justPressed('KeyF') && hiding.active === null && !charging.isCharging) {
+        if (battery.canLight() || flashlight.isOn) flashlight.toggle();
+      }
+      if (input.justPressed('KeyM') || input.justPressed('Tab')) {
+        if (gs.transition('openMap')) map.open();
+      }
+    } else if (gs.state === 'mapOpen') {
+      if (input.justPressed('KeyM') || input.justPressed('Tab') || input.justPressed('KeyE')) {
+        if (gs.transition('closeMap')) map.close();
+      }
+    }
+
+    // Footsteps by distance walked.
+    footstepDistance += player.position.distanceTo(prevPos);
+    prevPos.copy(player.position);
+    if (footstepDistance > 0.85) {
+      footstepDistance = 0;
+      audio.footstep(player.noiseLevel);
+      // Movement noise reaches enemy ears via the snapshot radius check.
+    }
+
+    const fog = engine.scene.fog as THREE.FogExp2 | null;
+    if (fog) fog.density = config.visibility.fogDensityByFloor[player.floorIndex];
+
+    const catchable = hiding.active === null && !jumpscare.running;
+    const snapshot: PlayerSnapshot = {
+      position: player.position,
+      floor: player.floorIndex,
+      lightOn: flashlight.isOn,
+      crouched: player.isCrouched,
+      noiseLevel: player.noiseLevel,
+      hidden: hiding.active !== null,
+    };
+    director.update(dt, player.floorIndex);
+    let nearest = Infinity;
+    let anyChasing = false;
+    for (const r of director.residents) {
+      r.brain.update(dt, snapshot);
+      r.enemy.update(dt, player.position, catchable);
+      if (r.enemy.floorIndex === player.floorIndex) {
+        nearest = Math.min(nearest, r.enemy.position.distanceTo(player.position));
+      }
+      anyChasing ||= r.brain.state === 'chase';
+    }
+    jumpscare.update(dt, engine.camera);
+
+    charging.update(dt);
+    battery.update(dt, flashlight.isOn);
+    flashlight.setLevel(battery.level);
+    flashlight.setFlickering(battery.isLow && !battery.isEmpty);
+
+    hud.setThreat(jumpscare.running ? 0 : nearest);
+    audio.setListener(player.position, player.yaw);
+    audio.update(dt, nearest, anyChasing);
+
+    if (map.visible) map.update(player.position.x, player.position.z, player.yaw, player.floorIndex);
+
+    input.endStep();
+  },
+});
+
+engine.onFrame = (dt) => {
+  flashlight.update(dt, engine.camera);
+  world.updateFixtures(dt);
+  for (const s of stations) s.updateVisual(dt);
+  keyProp.updateVisual(dt);
+};
+
+engine.start();
+
+// ----------------------------------------------------------- dev harness
 if (import.meta.env.DEV) {
   const params = new URLSearchParams(location.search);
+  const anyDev = ['pose', 'warp', 'scare', 'report', 'showcase', 'scenario'].some((k) =>
+    params.has(k)
+  );
+  if (anyDev && gs.state === 'menu') {
+    gs.transition('start');
+    menus.hide();
+    hud.show(true);
+  }
   const pose = params.get('pose');
   if (pose) {
     const [px, py, pz, yaw = '0', pitch = '0'] = pose.split(',');
@@ -244,7 +423,6 @@ if (import.meta.env.DEV) {
   }
   const warp = Number(params.get('warp') ?? '0');
   if (warp > 0) {
-    // Pre-roll the full AI simulation so patrols/gaits/moods settle.
     const snap: PlayerSnapshot = {
       position: player.position,
       floor: player.floorIndex,
@@ -262,23 +440,24 @@ if (import.meta.env.DEV) {
     }
   }
   if (pose) {
-    // Settle the camera + beam immediately (no lag frames in headless).
     player.update(1 / 60);
     flashlight.update(10, engine.camera);
   }
   if (params.get('scare')) {
-    // Freeze a deterministic mid-lunge frame for screenshot review.
     const which = enemies.find((e) => e.id === params.get('scare')) ?? enemies[3];
     player.update(1 / 60);
     jumpscare.trigger(which, engine.camera);
     const preroll = config.enemy.jumpscareTurn + config.enemy.jumpscareLunge * 0.55;
-    for (let i = 0; i < Math.round(preroll * 60); i++) {
-      jumpscare.update(1 / 60, engine.camera);
-    }
+    for (let i = 0; i < Math.round(preroll * 60); i++) jumpscare.update(1 / 60, engine.camera);
     engine.simulationRunning = false;
   }
+  if (params.get('map') === '1') {
+    if (gs.transition('openMap')) {
+      map.open();
+      map.update(player.position.x, player.position.z, player.yaw, player.floorIndex);
+    }
+  }
   if (params.get('report') === '1') {
-    // Machine-readable AI state for headless verification.
     document.title = JSON.stringify(
       director.residents.map((r) => ({
         id: r.enemy.id,
@@ -290,17 +469,67 @@ if (import.meta.env.DEV) {
     );
   }
   if (params.get('showcase') === '1') {
-    // Bright neutral light for model-likeness review only.
     engine.scene.add(new THREE.AmbientLight(0xffffff, 2.2));
     const keyLight = new THREE.DirectionalLight(0xfff2e0, 2.5);
     keyLight.position.set(8, 10, 30);
     engine.scene.add(keyLight);
     engine.scene.fog = null;
   }
-}
+  if (params.get('scenario')) {
+    // Deterministic end-to-end runs for ship verification (see the ship step).
+    const step = (pressE = false) => {
+      player.movementLocked =
+        !gs.movementAllowed || hiding.active !== null || charging.isCharging || jumpscare.running;
+      player.update(1 / 60);
+      player.floorIndex = world.floorIndexOfY(player.position.y);
+      passages.update();
+      interactions.update(player.position, player.viewDir());
+      if (pressE && !charging.isCharging) {
+        if (!hiding.exit()) interactions.interact();
+      }
+      const snap: PlayerSnapshot = {
+        position: player.position,
+        floor: player.floorIndex,
+        lightOn: flashlight.isOn,
+        crouched: player.isCrouched,
+        noiseLevel: player.noiseLevel,
+        hidden: hiding.active !== null,
+      };
+      for (const r of director.residents) {
+        r.brain.update(1 / 60, snap);
+        r.enemy.update(1 / 60, player.position, hiding.active === null && !jumpscare.running);
+      }
+      jumpscare.update(1 / 60, engine.camera);
+    };
+    const goTo = (v: THREE.Vector3) => player.teleport(v.x, v.y, v.z, 0);
+    const results: string[] = [];
 
-// Dev handle for scripted verification (guarded; not part of gameplay).
-if (import.meta.env.DEV) {
+    if (params.get('scenario') === 'win') {
+      // 1. Grab the key (teleport-assisted; mechanics still real).
+      goTo(keyWorld);
+      step();
+      step(true);
+      results.push(`key:${objectives.hasKey}`);
+      // 2. Try every exit until the right one opens.
+      for (const door of exitDoors) {
+        if (gs.state !== 'playing') break;
+        goTo(door.position);
+        step();
+        step(true);
+        results.push(`${door.def.id}:${objectives.triedExits.has(door.def.id) ? 'tried' : 'missed'}`);
+      }
+      results.push(`state:${gs.state}`, `escaped:${objectives.escaped}`);
+    } else if (params.get('scenario') === 'death') {
+      // Stand on Yama's nose until caught.
+      const yama = director.residents.find((r) => r.enemy.id === 'newYama')!;
+      yama.brain.passive = false;
+      goTo(yama.enemy.position.clone().add(new THREE.Vector3(0.5, 0, 0)));
+      for (let i = 0; i < 600 && gs.state !== 'gameOver'; i++) step();
+      results.push(`state:${gs.state}`, `scare:${jumpscare.phase}`);
+    }
+    document.title = results.join(' ');
+  }
+
   (window as unknown as Record<string, unknown>).__game = {
     player,
     engine,
@@ -321,86 +550,11 @@ if (import.meta.env.DEV) {
     director,
     nav,
     noiseBus,
+    gs,
+    objectives,
+    map,
+    hud,
+    menus,
+    audio,
   };
 }
-
-// Debug overlay (removed when the real HUD lands)
-const ui = document.getElementById('ui') as HTMLDivElement;
-const debug = document.createElement('div');
-debug.style.cssText =
-  'position:absolute;top:8px;left:8px;color:#8f8;font:12px monospace;text-shadow:0 0 2px #000';
-ui.appendChild(debug);
-
-// Functional battery bar (restyled by the real HUD phase).
-const batteryWrap = document.createElement('div');
-batteryWrap.style.cssText =
-  'position:absolute;bottom:18px;left:18px;width:140px;height:12px;border:1px solid #555;background:#111a';
-const batteryBar = document.createElement('div');
-batteryBar.style.cssText = 'height:100%;width:100%;background:#7a6;transition:background .3s';
-batteryWrap.appendChild(batteryBar);
-ui.appendChild(batteryWrap);
-
-engine.addUpdatable({
-  update(dt: number) {
-    player.update(dt);
-
-    // World queries: current floor + forced crouch inside vent bores
-    // (hiding poses also force the crouch).
-    player.floorIndex = world.floorIndexOfY(player.position.y);
-    const cell = worldToCell(player.position.x, player.position.z);
-    const kind = house.grids[player.floorIndex]?.[cell.z]?.[cell.x];
-    const hidingCrouch =
-      hiding.active !== null && (hiding.active.kind === 'underBed' || hiding.active.kind === 'cabinet');
-    player.forceCrouch = kind === 'vent' || hidingCrouch;
-
-    passages.update();
-    interactions.update(player.position, player.viewDir());
-    if (input.justPressed('KeyE') && !charging.isCharging) {
-      // Hidden players exit first; otherwise normal interaction.
-      // (While charging, E is consumed by the unplug in charging.update.)
-      if (!hiding.exit()) interactions.interact();
-    }
-    if (input.justPressed('KeyF') && hiding.active === null && !charging.isCharging) {
-      if (battery.canLight() || flashlight.isOn) flashlight.toggle();
-    }
-    const catchable = hiding.active === null && !jumpscare.running;
-    const snapshot: PlayerSnapshot = {
-      position: player.position,
-      floor: player.floorIndex,
-      lightOn: flashlight.isOn,
-      crouched: player.isCrouched,
-      noiseLevel: player.noiseLevel,
-      hidden: hiding.active !== null,
-    };
-    director.update(dt, player.floorIndex);
-    for (const r of director.residents) {
-      r.brain.update(dt, snapshot);
-      r.enemy.update(dt, player.position, catchable);
-    }
-    jumpscare.update(dt, engine.camera);
-    charging.update(dt);
-    battery.update(dt, flashlight.isOn);
-    flashlight.setLevel(battery.level);
-    flashlight.setFlickering(battery.isLow && !battery.isEmpty);
-    batteryBar.style.width = `${(battery.level * 100).toFixed(1)}%`;
-    batteryBar.style.background = battery.isLow ? '#c33' : '#7a6';
-
-    // Fog tracks the player's floor (basement/attic are thicker).
-    const fog = engine.scene.fog as THREE.FogExp2 | null;
-    if (fog) fog.density = config.visibility.fogDensityByFloor[player.floorIndex];
-
-    flashlight.update(dt, engine.camera);
-    world.updateFixtures(dt);
-    for (const s of stations) s.updateVisual(dt);
-    keyProp.updateVisual(dt);
-
-    debug.textContent =
-      `floor ${player.floorIndex} cell ${cell.x},${cell.z} | ` +
-      `pos ${player.position.x.toFixed(1)}, ${player.position.y.toFixed(1)}, ` +
-      `${player.position.z.toFixed(1)} | ${player.isCrouched ? 'crouched' : 'standing'}` +
-      `${player.sprinting ? ' sprint' : ''}`;
-    input.endStep();
-  },
-});
-
-engine.start();
