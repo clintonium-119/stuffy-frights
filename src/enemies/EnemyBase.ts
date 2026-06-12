@@ -170,16 +170,23 @@ export abstract class EnemyBase {
     // Movement toward the AI's target (waypoints come from the AI layer).
     if (this.moveTarget) {
       const to = this.moveTarget.clone().sub(this.position);
+      const dy3 = to.y;
       to.y = 0;
       const dist = to.length();
-      if (dist > 0.05) {
+      if (dist > 0.05 || Math.abs(dy3) > 0.1) {
         const step = Math.min(dist, this.speed * dt);
-        to.normalize();
-        this.position.addScaledVector(to, step);
-        // Face movement direction (lerped).
-        const targetYaw = Math.atan2(-to.x, -to.z) + Math.PI;
-        const dy = wrapAngle(targetYaw - this.group.rotation.y);
-        this.group.rotation.y += dy * Math.min(1, 8 * dt);
+        if (dist > 1e-6) {
+          to.normalize();
+          this.position.addScaledVector(to, step);
+          // Face movement direction (lerped).
+          const targetYaw = Math.atan2(-to.x, -to.z) + Math.PI;
+          const dyaw = wrapAngle(targetYaw - this.group.rotation.y);
+          this.group.rotation.y += dyaw * Math.min(1, 8 * dt);
+        }
+        // Vertical follow: climb stairs at a bounded rate; drops are fast.
+        const climbRate = dy3 < 0 ? 9 : 3.2;
+        const vStep = Math.sign(dy3) * Math.min(Math.abs(dy3), climbRate * dt);
+        this.position.y += vStep;
         this.gaitT += step;
       } else {
         this.moveTarget = null;

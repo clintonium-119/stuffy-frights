@@ -26,6 +26,48 @@ export interface GameConfig {
     startCharge: number;
   };
 
+  ai: {
+    /** Sight range (m) when the player's flashlight is ON — the beam betrays you. */
+    visionLightOn: number;
+    /** Sight range (m) in darkness — the player's friend. */
+    visionLightOff: number;
+    /** Detection range multiplier while the player crouches. */
+    visionCrouchFactor: number;
+    /** Full vision cone width in degrees. */
+    coneDegrees: number;
+    /** Inside this range (m) detection is omnidirectional. */
+    proximitySense: number;
+    /** Hearing radii (m) by noise level. */
+    hearCrouch: number;
+    hearWalk: number;
+    hearSprint: number;
+    hearChargingHum: number;
+    /** Speeds (m/s). Chase MUST stay below player sprint. */
+    patrolSpeed: number;
+    investigateSpeed: number;
+    chaseSpeed: number;
+    /** Seconds of lost sight before the chase degrades to investigate. */
+    memorySeconds: number;
+    /** Seconds spent looking around at an investigation point. */
+    investigateLinger: number;
+    /** Seconds idling after losing interest before resuming patrol. */
+    loseInterestSeconds: number;
+    /** Discovery probabilities for an unwitnessed hide (light state at entry). */
+    searchProbLightOn: number;
+    searchProbLightOff: number;
+    /** Seconds enemies stay passive at run start. */
+    gracePeriod: number;
+    /** Mean seconds between optional floor migrations. */
+    migrationInterval: number;
+    /** Anti-camp: displaced after lingering this close to exits/key this long. */
+    antiCampRadius: number;
+    antiCampSeconds: number;
+    /** Speed multiplier applied once the key is taken. */
+    keyTakenSpeedFactor: number;
+    /** Calm seconds granted after the player escapes a chase. */
+    nearMissMercy: number;
+  };
+
   enemy: {
     /** Within this distance (m) the face turns menacing. */
     threatRadius: number;
@@ -97,6 +139,32 @@ export const config: GameConfig = {
     chargeRatio: 3,
     /** Run-start charge fraction. */
     startCharge: 1.0,
+  },
+
+  ai: {
+    visionLightOn: 14,
+    visionLightOff: 5,
+    visionCrouchFactor: 0.7,
+    coneDegrees: 150,
+    proximitySense: 1.8,
+    hearCrouch: 2.5,
+    hearWalk: 6,
+    hearSprint: 13,
+    hearChargingHum: 9,
+    patrolSpeed: 1.6,
+    investigateSpeed: 2.7,
+    chaseSpeed: 4.5,
+    memorySeconds: 4,
+    investigateLinger: 2.5,
+    loseInterestSeconds: 2,
+    searchProbLightOn: 0.75,
+    searchProbLightOff: 0.25,
+    gracePeriod: 20,
+    migrationInterval: 100,
+    antiCampRadius: 4,
+    antiCampSeconds: 12,
+    keyTakenSpeedFactor: 1.12,
+    nearMissMercy: 6,
   },
 
   enemy: {

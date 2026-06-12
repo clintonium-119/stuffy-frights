@@ -14,11 +14,11 @@ import { ChargingStation } from './systems/ChargingStation';
 import { ExitDoor, KeyProp } from './world/ExitDoor';
 import { Battery } from './systems/Battery';
 import { ChargingSystem } from './systems/Charging';
-import { Charles } from './enemies/Charles';
-import { Poo } from './enemies/Poo';
-import { NewYama } from './enemies/NewYama';
-import { Fuggie } from './enemies/Fuggie';
 import { Jumpscare } from './enemies/Jumpscare';
+import { NavGraph } from './ai/NavGraph';
+import { Director } from './ai/Director';
+import { NoiseBus, PlayerSnapshot, canSee } from './ai/Perception';
+import { Rng } from './core/rng';
 
 const canvas = document.getElementById('game') as HTMLCanvasElement;
 const engine = new Engine(canvas);
@@ -103,18 +103,106 @@ const exitDoors = house.exits.map((def) => {
 const keyProp = new KeyProp();
 engine.scene.add(keyProp.group);
 
-// TEMP enemy showcase for visual verification — replaced by Director
-// spawning in the AI phase. Lined up in the living room.
-const enemies = [new Charles(), new Poo(), new NewYama(), new Fuggie()];
-enemies.forEach((enemy, i) => {
-  enemy.position.set(2.6 + i * 2.2, 3.5, 23.5); // living room line-up
-  enemy.group.rotation.y = 0; // model fronts are +Z — face the camera spot south
-  engine.scene.add(enemy.group);
+// The AI: nav graph, noise bus, and the Director spawning the four
+// residents at their home-floor markers.
+const rng = new Rng((Math.random() * 0xffffffff) >>> 0);
+const nav = new NavGraph(house, world.solidCells);
+const noiseBus = new NoiseBus();
+const jumpscare = new Jumpscare();
+
+const director = new Director(
+  house,
+  nav,
+  rng,
+  {
+    hiding,
+    onFoundHidden: (spot, enemy) => {
+      // Yanked out of hiding: pop the player out, then the catch lands.
+      hiding.exit();
+      noiseBus.emit({ position: spot.position, floor: player.floorIndex, radius: 8 });
+      (enemy as { catchEnabled?: boolean }).catchEnabled = true;
+    },
+    onChaseLost: () => director.notifyNearMiss(),
+  },
+  engine.scene,
+  (pos) => world.markerWorld(pos)
+);
+const enemies = director.residents.map((r) => r.enemy);
+
+// Concealment witnessing: brains that can SEE the entry moment record it.
+function witnessSnapshot(at: THREE.Vector3): PlayerSnapshot {
+  return {
+    position: at,
+    floor: player.floorIndex,
+    lightOn: flashlight.isOn,
+    crouched: player.isCrouched,
+    noiseLevel: player.noiseLevel,
+    hidden: false, // the entry moment itself is visible
+  };
+}
+hiding.onEnter = (spot) => {
+  for (const r of director.residents) {
+    const witnessed = canSee(
+      house,
+      r.enemy.position,
+      r.enemy.group.rotation.y,
+      r.enemy.floorIndex,
+      witnessSnapshot(spot.position)
+    );
+    r.brain.notePlayerEnteredHiding(spot.position, witnessed);
+  }
+};
+hiding.onExit = (spot) => {
+  // Unhide fumble: a soft noise.
+  noiseBus.emit({ position: spot.position, floor: player.floorIndex, radius: 4 });
+};
+passages.onPlayerEnter = (passage) => {
+  const tracked = passage as unknown as {
+    vent?: { floor: number; cells: { x: number; z: number }[] };
+    chute?: { from: { floor: number; x: number; z: number }; to: { floor: number; x: number; z: number } };
+  };
+  let at: THREE.Vector3;
+  let exit: THREE.Vector3;
+  if (tracked.chute) {
+    at = world.markerWorld(tracked.chute.from);
+    exit = world.markerWorld(tracked.chute.to);
+  } else if (tracked.vent) {
+    const c = tracked.vent.cells[0];
+    at = world.markerWorld({ floor: tracked.vent.floor, x: c.x, z: c.z });
+    exit = at.clone();
+  } else {
+    return;
+  }
+  for (const r of director.residents) {
+    const witnessed = canSee(
+      house,
+      r.enemy.position,
+      r.enemy.group.rotation.y,
+      r.enemy.floorIndex,
+      witnessSnapshot(at)
+    );
+    r.brain.notePlayerEnteredPassage(at, exit, witnessed);
+  }
+};
+passages.onOpen = () => {
+  noiseBus.emit({ position: player.position.clone(), floor: player.floorIndex, radius: 7 });
+};
+charging.onHumTick = (station) => {
+  noiseBus.emit({
+    position: station.position.clone(),
+    floor: station.cell.floor,
+    radius: config.ai.hearChargingHum,
+  });
+};
+noiseBus.subscribe((e) => {
+  for (const r of director.residents) {
+    if (r.enemy.floorIndex !== e.floor) continue;
+    r.brain.hearNoise(e.position, e.radius);
+  }
 });
 
 // The catch → jumpscare → game over chain. Blackout overlay + debug
 // restart until the real game-state machine lands.
-const jumpscare = new Jumpscare();
 const blackout = document.createElement('div');
 blackout.style.cssText =
   'position:absolute;inset:0;background:#000;opacity:0;pointer-events:none';
@@ -156,9 +244,21 @@ if (import.meta.env.DEV) {
   }
   const warp = Number(params.get('warp') ?? '0');
   if (warp > 0) {
-    // Pre-roll the simulation so gaits/moods settle before the screenshot.
+    // Pre-roll the full AI simulation so patrols/gaits/moods settle.
+    const snap: PlayerSnapshot = {
+      position: player.position,
+      floor: player.floorIndex,
+      lightOn: false,
+      crouched: false,
+      noiseLevel: 0,
+      hidden: false,
+    };
     for (let i = 0; i < warp * 60; i++) {
-      for (const enemy of enemies) enemy.update(1 / 60, player.position, false);
+      director.update(1 / 60, player.floorIndex);
+      for (const r of director.residents) {
+        r.brain.update(1 / 60, snap);
+        r.enemy.update(1 / 60, player.position, false);
+      }
     }
   }
   if (pose) {
@@ -176,6 +276,18 @@ if (import.meta.env.DEV) {
       jumpscare.update(1 / 60, engine.camera);
     }
     engine.simulationRunning = false;
+  }
+  if (params.get('report') === '1') {
+    // Machine-readable AI state for headless verification.
+    document.title = JSON.stringify(
+      director.residents.map((r) => ({
+        id: r.enemy.id,
+        s: r.brain.state,
+        f: r.enemy.floorIndex,
+        x: Math.round(r.enemy.position.x * 10) / 10,
+        z: Math.round(r.enemy.position.z * 10) / 10,
+      }))
+    );
   }
   if (params.get('showcase') === '1') {
     // Bright neutral light for model-likeness review only.
@@ -206,6 +318,9 @@ if (import.meta.env.DEV) {
     charging,
     enemies,
     jumpscare,
+    director,
+    nav,
+    noiseBus,
   };
 }
 
@@ -249,7 +364,19 @@ engine.addUpdatable({
       if (battery.canLight() || flashlight.isOn) flashlight.toggle();
     }
     const catchable = hiding.active === null && !jumpscare.running;
-    for (const enemy of enemies) enemy.update(dt, player.position, catchable);
+    const snapshot: PlayerSnapshot = {
+      position: player.position,
+      floor: player.floorIndex,
+      lightOn: flashlight.isOn,
+      crouched: player.isCrouched,
+      noiseLevel: player.noiseLevel,
+      hidden: hiding.active !== null,
+    };
+    director.update(dt, player.floorIndex);
+    for (const r of director.residents) {
+      r.brain.update(dt, snapshot);
+      r.enemy.update(dt, player.position, catchable);
+    }
     jumpscare.update(dt, engine.camera);
     charging.update(dt);
     battery.update(dt, flashlight.isOn);
