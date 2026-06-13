@@ -13,6 +13,7 @@ export class HUD {
   private chargingBadge: HTMLDivElement;
   private toast: HTMLDivElement;
   private vignette: HTMLDivElement;
+  private difficultyBadge: HTMLDivElement;
   private toastTimer: number | null = null;
 
   constructor(ui: HTMLElement) {
@@ -71,7 +72,13 @@ export class HUD {
       'position:absolute;inset:0;pointer-events:none;opacity:0;' +
       'background:radial-gradient(ellipse at center, transparent 46%, rgba(60,0,0,0.55) 100%)';
 
-    this.root.append(this.vignette, batteryWrap, batteryLabel, staminaWrap, staminaLabel, this.keyBadge, this.prompt, this.chargingBadge, this.toast);
+    // Difficulty (+ ironman ladder) badge, top-right.
+    this.difficultyBadge = document.createElement('div');
+    this.difficultyBadge.style.cssText =
+      'position:absolute;top:18px;right:22px;text-align:right;color:#b9ad8c;' +
+      "font:600 14px 'Trebuchet MS';text-shadow:0 1px 4px #000;letter-spacing:1px";
+
+    this.root.append(this.vignette, batteryWrap, batteryLabel, staminaWrap, staminaLabel, this.keyBadge, this.prompt, this.chargingBadge, this.toast, this.difficultyBadge);
     ui.appendChild(this.root);
   }
 
@@ -92,6 +99,17 @@ export class HUD {
 
   setHasKey(has: boolean): void {
     this.keyBadge.style.display = has ? 'block' : 'none';
+  }
+
+  /**
+   * Show the active difficulty (name · tier), optionally with the ironman ladder
+   * progress (e.g. "Ironman 2/4") on a second line.
+   */
+  setDifficultyInfo(name: string, tier: string, ironman?: string | null): void {
+    const line1 = `${name} · ${tier}`;
+    this.difficultyBadge.innerHTML = ironman
+      ? `${line1}<br><span style="color:#d8a35a">${ironman}</span>`
+      : line1;
   }
 
   setPrompt(label: string | null): void {

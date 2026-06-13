@@ -28,6 +28,15 @@ import { MapOverlay } from './ui/MapOverlay';
 import { HUD } from './ui/HUD';
 import { Menus } from './ui/Menus';
 import { AudioEngine } from './audio/AudioEngine';
+import { SettingsStore } from './core/Settings';
+import { applyDifficulty, DIFFICULTY_META } from './core/difficulty';
+
+// Apply the persisted (or default) difficulty into `config` BEFORE any system
+// reads it — every importer shares the same config object, so this one in-place
+// merge sets the whole run's knobs. Switching difficulty persists + reloads.
+const settings = new SettingsStore();
+const bootDifficulty = settings.getLastDifficulty();
+applyDifficulty(bootDifficulty);
 
 // ---------------------------------------------------------------- bootstrap
 const canvas = document.getElementById('game') as HTMLCanvasElement;
@@ -339,13 +348,34 @@ charging.onPlugChange = (on) => hud.setCharging(on);
 interactions.onPromptChange = (label) => hud.setPrompt(label);
 
 menus.onFirstInteraction = () => audio.unlock();
-menus.onStart = () => {
+
+function startRun(): void {
   if (!gs.transition('start')) return;
   menus.hide();
   hud.show(true);
   hud.setBattery(battery.level, battery.isLow);
   hud.setStamina(player.stamina, player.staminaLocked);
+  const m = DIFFICULTY_META[bootDifficulty];
+  hud.setDifficultyInfo(m.name, m.tier);
   input.requestPointerLock();
+}
+
+menus.setCurrentDifficulty(bootDifficulty);
+menus.onStart = startRun;
+// Picking the already-applied level starts straight away; a different level
+// persists the choice and reloads (boot re-applies it) with an auto-start flag.
+menus.onSelectDifficulty = (level) => {
+  if (level === bootDifficulty) {
+    startRun();
+  } else {
+    settings.setLastDifficulty(level);
+    try {
+      sessionStorage.setItem('sf-autoplay', '1');
+    } catch {
+      // sessionStorage may be unavailable; the reload just lands on the title.
+    }
+    window.location.reload();
+  }
 };
 menus.onResume = () => {
   if (!gs.transition('resume')) return;
@@ -365,7 +395,16 @@ canvas.addEventListener('click', () => {
   if (gs.state === 'playing' || gs.state === 'mapOpen') input.requestPointerLock();
 });
 
-menus.showTitle();
+// After a difficulty-change reload, skip the title and drop straight into the run.
+let autoplay = false;
+try {
+  autoplay = sessionStorage.getItem('sf-autoplay') === '1';
+  if (autoplay) sessionStorage.removeItem('sf-autoplay');
+} catch {
+  autoplay = false;
+}
+if (autoplay) startRun();
+else menus.showTitle();
 
 // ------------------------------------------------------------- main loop
 let footstepDistance = 0;

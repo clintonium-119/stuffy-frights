@@ -1,4 +1,4 @@
-import type { DifficultyLevel } from '../core/difficulty';
+import { DIFFICULTY_META, DIFFICULTY_ORDER, type DifficultyLevel } from '../core/difficulty';
 
 /** Per-difficulty accent font-family (bundled in public/fonts/, declared in index.html). */
 export const DIFFICULTY_FONTS: Record<DifficultyLevel, string> = {
@@ -43,9 +43,15 @@ export class Menus {
   onStart: (() => void) | null = null;
   onResume: (() => void) | null = null;
   onRetry: (() => void) | null = null;
+  /** Player chose a difficulty on the select screen (main persists + starts/reloads). */
+  onSelectDifficulty: ((level: DifficultyLevel) => void) | null = null;
+  /** Player asked to view the stats screen. */
+  onShowStats: (() => void) | null = null;
   /** Any first interaction (audio unlock). */
   onFirstInteraction: (() => void) | null = null;
   private interacted = false;
+  /** The currently-applied difficulty (boot level) — pre-highlighted on the select screen. */
+  private current: DifficultyLevel = 'medium';
 
   constructor(ui: HTMLElement) {
     this.root = document.createElement('div');
@@ -80,15 +86,61 @@ export class Menus {
     );
   }
 
+  /** Set the applied (boot) difficulty so the select screen pre-highlights it. */
+  setCurrentDifficulty(level: DifficultyLevel): void {
+    this.current = level;
+  }
+
   showTitle(): void {
     this.screen(`
       <h1 style="font-family:'Creepster',cursive;font-size:84px;letter-spacing:3px;margin:0;color:#cdb98a;
         text-shadow:0 0 22px #6a1212,0 0 6px #000">STUFFY FRIGHTS</h1>
       <p style="color:#8a7d65;letter-spacing:2px;margin-top:6px">the stuffed animals are awake</p>
-      <div style="margin-top:36px">${this.button('PLAY', 'btn-play')}<br>${this.button('HOW TO PLAY', 'btn-how')}</div>
+      <div style="margin-top:36px">${this.button('PLAY', 'btn-play')}<br>${this.button('HOW TO PLAY', 'btn-how')}<br>${this.button('STATS', 'btn-stats')}</div>
     `);
-    this.root.querySelector('#btn-play')!.addEventListener('click', () => this.onStart?.());
+    this.root.querySelector('#btn-play')!.addEventListener('click', () => this.showDifficultySelect());
     this.root.querySelector('#btn-how')!.addEventListener('click', () => this.showHowTo());
+    this.root.querySelector('#btn-stats')!.addEventListener('click', () => this.onShowStats?.());
+  }
+
+  /**
+   * Difficulty picker. Four level buttons in their accent fonts; the highlighted
+   * level's tier + tuned-knobs description shows below and updates on hover/focus.
+   * Choosing a level fires `onSelectDifficulty` (main persists + starts/reloads).
+   */
+  showDifficultySelect(): void {
+    const buttons = DIFFICULTY_ORDER.map((lvl) => {
+      const m = DIFFICULTY_META[lvl];
+      const sel = lvl === this.current;
+      return (
+        `<button data-level="${lvl}" class="diff-opt" style="display:block;margin:8px auto;width:340px;` +
+        `padding:12px 18px;font-family:${DIFFICULTY_FONTS[lvl]};font-size:26px;` +
+        `background:${sel ? '#4a3c28' : '#2c241a'};color:#e8dcc0;` +
+        `border:2px solid ${sel ? '#b59f6a' : '#5a5141'};border-radius:6px;cursor:pointer">` +
+        `${m.name}</button>`
+      );
+    }).join('');
+    this.screen(`
+      <h2 style="font-family:'Creepster',cursive;letter-spacing:2px;color:#cdb98a;
+        text-shadow:0 0 14px #6a1212">CHOOSE YOUR FRIGHT</h2>
+      <div style="margin-top:14px">${buttons}</div>
+      <div id="diff-desc" style="max-width:460px;min-height:84px;margin:14px auto 4px;
+        color:#cfc3a2;line-height:1.5"></div>
+      <div style="margin-top:10px">${this.button('BACK', 'btn-back')}</div>
+    `);
+    const desc = this.root.querySelector('#diff-desc') as HTMLDivElement;
+    const paint = (lvl: DifficultyLevel) => {
+      const m = DIFFICULTY_META[lvl];
+      desc.innerHTML = `<b style="color:#d8c9a0">${m.name} — ${m.tier}.</b> ${m.description}`;
+    };
+    paint(this.current);
+    this.root.querySelectorAll<HTMLButtonElement>('.diff-opt').forEach((b) => {
+      const lvl = b.dataset.level as DifficultyLevel;
+      b.addEventListener('mouseenter', () => paint(lvl));
+      b.addEventListener('focus', () => paint(lvl));
+      b.addEventListener('click', () => this.onSelectDifficulty?.(lvl));
+    });
+    this.root.querySelector('#btn-back')!.addEventListener('click', () => this.showTitle());
   }
 
   showHowTo(): void {
@@ -97,7 +149,7 @@ export class Menus {
       ${CONTROLS_HTML}
       <div>${this.button('GOT IT — PLAY', 'btn-play')}</div>
     `);
-    this.root.querySelector('#btn-play')!.addEventListener('click', () => this.onStart?.());
+    this.root.querySelector('#btn-play')!.addEventListener('click', () => this.showDifficultySelect());
   }
 
   showPause(): void {
