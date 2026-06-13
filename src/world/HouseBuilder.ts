@@ -53,7 +53,9 @@ function canvasTexture(
 }
 
 /** Base self-glow of a window pane in the dark (a faint stormy beacon). */
-const WINDOW_EMISSIVE_BASE = 0.4;
+/** The window "outside" view, unlit: dark rainy night, blazing on a lightning flash. */
+const WINDOW_NIGHT = new THREE.Color(0x0c1424);
+const WINDOW_FLASH = new THREE.Color(0xbcc8e6);
 
 /** Translucent rain streaks (transparent background) scrolled down the glass. */
 function paintRain(ctx: CanvasRenderingContext2D, size: number) {
@@ -300,18 +302,12 @@ export class HouseBuilder {
         }
       }
 
-      // ---- Windows: dark stormy night panes on exterior walls (main + upstairs),
-      // with rain running on the glass. Deep night-blue, a faint glow (just a
-      // beacon in the dark) that blazes briefly on a lightning flash.
+      // ---- Windows on exterior walls (main + upstairs): a separate UNLIT "night
+      // view" — a dark, opaque pane that ignores the interior flashlight and
+      // occludes the wall behind, so it reads as looking out at a rainy night
+      // (not a translucent panel on a lit wall). Rain streaks scroll in front;
+      // the view blazes on a lightning flash (colour, not lighting).
       if (f === 1 || f === 2) {
-        const paneMat = new THREE.MeshStandardMaterial({
-          color: 0x0b1320,
-          emissive: 0x16223a,
-          emissiveIntensity: WINDOW_EMISSIVE_BASE,
-          roughness: 0.35,
-          transparent: true,
-          opacity: 0.5, // see-through glass — the rain falls behind it
-        });
         for (let x = 2; x < house.width - 2; x += 4) {
           for (const [z, dz] of [
             [0, 1],
@@ -319,16 +315,15 @@ export class HouseBuilder {
           ] as const) {
             if (grid[z][x] !== 'wall') continue;
             const { x: wx, z: wz } = cellToWorld(x, z);
-            // Glass sits a touch into the room; the rain layer is BEHIND it
-            // (toward the wall) so it reads as rain falling outside, seen through
-            // the glass, rather than streaks painted on the surface.
+            // Each window owns its own unlit material so it can flash independently.
+            const paneMat = new THREE.MeshBasicMaterial({ color: WINDOW_NIGHT.clone() });
             const pane = new THREE.Mesh(new THREE.PlaneGeometry(1.0, 1.2), paneMat);
-            pane.position.set(wx, y0 + 1.7, wz + dz * (CELL_SIZE / 2 + 0.1));
+            pane.position.set(wx, y0 + 1.7, wz + dz * (CELL_SIZE / 2 + 0.02)); // hides the wall
             if (dz < 0) pane.rotation.y = Math.PI;
             floorGroup.add(pane);
             windowPanes.push(pane);
             windowWorldPositions.push(pane.position.clone());
-            // Rain behind the glass: a scrolling streak plane against the dark wall.
+            // Rain in front of the dark view — streaks against the night.
             const rain = new THREE.Mesh(new THREE.PlaneGeometry(1.0, 1.2), rainMat);
             rain.position.set(wx, y0 + 1.7, wz + dz * (CELL_SIZE / 2 + 0.05));
             if (dz < 0) rain.rotation.y = Math.PI;
@@ -563,15 +558,14 @@ export class HouseBuilder {
       windowPanes,
       windowWorldPositions,
       updateWindows(dt: number, flash: number) {
-        // Rain falls DOWN the glass (increasing offset.y scrolls the streaks
-        // downward); panes blaze + flash lights spill in on a lightning strike.
+        // Rain falls DOWN the view (increasing offset.y scrolls streaks downward).
         rainTex.offset.y = (rainTex.offset.y + dt * 0.55) % 1;
         rainMat.opacity = 0.5 + flash * 0.45;
-        const emissive = WINDOW_EMISSIVE_BASE + flash * 7.0;
+        // The night view blazes toward a bright sky-flash on a lightning strike.
         for (const pane of windowPanes) {
-          (pane.material as THREE.MeshStandardMaterial).emissiveIntensity = emissive;
+          (pane.material as THREE.MeshBasicMaterial).color.copy(WINDOW_NIGHT).lerp(WINDOW_FLASH, flash);
         }
-        // Lightning spills through each window into the nearby room only.
+        // Lightning also spills through each window into the nearby room only.
         const lightIntensity = flash * config.weather.flashIntensity;
         for (const wl of windowLights) wl.intensity = lightIntensity;
       },
