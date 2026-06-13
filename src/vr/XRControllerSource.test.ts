@@ -78,21 +78,21 @@ describe('XRControllerSource mapping', () => {
     expect(src.intent.moveY).toBe(0);
   });
 
-  it('right stick X snap-turns once per flick (positive), not while held', () => {
+  it('right stick X flick snap-turns right (negative yaw), once per flick', () => {
     const src = new XRControllerSource(fakeRenderer(undefined, pad([0, 0, 1, 0], [])));
     const step = (config.vr.snapTurnDegrees * Math.PI) / 180;
     src.sample();
-    expect(src.takeSnapTurn()).toBeCloseTo(step, 6); // right flick → +
+    expect(src.takeSnapTurn()).toBeCloseTo(-step, 6); // flick right → turn right
     expect(src.takeSnapTurn()).toBe(0); // consumed
     src.sample(); // still pushed — no re-fire until re-center
     expect(src.takeSnapTurn()).toBe(0);
   });
 
-  it('left stick-X flick snap-turns negative', () => {
+  it('left stick-X flick snap-turns left (positive yaw)', () => {
     const src = new XRControllerSource(fakeRenderer(undefined, pad([0, 0, -1, 0], [])));
     const step = (config.vr.snapTurnDegrees * Math.PI) / 180;
     src.sample();
-    expect(src.takeSnapTurn()).toBeCloseTo(-step, 6);
+    expect(src.takeSnapTurn()).toBeCloseTo(step, 6);
   });
 
   it('zeroes movement when no session is active', () => {

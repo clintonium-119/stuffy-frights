@@ -114,7 +114,8 @@ export class XRControllerSource implements ControlSource {
     const rx = right?.axes[STICK_X] ?? 0;
     if (this.snapArmed && Math.abs(rx) > cfg.snapTurnThreshold) {
       const step = (cfg.snapTurnDegrees * Math.PI) / 180;
-      this.pendingSnap += rx > 0 ? step : -step;
+      // Flick right → turn right: that's a clockwise (negative) yaw step.
+      this.pendingSnap += rx > 0 ? -step : step;
       this.snapArmed = false;
     } else if (Math.abs(rx) < cfg.snapTurnRelease) {
       this.snapArmed = true;

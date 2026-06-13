@@ -67,9 +67,12 @@ export class XRSession {
     this.rig.position.x -= cam.position.x * cos + cam.position.z * sin;
     this.rig.position.z -= -cam.position.x * sin + cam.position.z * cos;
 
-    // Headset world yaw already includes the rig's snap-turn rotation.
+    // The XR camera's reported yaw is the headset pose within the reference
+    // space (it does NOT include the rig's snap-turn rotation), so add turnYaw
+    // to get the true facing — otherwise stick movement stays locked to the
+    // original orientation and feels backwards after turning around.
     const headQuat = this.engine.renderer.xr.getCamera().getWorldQuaternion(this.tmpQuat);
-    this.player.yaw = yawFromQuaternion(headQuat);
+    this.player.yaw = this.turnYaw + yawFromQuaternion(headQuat);
   }
 
   /** Tear down on session end: re-orphan the camera so desktop writes resume. */
