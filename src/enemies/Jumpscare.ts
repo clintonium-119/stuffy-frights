@@ -3,6 +3,8 @@ import { config } from '../core/config';
 
 export type JumpscarePhase = 'idle' | 'turning' | 'lunging' | 'redFade' | 'blackout' | 'done';
 
+const UP = new THREE.Vector3(0, 1, 0);
+
 /** What the jumpscare needs from an enemy (EnemyBase satisfies this). */
 export interface JumpscareTarget {
   id: string;
@@ -92,6 +94,12 @@ export class Jumpscare {
       const shake = 0.05 * (0.4 + t);
       camera.position.x += (Math.random() - 0.5) * shake;
       camera.position.y += (Math.random() - 0.5) * shake;
+      // Lock eye contact: re-aim at the (moving) enemy face every frame so it
+      // closes in dead-centre — direct eye-to-eye as it fills the view.
+      const face = this.target.position.clone().add(new THREE.Vector3(0, 1.1, 0));
+      const m = new THREE.Matrix4().lookAt(camera.position, face, UP);
+      const want = new THREE.Quaternion().setFromRotationMatrix(m);
+      camera.quaternion.slerp(want, Math.min(1, 20 * dt));
       if (t >= 1) {
         this.phase = 'redFade';
         this.timer = 0;

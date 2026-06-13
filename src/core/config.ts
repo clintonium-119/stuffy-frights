@@ -76,6 +76,13 @@ export interface GameConfig {
     keyTakenSpeedFactor: number;
     /** Calm seconds granted after the player escapes a chase. */
     nearMissMercy: number;
+    /** Decisive final pounce: within lungeRange (m) of a seen player the chaser
+     *  bursts at lungeSpeed (above sprint) for lungeDuration (s), then must wait
+     *  lungeCooldown (s) before pouncing again. */
+    lungeRange: number;
+    lungeSpeed: number;
+    lungeDuration: number;
+    lungeCooldown: number;
   };
 
   enemy: {
@@ -198,12 +205,18 @@ export const config: GameConfig = {
     antiCampSeconds: 12,
     keyTakenSpeedFactor: 1.12,
     nearMissMercy: 6,
+    // Decisive pounce: a short burst above sprint speed so a cornered or
+    // close player gets caught, then a cooldown so it isn't a constant sprint.
+    lungeRange: 2.4,
+    lungeSpeed: 6.6,
+    lungeDuration: 0.5,
+    lungeCooldown: 2.2,
   },
 
   enemy: {
     threatRadius: 5,
     expressionHold: 0.6,
-    contactRadius: 0.85,
+    contactRadius: 1.0,
     jumpscareTurn: 0.12,
     jumpscareLunge: 0.55, // snappier rush so the face slams into frame
     jumpscareRedFade: 0.4,

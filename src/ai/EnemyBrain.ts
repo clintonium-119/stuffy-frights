@@ -65,6 +65,9 @@ export class EnemyBrain {
   private follower = new PathFollower();
   private stateTimer = 0;
   private repathTimer = 0;
+  /** Active-lunge time remaining (s) and time until the next lunge is allowed. */
+  private lungeTimer = 0;
+  private lungeCooldown = 0;
   private now = 0;
   private searchTarget: HidingSpot | null = null;
   private searchResolved = false;
@@ -134,6 +137,8 @@ export class EnemyBrain {
     this.now += dt;
     this.stateTimer += dt;
     this.repathTimer -= dt;
+    if (this.lungeTimer > 0) this.lungeTimer -= dt;
+    if (this.lungeCooldown > 0) this.lungeCooldown -= dt;
 
     const seen =
       !this.passive &&
@@ -201,7 +206,15 @@ export class EnemyBrain {
           // Close the last gap directly so a cornered player can't sit just
           // beyond the cell-center waypoint and out of contact range.
           this.follower.clear();
-          this.enemy.setMoveTarget(player.position, this.speed(config.ai.chaseSpeed));
+          // Decisive pounce: inside lungeRange, commit a brief burst above
+          // sprint speed (then cool down) so the kill actually lands instead of
+          // the player jogging away at the edge of contact.
+          if (this.lungeTimer <= 0 && this.lungeCooldown <= 0 && toPlayer < config.ai.lungeRange) {
+            this.lungeTimer = config.ai.lungeDuration;
+            this.lungeCooldown = config.ai.lungeCooldown;
+          }
+          const lungeSpeed = this.lungeTimer > 0 ? config.ai.lungeSpeed : config.ai.chaseSpeed;
+          this.enemy.setMoveTarget(player.position, this.speed(lungeSpeed));
           break;
         }
         if (seen) {

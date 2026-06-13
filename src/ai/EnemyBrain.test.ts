@@ -259,6 +259,23 @@ describe('EnemyBrain transitions', () => {
     expect(gap).toBeLessThan(config.enemy.contactRadius + 0.35); // within catch range
   });
 
+  it('pounces with a burst above sprint speed when close to a seen player', () => {
+    const { hiding } = makeHiding();
+    const body = stubBody(15, 3.5, 19); // foyer, facing +Z
+    const brain = brainWith(body, hiding, new Rng(1));
+    // Player within lunge range and in view.
+    const player = snapshot({ position: new THREE.Vector3(15, 3.5, 20.5), lightOn: true });
+    brain.update(DT, player); // patrol → chase (no move on the transition step)
+    expect(brain.state).toBe('chase');
+    const before = body.position.clone();
+    brain.update(DT, player); // final approach within lungeRange → pounce burst
+    const moved = Math.hypot(body.position.x - before.x, body.position.z - before.z);
+    // A pounce step covers more ground than an ordinary chase step would.
+    expect(moved).toBeGreaterThan(config.ai.chaseSpeed * DT + 1e-6);
+    // And the pounce genuinely exceeds player sprint (you can't simply out-run it).
+    expect(config.ai.lungeSpeed).toBeGreaterThan(config.player.sprintSpeed);
+  });
+
   it('loses interest and returns to patrol soon after sight breaks (escape window)', () => {
     const { hiding } = makeHiding();
     const body = stubBody(15, 3.5, 19);

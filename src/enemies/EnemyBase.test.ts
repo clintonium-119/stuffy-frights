@@ -104,6 +104,37 @@ describe('Jumpscare', () => {
     expect(js.trigger(makeTarget(), camera)).toBe(true);
   });
 
+  it('locks the camera onto the closing enemy face (eye contact beats a fixed aim)', () => {
+    const js = new Jumpscare();
+    const camera = new THREE.PerspectiveCamera();
+    camera.position.set(0, 1.6, 0);
+    const target = makeTarget();
+    target.position.set(0, 0, 4); // enemy 4 m ahead; it rushes in along -Z
+    js.trigger(target, camera);
+    let heldAim: THREE.Quaternion | null = null;
+    let tracked = 0;
+    let held = 0;
+    let samples = 0;
+    const limit = (config.enemy.jumpscareTurn + config.enemy.jumpscareLunge) / DT;
+    for (let i = 0; i < limit; i++) {
+      js.update(DT, camera);
+      if (js.phase === 'lunging') {
+        // The aim a non-tracking jumpscare would freeze at (post-turn).
+        if (!heldAim) heldAim = camera.quaternion.clone();
+        const face = target.position.clone().add(new THREE.Vector3(0, 1.1, 0));
+        const toFace = face.clone().sub(camera.position).normalize();
+        tracked = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion).angleTo(toFace);
+        held = new THREE.Vector3(0, 0, -1).applyQuaternion(heldAim).angleTo(toFace);
+        samples++;
+      }
+    }
+    expect(samples).toBeGreaterThan(0);
+    // By the end of the lunge the live re-aim holds eye contact far better than
+    // a frozen aim would, and stays close to dead-centre.
+    expect(tracked).toBeLessThan(held);
+    expect(tracked).toBeLessThan(0.5);
+  });
+
   it('total runtime stays within the kid-calibrated budget (≤2 s)', () => {
     const total =
       config.enemy.jumpscareTurn +
