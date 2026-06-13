@@ -162,6 +162,7 @@ export function parseLayout(): House {
       { from: { floor: 1, x: 10, z: 7 }, to: { floor: 0, x: 10, z: 7 } },
       { from: { floor: 3, x: 3, z: 2 }, to: { floor: 2, x: 3, z: 2 } },
     ],
+    navBlockedStairCells: new Set<string>(),
   };
 
   let sawSpawn = false;
@@ -237,14 +238,23 @@ export function parseLayout(): House {
 
   if (!sawSpawn) throw new Error('no player spawn (P) in layout');
 
-  // Stair/vent cells must match the grids.
+  // Stair/vent cells must match the grids. While here, mark every stair cell
+  // that is NOT a valid nav node: only the run's entrance (low-end on the lower
+  // floor) and landing (high-end on the upper floor) are walkable nav nodes — the
+  // rest sit over the stairwell void and must not be pathed onto.
   for (const stair of house.stairs) {
+    const lastIdx = stair.cells.length - 1;
     for (const fl of [stair.lower, stair.upper]) {
-      for (const c of stair.cells) {
+      stair.cells.forEach((c, i) => {
         if (house.grids[fl][c.z][c.x] !== 'stair') {
           throw new Error(`stair cell ${fl}:${c.x},${c.z} is not 'S' in the grid`);
         }
-      }
+        const isEntrance = i === 0 && fl === stair.lower;
+        const isLanding = i === lastIdx && fl === stair.upper;
+        if (!isEntrance && !isLanding) {
+          house.navBlockedStairCells.add(`${fl}:${c.x},${c.z}`);
+        }
+      });
     }
   }
   for (const vent of house.vents) {
@@ -331,7 +341,12 @@ export function neighbors(house: House, pos: CellPos): Neighbor[] {
     }
   }
 
-  return out;
+  // Never step onto an over-the-void stair cell — only the run entrance/landing
+  // are walkable, joined by the run edge. This is what stops an enemy crossing a
+  // stairwell opening horizontally instead of taking the stairs.
+  return out.filter(
+    (n) => !house.navBlockedStairCells.has(`${n.pos.floor}:${n.pos.x},${n.pos.z}`)
+  );
 }
 
 export const house = parseLayout();

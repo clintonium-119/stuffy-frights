@@ -83,6 +83,14 @@ export interface House {
   stairs: Stair[];
   vents: Vent[];
   chutes: Chute[];
+  /**
+   * `"floor:x,z"` keys for stair cells that are NOT valid nav nodes: every stair
+   * cell except the run's entrance (low-end on the lower floor) and landing
+   * (high-end on the upper floor). The in-between cells sit over the open
+   * stairwell on the upper floor / partway up on the lower floor, so enemies must
+   * not path onto them — they only change floors by the run's entrance↔landing edge.
+   */
+  navBlockedStairCells: Set<string>;
 }
 
 export function floorY(floor: number): number {

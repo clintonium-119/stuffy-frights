@@ -4,6 +4,7 @@ import { NavGraph, PathFollower } from './NavGraph';
 import { house } from '../world/houseLayout';
 import { PROP_PLACEMENTS } from '../world/Props';
 import { Rng } from '../core/rng';
+import { floorY } from '../world/layoutTypes';
 
 function solidCells(): Set<string> {
   const solid = new Set<string>();
@@ -119,5 +120,51 @@ describe('NavGraph degenerate-input hardening', () => {
     expect(() => follower.drive(enemy, 4)).not.toThrow();
     expect(follower.done).toBe(true);
     expect(targetSet).toBeNull();
+  });
+});
+
+describe('stairs: no void crossing, no clipping', () => {
+  it('marks the over-the-void stair cells as nav-blocked', () => {
+    expect(house.navBlockedStairCells.size).toBeGreaterThan(0);
+  });
+
+  it('never routes a path through an over-the-void stair cell', () => {
+    for (const e of house.enemySpawns) {
+      for (const target of [...house.exits.map((x) => x.pos), ...house.keyCandidates]) {
+        const p = nav.findPath(
+          { floor: e.pos.floor, x: e.pos.x, z: e.pos.z },
+          { floor: target.floor, x: target.x, z: target.z }
+        );
+        if (!p) continue;
+        for (const c of p) {
+          expect(house.navBlockedStairCells.has(`${c.floor}:${c.x},${c.z}`)).toBe(false);
+        }
+      }
+    }
+  });
+
+  it('a void stair cell is not a nav node (unreachable as a target)', () => {
+    const e = house.enemySpawns[0].pos;
+    for (const k of house.navBlockedStairCells) {
+      const [f, xz] = k.split(':');
+      const [x, z] = xz.split(',').map(Number);
+      const p = nav.findPath(
+        { floor: e.floor, x: e.x, z: e.z },
+        { floor: Number(f), x, z }
+      );
+      expect(p, `void cell ${k} should be unreachable`).toBeNull();
+    }
+  });
+
+  it('stair waypoints rise monotonically from the lower to the upper floor', () => {
+    const s = house.stairs[0]; // run 0 → 1
+    const entrance = { floor: s.lower, x: s.cells[0].x, z: s.cells[0].z };
+    const last = s.cells[s.cells.length - 1];
+    const landing = { floor: s.upper, x: last.x, z: last.z };
+    const ys = nav.toWaypoints([entrance, landing]).map((w) => w.y);
+    expect(ys.length).toBeGreaterThan(2); // endpoints + interior steps
+    expect(ys[0]).toBeCloseTo(floorY(s.lower));
+    expect(ys[ys.length - 1]).toBeCloseTo(floorY(s.upper));
+    for (let i = 1; i < ys.length; i++) expect(ys[i]).toBeGreaterThan(ys[i - 1]);
   });
 });

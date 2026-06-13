@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import {
   CellPos,
   House,
+  Stair,
   cellToWorld,
   floorY,
   isWalkable,
@@ -38,9 +39,12 @@ interface Edge {
 export class NavGraph {
   private adjacency = new Map<string, Edge[]>();
   private cells = new Map<string, NavNodeId>();
+  private stairs: Stair[] = [];
 
   constructor(house: House, solidCells: Set<string>) {
     const chuteMouths = new Set(house.chutes.map((c) => key(c.from.floor, c.from.x, c.from.z)));
+    this.stairs = house.stairs;
+    const blockedStairs = house.navBlockedStairCells;
 
     for (let f = 0; f < house.grids.length; f++) {
       for (let z = 0; z < house.depth; z++) {
@@ -48,11 +52,14 @@ export class NavGraph {
           if (!isWalkable(house.grids[f][z][x])) continue;
           const id = key(f, x, z);
           if (solidCells.has(id)) continue;
+          // Over-the-void stair cells (everything but a run's entrance/landing)
+          // are not nav nodes — enemies change floors only via the run edge.
+          if (blockedStairs.has(id)) continue;
           this.cells.set(id, { floor: f, x, z });
           const edges: Edge[] = [];
           for (const n of neighbors(house, { floor: f as CellPos['floor'], x, z })) {
             const nid = key(n.pos.floor, n.pos.x, n.pos.z);
-            if (solidCells.has(nid)) continue;
+            if (solidCells.has(nid) || blockedStairs.has(nid)) continue;
             // Ordinary movement never crosses an open chute mouth.
             const intoMouth = chuteMouths.has(nid) && !n.viaChute;
             const fromMouth = chuteMouths.has(id) && !n.viaChute;
@@ -139,6 +146,10 @@ export class NavGraph {
    * collinear same-floor cells skipped for natural movement. */
   toWaypoints(path: NavNodeId[]): THREE.Vector3[] {
     const out: THREE.Vector3[] = [];
+    const push = (cx: number, cz: number, y: number) => {
+      const { x, z } = cellToWorld(cx, cz);
+      out.push(new THREE.Vector3(x, y, z));
+    };
     for (let i = 0; i < path.length; i++) {
       const n = path[i];
       const prev = path[i - 1];
@@ -153,10 +164,38 @@ export class NavGraph {
       ) {
         continue; // collinear — skip
       }
-      const { x, z } = cellToWorld(n.x, n.z);
-      out.push(new THREE.Vector3(x, floorY(n.floor), z));
+      push(n.x, n.z, floorY(n.floor));
+      // A stair run edge connects only the entrance↔landing; lay the steps in
+      // between at interpolated heights so the enemy rides the staircase flush
+      // instead of cutting straight to the far floor (and clipping the treads).
+      if (next) {
+        const stair = this.stairForEdge(n, next);
+        if (stair) {
+          const lastIdx = stair.cells.length - 1;
+          const yLow = floorY(stair.lower);
+          const yHigh = floorY(stair.upper);
+          const ascending = n.floor === stair.lower;
+          for (let s = 1; s < lastIdx; s++) {
+            const idx = ascending ? s : lastIdx - s; // run-cell index in travel order
+            const c = stair.cells[idx];
+            push(c.x, c.z, yLow + (yHigh - yLow) * (idx / lastIdx));
+          }
+        }
+      }
     }
     return out;
+  }
+
+  /** The stair run whose entrance/landing are exactly this node pair, else null. */
+  private stairForEdge(a: NavNodeId, b: NavNodeId): Stair | null {
+    for (const s of this.stairs) {
+      const lo = s.cells[0];
+      const hi = s.cells[s.cells.length - 1];
+      const entrance = (n: NavNodeId) => n.floor === s.lower && n.x === lo.x && n.z === lo.z;
+      const landing = (n: NavNodeId) => n.floor === s.upper && n.x === hi.x && n.z === hi.z;
+      if ((entrance(a) && landing(b)) || (landing(a) && entrance(b))) return s;
+    }
+    return null;
   }
 
   randomNodeOnFloor(floor: number, rng: { next(): number }): NavNodeId | null {
