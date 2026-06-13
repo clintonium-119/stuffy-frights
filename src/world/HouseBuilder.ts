@@ -75,6 +75,39 @@ function paintRain(ctx: CanvasRenderingContext2D, size: number) {
   ctx.globalAlpha = 1;
 }
 
+/** A faint distant skyline (rooftops + a few trees) silhouetted along the bottom,
+ *  transparent above the horizon — the dark "outside" seen through the window. */
+function paintSkyline(ctx: CanvasRenderingContext2D, size: number) {
+  ctx.clearRect(0, 0, size, size);
+  const horizon = size * 0.62;
+  ctx.fillStyle = '#04060c';
+  // Blocky rooftops of varying height down to the bottom edge.
+  let x = -size * 0.05;
+  while (x < size) {
+    const w = size * 0.05 + Math.random() * size * 0.11;
+    const h = size * 0.06 + Math.random() * size * 0.26;
+    ctx.fillRect(x, horizon - h, w + 1, size - (horizon - h));
+    x += w + size * 0.006;
+  }
+  // A couple of spiky conifer silhouettes breaking the roofline.
+  for (let t = 0; t < 3; t++) {
+    const tx = size * (0.15 + Math.random() * 0.7);
+    const th = size * 0.16 + Math.random() * size * 0.14;
+    const tw = size * 0.05;
+    ctx.beginPath();
+    ctx.moveTo(tx - tw, horizon);
+    ctx.lineTo(tx, horizon - th);
+    ctx.lineTo(tx + tw, horizon);
+    ctx.closePath();
+    ctx.fill();
+  }
+  // A few faint warm-lit windows dotted in the far rooftops (a little life).
+  ctx.fillStyle = 'rgba(190,150,80,0.4)';
+  for (let i = 0; i < 7; i++) {
+    ctx.fillRect(Math.random() * size, horizon - Math.random() * size * 0.18, 2, 3);
+  }
+}
+
 /** A radial spider-web (transparent background) for attic cobwebs. */
 function paintCobweb(ctx: CanvasRenderingContext2D, size: number) {
   ctx.clearRect(0, 0, size, size);
@@ -165,6 +198,12 @@ export class HouseBuilder {
       map: rainTex,
       transparent: true,
       opacity: 0.5,
+      depthWrite: false,
+    });
+    // Shared faint skyline silhouette behind the rain (the dark outside view).
+    const skylineMat = new THREE.MeshBasicMaterial({
+      map: canvasTexture(256, paintSkyline, 1, 1),
+      transparent: true,
       depthWrite: false,
     });
 
@@ -323,6 +362,12 @@ export class HouseBuilder {
             floorGroup.add(pane);
             windowPanes.push(pane);
             windowWorldPositions.push(pane.position.clone());
+            // Faint skyline silhouette between the dark sky and the rain — the
+            // distant outside, backlit when lightning flashes the sky behind it.
+            const skyline = new THREE.Mesh(new THREE.PlaneGeometry(1.0, 1.2), skylineMat);
+            skyline.position.set(wx, y0 + 1.7, wz + dz * (CELL_SIZE / 2 + 0.035));
+            if (dz < 0) skyline.rotation.y = Math.PI;
+            floorGroup.add(skyline);
             // Rain in front of the dark view — streaks against the night.
             const rain = new THREE.Mesh(new THREE.PlaneGeometry(1.0, 1.2), rainMat);
             rain.position.set(wx, y0 + 1.7, wz + dz * (CELL_SIZE / 2 + 0.05));
