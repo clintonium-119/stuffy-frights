@@ -9,7 +9,7 @@ import { config } from './core/config';
 import { house } from './world/houseLayout';
 import { HouseBuilder } from './world/HouseBuilder';
 import { initMaterials } from './world/materialLibrary';
-import { worldToCell } from './world/layoutTypes';
+import { worldToCell, CELL_SIZE } from './world/layoutTypes';
 import { HidingSystem } from './systems/HidingSpot';
 import { PassageSystem } from './systems/SecretPassage';
 import { WeatherSystem } from './systems/Weather';
@@ -138,6 +138,20 @@ const enemies = director.residents.map((r) => r.enemy);
 // unpredictability reads as dread, not a glitch.
 director.onMigrate = (r) => audio.migrationCue(r.enemy.position.clone());
 
+// True when a prop/cover cell sits within cover range of the player — used to
+// reward crouching behind furniture (a lightweight detection penalty, not a raycast).
+function playerNearCover(): boolean {
+  const r = Math.max(1, Math.ceil(config.ai.coverBonusRadius / CELL_SIZE));
+  const c = worldToCell(player.position.x, player.position.z);
+  const f = player.floorIndex;
+  for (let dz = -r; dz <= r; dz++) {
+    for (let dx = -r; dx <= r; dx++) {
+      if (world.solidCells.has(`${f}:${c.x + dx},${c.z + dz}`)) return true;
+    }
+  }
+  return false;
+}
+
 function witnessSnapshot(at: THREE.Vector3): PlayerSnapshot {
   return {
     position: at,
@@ -146,6 +160,7 @@ function witnessSnapshot(at: THREE.Vector3): PlayerSnapshot {
     crouched: player.isCrouched,
     noiseLevel: player.noiseLevel,
     hidden: false,
+    nearCover: false,
   };
 }
 hiding.onEnter = (spot) => {
@@ -478,6 +493,7 @@ engine.addUpdatable({
       crouched: player.isCrouched,
       noiseLevel: player.noiseLevel,
       hidden: hiding.active !== null,
+      nearCover: player.isCrouched ? playerNearCover() : false,
     };
     director.update(dt, player.floorIndex);
     let nearest = Infinity;

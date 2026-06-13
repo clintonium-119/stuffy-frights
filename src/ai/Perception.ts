@@ -11,6 +11,9 @@ export interface PlayerSnapshot {
   /** 0 still, 1 crawl, 2 walk, 3 sprint. */
   noiseLevel: number;
   hidden: boolean;
+  /** True when the player is within cover range of a prop (computed where the
+   *  prop/solid cells are known). Only matters while crouched. */
+  nearCover?: boolean;
 }
 
 export interface NoiseEvent {
@@ -79,7 +82,11 @@ export function canSee(
   const dist = Math.hypot(dx, dz);
 
   let range = player.lightOn ? config.ai.visionLightOn : config.ai.visionLightOff;
-  if (player.crouched) range *= config.ai.visionCrouchFactor;
+  if (player.crouched) {
+    range *= config.ai.visionCrouchFactor;
+    // Crouched behind cover: a further reduction (lightweight — no prop raycast).
+    if (player.nearCover) range *= config.ai.coverVisionFactor;
+  }
   if (dist > range) return false;
 
   if (dist > config.ai.proximitySense) {

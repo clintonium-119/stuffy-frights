@@ -40,9 +40,13 @@ describe('house layout integrity', () => {
     for (const e of house.exits) expect(e.pos.floor).toBe(1);
   });
 
-  it('has ≥6 key candidates across ≥3 floors', () => {
-    expect(house.keyCandidates.length).toBeGreaterThanOrEqual(6);
-    expect(new Set(house.keyCandidates.map((c) => c.floor)).size).toBeGreaterThanOrEqual(3);
+  it('has a large key-candidate pool spanning all four floors, all walkable', () => {
+    // Enlarged so the key location never feels predictable run-to-run.
+    expect(house.keyCandidates.length).toBeGreaterThanOrEqual(12);
+    expect(new Set(house.keyCandidates.map((c) => c.floor))).toEqual(new Set([0, 1, 2, 3]));
+    for (const c of house.keyCandidates) {
+      expect(isWalkable(house.grids[c.floor][c.z][c.x])).toBe(true);
+    }
   });
 
   it('has ≥1 charging station per floor', () => {

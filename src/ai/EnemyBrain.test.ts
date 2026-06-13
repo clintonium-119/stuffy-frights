@@ -98,6 +98,19 @@ describe('perception', () => {
     expect(canSee(house, enemyPos, 0, 1, { ...at(edge), crouched: true })).toBe(false);
   });
 
+  it('crouching behind cover shrinks detection further, but only while crouched', () => {
+    const enemyPos = new THREE.Vector3(15, 3.5, 19);
+    // Distance between the crouched-no-cover range and the crouched+cover range.
+    const crouchRange = config.ai.visionLightOff * config.ai.visionCrouchFactor;
+    const coverRange = crouchRange * config.ai.coverVisionFactor;
+    const d = (crouchRange + coverRange) / 2; // inside crouch range, beyond cover range
+    const player = snapshot({ position: new THREE.Vector3(15, 3.5, 19 + d), crouched: true });
+    expect(canSee(house, enemyPos, 0, 1, { ...player, nearCover: false })).toBe(true);
+    expect(canSee(house, enemyPos, 0, 1, { ...player, nearCover: true })).toBe(false);
+    // Cover does nothing when standing.
+    expect(canSee(house, enemyPos, 0, 1, { ...player, crouched: false, nearCover: true })).toBe(true);
+  });
+
   it('outside the forward cone is unseen except at brush distance', () => {
     const enemyPos = new THREE.Vector3(15, 3.5, 23);
     // Player BEHIND the enemy (enemy faces +Z south at yaw 0): north of it.

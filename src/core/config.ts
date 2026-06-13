@@ -43,6 +43,10 @@ export interface GameConfig {
     visionLightOff: number;
     /** Detection range multiplier while the player crouches. */
     visionCrouchFactor: number;
+    /** Extra vision-range multiplier when the player is crouched AND within
+     *  coverBonusRadius (m) of a prop/cover cell — stacks on visionCrouchFactor. */
+    coverVisionFactor: number;
+    coverBonusRadius: number;
     /** Full vision cone width in degrees. */
     coneDegrees: number;
     /** Inside this range (m) detection is omnidirectional. */
@@ -229,6 +233,8 @@ export const config: GameConfig = {
     visionLightOn: 14,
     visionLightOff: 5,
     visionCrouchFactor: 0.7,
+    coverVisionFactor: 0.6, // crouched against cover: a further 40% range cut
+    coverBonusRadius: 2.5,
     coneDegrees: 150,
     proximitySense: 1.8,
     hearCrouch: 2.5,
