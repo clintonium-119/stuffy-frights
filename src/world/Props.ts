@@ -238,7 +238,7 @@ export function hidingHostKind(
 export const PROP_PLACEMENTS: PropPlacement[] = [
   // Basement
   { pos: { floor: 0, x: 11, z: 1 }, kind: 'washer', rot: 2 },
-  { pos: { floor: 0, x: 2, z: 5 }, kind: 'boiler' },
+  { pos: { floor: 0, x: 1, z: 7 }, kind: 'boiler' }, // tucked in the utility-room corner, clear of the doorway spine
   { pos: { floor: 0, x: 1, z: 9 }, kind: 'shelf', rot: 1 },
   { pos: { floor: 0, x: 13, z: 11 }, kind: 'crates' },
   { pos: { floor: 0, x: 7, z: 12 }, kind: 'shelf' },

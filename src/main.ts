@@ -233,8 +233,10 @@ const exitDoors = house.exits.map((def) => {
 const stations = house.chargingStations.map((cell) => {
   const wp = world.markerWorld(cell);
   const grid = house.grids[cell.floor];
-  // Zero direction = no adjacent wall found → ChargingStation mounts flush at
-  // the cell instead of floating off into open space on a default axis.
+  // Charging stations must mount flush against an adjacent wall. The layout
+  // guarantees every station cell abuts one (asserted in the layout tests); if
+  // that invariant is ever broken, surface it loudly rather than floating the
+  // unit in open space.
   let dir = new THREE.Vector3(0, 0, 0);
   for (const [dx, dz] of [
     [1, 0],
@@ -246,6 +248,11 @@ const stations = house.chargingStations.map((cell) => {
       dir = new THREE.Vector3(dx, 0, dz);
       break;
     }
+  }
+  if (dir.lengthSq() < 1e-6) {
+    console.warn(
+      `Charging station at ${cell.floor}:${cell.x},${cell.z} has no adjacent wall — check the layout.`
+    );
   }
   const station = new ChargingStation(cell, wp, dir);
   station.onPlugIn = () => charging.plugIn(station);
@@ -355,7 +362,7 @@ engine.addUpdatable({
       hiding.active !== null && (hiding.active.kind === 'underBed' || hiding.active.kind === 'cabinet');
     player.forceCrouch = kind === 'vent' || hidingCrouch;
 
-    passages.update();
+    passages.update(dt);
     interactions.update(player.position, player.viewDir());
 
     if (gs.state === 'playing') {
@@ -522,7 +529,7 @@ if (import.meta.env.DEV) {
         !gs.movementAllowed || hiding.active !== null || charging.isCharging || jumpscare.running;
       player.update(1 / 60);
       player.floorIndex = world.floorIndexOfY(player.position.y);
-      passages.update();
+      passages.update(1 / 60);
       interactions.update(player.position, player.viewDir());
       if (pressE && !charging.isCharging) {
         if (!hiding.exit()) interactions.interact();

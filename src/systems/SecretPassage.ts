@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { Aabb, ColliderSet, aabb } from '../core/Collision';
+import { config } from '../core/config';
 import { InteractionSystem } from '../player/Interaction';
 import { PlayerController } from '../player/PlayerController';
 import {
@@ -30,12 +31,72 @@ interface TrackedVent extends PassageState {
   vent: Vent;
   blockers: Aabb[];
   grateMeshes: THREE.Object3D[];
+  /** Fold-open progress 0 (closed/vertical) → 1 (folded up to the ceiling). */
+  foldT: number;
 }
 
 interface TrackedChute extends PassageState {
   chute: Chute;
   blocker: Aabb | null;
   lidMesh: THREE.Object3D | null;
+}
+
+/** Crawl-opening dimensions for a vent grille. */
+const GRILLE_W = 0.92;
+const GRILLE_H = 1.0;
+const GRILLE_D = 0.06;
+/** Fold-open angle: the grille hinges at its top edge and swings up toward the ceiling. */
+const VENT_OPEN_ANGLE = -Math.PI * 0.52;
+
+/**
+ * A louvred vent grille covering one bore cell's crawl opening. The returned
+ * `group` is positioned + oriented in the world (hinge point at the top of the
+ * opening); the `leaf` holds the slatted panel and rotates about its local X to
+ * fold the grille up to the ceiling when the vent is pried open.
+ */
+function makeVentGrille(
+  mat: THREE.Material,
+  alongX: boolean,
+  x: number,
+  y0: number,
+  z: number
+): { group: THREE.Group; leaf: THREE.Group } {
+  const group = new THREE.Group();
+  group.position.set(x, y0 + GRILLE_H, z); // hinge at the top of the crawl opening
+  if (!alongX) group.rotation.y = Math.PI / 2; // face the bore's open (through) axis
+  const leaf = new THREE.Group();
+  group.add(leaf);
+
+  // Frame: two stiles + top/bottom rails, hanging from the hinge (y=0) down to -H.
+  const stile = (sx: number) => {
+    const m = new THREE.Mesh(new THREE.BoxGeometry(0.06, GRILLE_H, GRILLE_D), mat);
+    m.position.set(sx, -GRILLE_H / 2, 0);
+    m.castShadow = true;
+    leaf.add(m);
+  };
+  stile(-GRILLE_W / 2);
+  stile(GRILLE_W / 2);
+  const rail = (ry: number) => {
+    const m = new THREE.Mesh(new THREE.BoxGeometry(GRILLE_W, 0.07, GRILLE_D), mat);
+    m.position.set(0, ry, 0);
+    m.castShadow = true;
+    leaf.add(m);
+  };
+  rail(-0.04);
+  rail(-GRILLE_H + 0.04);
+
+  // Angled louvre slats across the opening.
+  const slats = 6;
+  const span = GRILLE_H - 0.22;
+  const step = span / (slats - 1);
+  for (let i = 0; i < slats; i++) {
+    const s = new THREE.Mesh(new THREE.BoxGeometry(GRILLE_W - 0.1, 0.085, 0.03), mat);
+    s.position.set(0, -0.11 - i * step, 0.006);
+    s.rotation.x = -0.5; // tilted louvre
+    s.castShadow = true;
+    leaf.add(s);
+  }
+  return { group, leaf };
 }
 
 export class PassageSystem {
@@ -80,17 +141,11 @@ export class PassageSystem {
           : aabb(x - 0.06, y0, z - CELL_SIZE / 2, x + 0.06, y0 + 1.1, z + CELL_SIZE / 2);
         this.colliders.add(blocker);
         blockers.push(blocker);
-        for (const side of [-1, 1]) {
-          const cover = new THREE.Mesh(new THREE.BoxGeometry(0.95, 1.0, 0.05), lidMat);
-          if (alongX) cover.position.set(x, y0 + 0.55, z + side * 0.1);
-          else {
-            cover.rotation.y = Math.PI / 2;
-            cover.position.set(x + side * 0.1, y0 + 0.55, z);
-          }
-          cover.castShadow = true;
-          sceneGroup.add(cover);
-          meshes.push(cover);
-        }
+        // One louvred grille per bore cell, hinged at the top to fold up to the
+        // ceiling when pried. `meshes` tracks the folding leaves for animation.
+        const { group: grilleGroup, leaf } = makeVentGrille(lidMat, alongX, x, y0, z);
+        sceneGroup.add(grilleGroup);
+        meshes.push(leaf);
       }
 
       const tracked: TrackedVent = {
@@ -101,6 +156,7 @@ export class PassageSystem {
         enteredWithLightOff: true,
         blockers,
         grateMeshes: meshes,
+        foldT: 0,
       };
       this.vents.push(tracked);
 
@@ -158,11 +214,9 @@ export class PassageSystem {
 
   private openVent(v: TrackedVent): void {
     v.opened = true;
+    // Clear the bore immediately so the crawl is usable as the grilles swing up;
+    // the visual fold itself eases over the next frames in update().
     for (const b of v.blockers) this.colliders.remove(b);
-    for (const m of v.grateMeshes) {
-      m.rotation.x = -Math.PI * 0.45; // swung open
-      m.position.y += 0.35;
-    }
     this.onOpen?.(v);
   }
 
@@ -177,8 +231,18 @@ export class PassageSystem {
     this.onOpen?.(c);
   }
 
-  /** Per fixed step: track bore traversal + chute drops for discovery state. */
-  update(): void {
+  /** Per fixed step: ease open vent grilles, then track bore traversal + chute drops. */
+  update(dt: number): void {
+    // Fold any opening grilles up toward the ceiling (eased).
+    const foldRate = dt / Math.max(1e-4, config.passage.ventFoldSeconds);
+    for (const v of this.vents) {
+      if (!v.opened || v.foldT >= 1) continue;
+      v.foldT = Math.min(1, v.foldT + foldRate);
+      const e = 1 - Math.pow(1 - v.foldT, 3); // easeOutCubic
+      const angle = e * VENT_OPEN_ANGLE;
+      for (const leaf of v.grateMeshes) leaf.rotation.x = angle;
+    }
+
     const p = this.player;
     const cell = worldToCell(p.position.x, p.position.z);
 

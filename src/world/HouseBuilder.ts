@@ -570,28 +570,9 @@ export class HouseBuilder {
       }
     }
 
-    // ---- Vent grates: visual slatted frames at each bore cell's open faces.
-    const grateMat = new THREE.MeshStandardMaterial({ color: 0x55584f, roughness: 0.5, metalness: 0.5 });
-    for (const vent of house.vents) {
-      for (const c of vent.cells) {
-        const { x: wx, z: wz } = cellToWorld(c.x, c.z);
-        const y0 = floorY(vent.floor);
-        const frame = new THREE.Group();
-        for (let i = 0; i < 4; i++) {
-          const slat = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.06, 0.04), grateMat);
-          slat.position.set(0, 0.25 + i * 0.22, 0);
-          frame.add(slat);
-        }
-        // Orient the grate across the bore (wall runs along one axis; the
-        // open faces are along the other — detect from neighbor walls).
-        const grid = house.grids[vent.floor];
-        const wallEastWest =
-          grid[c.z][c.x - 1] === 'wall' || grid[c.z][c.x + 1] === 'wall';
-        if (!wallEastWest) frame.rotation.y = Math.PI / 2;
-        frame.position.set(wx, y0, wz);
-        group.add(frame);
-      }
-    }
+    // Vent grilles (the louvred, openable fold-up covers) are owned by the
+    // passage system — see SecretPassage.ts — so each bore cell's grille is the
+    // same object that animates open. No static grate frames are built here.
 
     // ---- Attic cobwebs: translucent webs tucked into ceiling corners and
     // rafters. Purely decorative — no colliders, never block pathing/sight.

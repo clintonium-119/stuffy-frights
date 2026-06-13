@@ -93,6 +93,11 @@ export interface GameConfig {
     jumpscareBlackout: number;
   };
 
+  passage: {
+    /** Seconds for a pried vent grille to fold up to the ceiling. */
+    ventFoldSeconds: number;
+  };
+
   visibility: {
     /** Hex color + intensity of the global gloom (never zero — "not pitch black"). */
     ambientColor: number;
@@ -203,6 +208,10 @@ export const config: GameConfig = {
     jumpscareLunge: 0.55, // snappier rush so the face slams into frame
     jumpscareRedFade: 0.4,
     jumpscareBlackout: 0.5,
+  },
+
+  passage: {
+    ventFoldSeconds: 0.6,
   },
 
   flashlight: {

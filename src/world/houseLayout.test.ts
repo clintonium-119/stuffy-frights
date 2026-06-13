@@ -181,6 +181,43 @@ describe('house layout integrity', () => {
     expect(closets.length).toBeGreaterThanOrEqual(2);
   });
 
+  it('every charging station mounts against an orthogonally-adjacent wall', () => {
+    for (const c of house.chargingStations) {
+      const grid = house.grids[c.floor];
+      const hasWall = [
+        [1, 0],
+        [-1, 0],
+        [0, 1],
+        [0, -1],
+      ].some(([dx, dz]) => grid[c.z + dz]?.[c.x + dx] === 'wall');
+      expect(hasWall, `charging station ${kp(c)} has no adjacent wall`).toBe(true);
+    }
+  });
+
+  it('solid furniture never seals a doorway (both sides stay reachable)', () => {
+    const seen = reachableFrom(house.playerSpawn, true);
+    // Hiding markers host their own furniture, so a hiding cell is expected to
+    // be solid — exclude those from the door-traversal requirement.
+    const hidingCells = new Set(house.hidingSpots.map((h) => kp(h.pos)));
+    for (let f = 0; f < house.grids.length; f++) {
+      const grid = house.grids[f];
+      for (let z = 0; z < house.depth; z++) {
+        for (let x = 0; x < house.width; x++) {
+          if (grid[z][x] !== 'door') continue;
+          const door = { floor: f, x, z } as CellPos;
+          if (!seen.has(kp(door))) continue; // unreachable doors covered elsewhere
+          for (const n of neighbors(house, door)) {
+            if (n.viaChute || hidingCells.has(kp(n.pos))) continue;
+            expect(
+              seen.has(kp(n.pos)),
+              `door ${kp(door)} → ${kp(n.pos)} sealed by furniture`
+            ).toBe(true);
+          }
+        }
+      }
+    }
+  });
+
   it('a walled-off exit would fail reachability (guard self-check)', () => {
     // Sanity that the BFS actually depends on the grid: a fake start in a
     // wall reaches nothing.
