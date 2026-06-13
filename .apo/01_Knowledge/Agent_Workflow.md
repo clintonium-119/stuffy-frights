@@ -8,7 +8,7 @@ title: "Agent Workflow"
 status: in_progress
 owner: ""
 created: '2026-06-12'
-updated: '2026-06-12'
+updated: '2026-06-13'
 reviewed_on: ""
 related_notes: []
 tags: [apovault, knowledge, architecture]
@@ -26,6 +26,8 @@ No project-level `CLAUDE.md`, `AGENTS.md`, or `.cursorrules` exist in this repo.
 ## Workflow Patterns
 
 Fork spec terseness directive (from `~/.pi/agent/AGENTS.md`, read 2026-06-12): inline the structured-summary directive in every fork spec; never have a fork run `/caveman full` (it would clobber the shared config).
+
+- **Do:** stop any long-lived background process you start during a run — most often the `npm run dev` server launched for in-browser verification — before ending the session, and confirm the port is free afterward. Start the dev server once and reuse it for the whole run rather than relaunching it per phase (`vite`'s `strictPort` means a second copy fails to start anyway), so no dangling processes are left for the user to find and kill.
 
 > **(verify)** — project-specific workflow rails
 >
