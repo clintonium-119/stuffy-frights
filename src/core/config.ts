@@ -86,6 +86,10 @@ export interface GameConfig {
     /** At run start, a same-floor enemy this close to the player (m) — or in the
      *  player's room — is relocated away and aimed away. */
     safeSpawnDistance: number;
+    /** Probability (0..1) a chaser commits to following the player across a
+     *  stair boundary to another floor instead of giving up at the threshold.
+     *  Rolled once each time the fleeing player leaves the chaser's floor. */
+    crossFloorPursuit: number;
   };
 
   enemy: {
@@ -252,6 +256,7 @@ export const config: GameConfig = {
     lungeDuration: 0.5,
     lungeCooldown: 2.2,
     safeSpawnDistance: 8,
+    crossFloorPursuit: 0.55, // anchor (≈ Medium/Hard midpoint); presets scale per level
   },
 
   enemy: {

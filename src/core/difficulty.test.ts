@@ -90,5 +90,11 @@ describe('difficulty model', () => {
     // Easier = more battery + a longer grace period.
     expect(e.battery.drainSeconds).toBeGreaterThan(n.battery.drainSeconds);
     expect(e.ai.gracePeriod).toBeGreaterThan(n.ai.gracePeriod);
+    // Cross-floor pursuit: bounded 0..1, and Easy gives up far more than Nightmare.
+    for (const c of [e, m, h, n]) {
+      expect(c.ai.crossFloorPursuit).toBeGreaterThanOrEqual(0);
+      expect(c.ai.crossFloorPursuit).toBeLessThanOrEqual(1);
+    }
+    expect(e.ai.crossFloorPursuit).toBeLessThan(n.ai.crossFloorPursuit);
   });
 });

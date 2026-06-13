@@ -74,6 +74,8 @@ export class EnemyBrain {
   private passageExit: THREE.Vector3 | null = null;
   /** Set by Director when displacing a camper. */
   forcedDestination: THREE.Vector3 | null = null;
+  /** Latched once per cross-floor flight: whether to follow up/down the stairs. */
+  private crossFloorDecision: 'undecided' | 'pursue' | 'giveup' = 'undecided';
 
   constructor(
     readonly enemy: BrainBody,
@@ -202,6 +204,8 @@ export class EnemyBrain {
           player.position.x - this.enemy.position.x,
           player.position.z - this.enemy.position.z
         );
+        // A fresh sighting (always same-floor) re-arms the cross-floor decision.
+        if (seen) this.crossFloorDecision = 'undecided';
         if (seen && toPlayer < FINAL_APPROACH_RANGE) {
           // Close the last gap directly so a cornered player can't sit just
           // beyond the cell-center waypoint and out of contact range.
@@ -239,6 +243,24 @@ export class EnemyBrain {
             this.transition('followPassage');
             this.pathTo(this.passageExit, true);
             break;
+          }
+          // The player fled to another floor. Decide once whether to commit to
+          // the stairs (difficulty-scaled) or give up at the threshold.
+          if (player.floor !== this.enemy.floorIndex) {
+            if (this.crossFloorDecision === 'undecided') {
+              this.crossFloorDecision = this.ctx.rng.chance(config.ai.crossFloorPursuit)
+                ? 'pursue'
+                : 'giveup';
+            }
+            if (this.crossFloorDecision === 'pursue') {
+              if (this.repathTimer <= 0) {
+                this.pathTo(player.position); // A* routes across the stair edges
+                this.repathTimer = 0.5;
+              }
+              this.follower.drive(this.enemy, this.speed(config.ai.chaseSpeed));
+              break; // stay committed in chase across the floor boundary
+            }
+            // giveup → fall through to the memory / lose-interest logic below
           }
           if (this.now - this.memory.lastSeenAt > config.ai.memorySeconds) {
             // Reached the trail's end. A hidden player nearby gets a

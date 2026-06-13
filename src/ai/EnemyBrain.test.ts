@@ -311,6 +311,39 @@ describe('EnemyBrain transitions', () => {
   });
 });
 
+describe('cross-floor pursuit', () => {
+  beforeEach(() => clearSearchClaims());
+
+  // Drive a chase, then make the player flee to another floor and run frames.
+  function chaseThenFlee(pursuit: number): EnemyBrain {
+    const prev = config.ai.crossFloorPursuit;
+    config.ai.crossFloorPursuit = pursuit;
+    try {
+      const { hiding } = makeHiding();
+      const body = stubBody(15, 3.5, 19); // foyer (floor 1), facing south
+      const brain = brainWith(body, hiding, new Rng(1));
+      brain.update(DT, snapshot({ position: new THREE.Vector3(15, 3.5, 23), lightOn: true }));
+      expect(brain.state).toBe('chase');
+      // Player vanishes downstairs (floor 0): canSee is false across floors.
+      const fled = snapshot({ position: new THREE.Vector3(15, 0, 13), floor: 0 });
+      for (let i = 0; i < Math.ceil((config.ai.memorySeconds + 1) / DT); i++) {
+        brain.update(DT, fled);
+      }
+      return brain;
+    } finally {
+      config.ai.crossFloorPursuit = prev;
+    }
+  }
+
+  it('at pursuit=1 the chaser commits across the stairs (stays in chase)', () => {
+    expect(chaseThenFlee(1).state).toBe('chase');
+  });
+
+  it('at pursuit=0 the chaser gives up at the floor boundary', () => {
+    expect(chaseThenFlee(0).state).not.toBe('chase');
+  });
+});
+
 describe('balance invariants', () => {
   it('escapes are possible: chase speed < player sprint', () => {
     expect(config.ai.chaseSpeed).toBeLessThan(config.player.sprintSpeed);
