@@ -105,6 +105,8 @@ export class Menus {
       <p style="color:#7a6f58;max-width:430px;margin:16px auto 0;font-size:13px;line-height:1.5">
         Ironman: win all four frights back-to-back, Tuck-In through Stuffy FrightMare.
         One hug and you're back to the start.</p>
+      <p style="position:absolute;bottom:10px;left:0;right:0;margin:0;color:#5f5746;
+        font-size:12px;letter-spacing:1px">v${__APP_VERSION__}</p>
     `);
     this.root.querySelector('#btn-play')!.addEventListener('click', () => this.showDifficultySelect());
     this.root.querySelector('#btn-iron')!.addEventListener('click', () => this.onStartIronman?.());

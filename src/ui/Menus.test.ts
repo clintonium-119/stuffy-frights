@@ -43,3 +43,13 @@ describe('difficulty-select data contract', () => {
     }
   });
 });
+
+describe('app version', () => {
+  // The title screen renders `v${__APP_VERSION__}`; this confirms the build
+  // injects a real semver string (the live placement is verified in-browser,
+  // per the project's no-jsdom convention). A removed/broken define fails here.
+  it('injects a semver version constant', () => {
+    expect(typeof __APP_VERSION__).toBe('string');
+    expect(__APP_VERSION__).toMatch(/^\d+\.\d+\.\d+$/);
+  });
+});
