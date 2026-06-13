@@ -43,10 +43,17 @@ engine.renderer.toneMappingExposure = config.visibility.toneExposure;
 const world = HouseBuilder.build(house);
 engine.scene.add(world.group);
 
-engine.scene.add(
-  new THREE.AmbientLight(config.visibility.ambientColor, config.visibility.ambientIntensity)
+const ambientLight = new THREE.AmbientLight(
+  config.visibility.ambientColor,
+  config.visibility.ambientIntensityByFloor[1]
 );
-engine.scene.add(new THREE.HemisphereLight(0x303a52, 0x14100c, config.visibility.hemisphereIntensity));
+engine.scene.add(ambientLight);
+const hemisphereLight = new THREE.HemisphereLight(
+  0x303a52,
+  0x14100c,
+  config.visibility.hemisphereIntensityByFloor[1]
+);
+engine.scene.add(hemisphereLight);
 
 const flashlight = new Flashlight(engine.scene);
 const interactions = new InteractionSystem();
@@ -368,6 +375,13 @@ engine.addUpdatable({
 
     const fog = engine.scene.fog as THREE.FogExp2 | null;
     if (fog) fog.density = config.visibility.fogDensityByFloor[player.floorIndex];
+    // Per-floor gloom: ease ambient/hemisphere toward this floor's target so
+    // the basement reads markedly darker without popping on stairs.
+    const fi = player.floorIndex;
+    const ambTarget = config.visibility.ambientIntensityByFloor[fi];
+    const hemTarget = config.visibility.hemisphereIntensityByFloor[fi];
+    ambientLight.intensity += (ambTarget - ambientLight.intensity) * Math.min(1, 3 * dt);
+    hemisphereLight.intensity += (hemTarget - hemisphereLight.intensity) * Math.min(1, 3 * dt);
 
     const catchable = hiding.active === null && !jumpscare.running;
     const snapshot: PlayerSnapshot = {

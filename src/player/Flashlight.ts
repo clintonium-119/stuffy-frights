@@ -75,7 +75,8 @@ export class Flashlight {
     }
     this.light.visible = true;
 
-    // Output: dim with low battery; flicker when warned.
+    // Output: dim with low battery; flicker AND gutter dimmer when warned —
+    // a failing bulb, not just a blinking one.
     let out = f.intensity * (0.35 + 0.65 * this.level);
     if (this.flickering) {
       this.flickerPhase -= dt;
@@ -83,7 +84,9 @@ export class Flashlight {
         this.flickerPhase = 0.05 + Math.random() * 0.3;
         this.flickerDrop = Math.random() < 0.4 ? 0.15 + Math.random() * 0.4 : 1;
       }
-      out *= this.flickerDrop;
+      // Sustained dim (0.55) so the dying light trends darker, plus the random
+      // flicker drop on top.
+      out *= 0.55 * this.flickerDrop;
     }
     this.light.intensity = out;
   }

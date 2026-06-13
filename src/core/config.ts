@@ -96,6 +96,9 @@ export interface GameConfig {
     ambientColor: number;
     ambientIntensity: number;
     hemisphereIntensity: number;
+    /** Per-floor ambient/hemisphere intensity (basement darkest). */
+    ambientIntensityByFloor: [number, number, number, number];
+    hemisphereIntensityByFloor: [number, number, number, number];
     /** FogExp2 density per floor index (basement, main, upstairs, attic). */
     fogDensityByFloor: [number, number, number, number];
     fogColor: number;
@@ -143,7 +146,10 @@ export const config: GameConfig = {
     ambientColor: 0x2a3045,
     ambientIntensity: 0.55,
     hemisphereIntensity: 0.22,
-    fogDensityByFloor: [0.13, 0.09, 0.1, 0.14],
+    // Basement is the gloomiest; attic a touch dim; main/upstairs brightest.
+    ambientIntensityByFloor: [0.3, 0.55, 0.52, 0.42],
+    hemisphereIntensityByFloor: [0.1, 0.22, 0.22, 0.16],
+    fogDensityByFloor: [0.15, 0.09, 0.1, 0.14],
     fogColor: 0x05060a,
     toneExposure: 1.0,
   },
@@ -200,8 +206,8 @@ export const config: GameConfig = {
     color: 0xffe3b0,
     intensity: 60,
     range: 26,
-    angle: 0.46,
-    penumbra: 0.55,
+    angle: 0.52,
+    penumbra: 0.9, // soft cone edge — the circle of light fades gently at its rim
     swayLag: 9,
     lowThreshold: 0.18,
   },
