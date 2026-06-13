@@ -96,5 +96,10 @@ describe('difficulty model', () => {
       expect(c.ai.crossFloorPursuit).toBeLessThanOrEqual(1);
     }
     expect(e.ai.crossFloorPursuit).toBeLessThan(n.ai.crossFloorPursuit);
+    // Flashlight charges faster (lower ratio) on Easy/Medium; all ratios >= 1.0.
+    for (const c of [e, m, h, n]) expect(c.battery.chargeRatio).toBeGreaterThanOrEqual(1.0);
+    expect(e.battery.chargeRatio).toBeLessThanOrEqual(m.battery.chargeRatio);
+    expect(m.battery.chargeRatio).toBeLessThanOrEqual(h.battery.chargeRatio);
+    expect(e.battery.chargeRatio).toBeLessThan(1.2); // strictly faster than base
   });
 });

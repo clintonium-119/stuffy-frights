@@ -42,10 +42,32 @@ export class AudioEngine {
   private listenerPos = new THREE.Vector3();
   private listenerYaw = 0;
 
+  /**
+   * Idempotent audio kick-start, safe to call from ANY user-gesture handler:
+   * builds + starts the graph on first call, or resumes a context the browser
+   * left/put into 'suspended'. Called from every start path (menu click, canvas
+   * click, first key/pointer input) so audio plays on drop-in without needing a
+   * pause→resume detour.
+   */
+  resumeIfSuspended(): void {
+    if (!this.ctx) {
+      this.unlock();
+      return;
+    }
+    if (this.ctx.state === 'suspended') void this.ctx.resume();
+  }
+
   /** Call from the first user gesture. */
   unlock(): void {
-    if (this.ctx) return;
+    if (this.ctx) {
+      // Already built — just make sure it's running (it can be auto-suspended).
+      if (this.ctx.state === 'suspended') void this.ctx.resume();
+      return;
+    }
     this.ctx = new AudioContext();
+    // A context constructed outside a user gesture starts suspended; resume now
+    // that we're inside one.
+    if (this.ctx.state === 'suspended') void this.ctx.resume();
     this.master = this.ctx.createDynamicsCompressor();
     this.master.threshold.value = -18;
     this.master.ratio.value = 14;

@@ -396,7 +396,15 @@ battery.onLowWarning = () => hud.showMessage('The flashlight is dying…');
 charging.onPlugChange = (on) => hud.setCharging(on);
 interactions.onPromptChange = (label) => hud.setPrompt(label);
 
-menus.onFirstInteraction = () => audio.unlock();
+menus.onFirstInteraction = () => audio.resumeIfSuspended();
+// Resume audio on the first real input regardless of start path — covers drop-ins
+// that begin a run without a menu click (e.g. the difficulty-change autoplay reload),
+// where the menu's first-interaction click never fires. resumeIfSuspended is a no-op
+// once the context is running, so leaving these attached is cheap + also recovers from
+// the browser auto-suspending a backgrounded tab.
+const resumeAudio = () => audio.resumeIfSuspended();
+window.addEventListener('pointerdown', resumeAudio, { capture: true });
+window.addEventListener('keydown', resumeAudio, { capture: true });
 
 function startRun(): void {
   if (!gs.transition('start')) return;

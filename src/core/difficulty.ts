@@ -38,7 +38,7 @@ export const DIFFICULTY_META: Record<DifficultyLevel, DifficultyMeta> = {
     description:
       'The dark is on your side. Enemies are half-blind and slow to notice you, ' +
       'give up quickly, rarely chase between floors, and your flashlight lasts ages ' +
-      "— but it's still dark enough that you'll want it on.",
+      "and recharges fast — but it's still dark enough that you'll want it on.",
   },
   medium: {
     key: 'medium',
@@ -97,7 +97,7 @@ export const DIFFICULTY_PRESETS: Record<DifficultyLevel, DeepPartial<GameConfig>
       migrationInterval: 140,
       crossFloorPursuit: 0.15,
     },
-    battery: { drainSeconds: 130 },
+    battery: { drainSeconds: 130, chargeRatio: 1.0 }, // charge ≈ drain time (vs base 1.2)
     player: { stamina: { drainSeconds: 8, regenSeconds: 7 } },
     visibility: {
       ambientIntensityByFloor: [0.04375, 0.075, 0.075, 0.05625],
@@ -115,7 +115,7 @@ export const DIFFICULTY_PRESETS: Record<DifficultyLevel, DeepPartial<GameConfig>
       migrationInterval: 110,
       crossFloorPursuit: 0.4,
     },
-    battery: { drainSeconds: 105 },
+    battery: { drainSeconds: 105, chargeRatio: 1.1 }, // a touch faster than base 1.2
     player: { stamina: { drainSeconds: 6.5, regenSeconds: 8.5 } },
   },
   hard: {
