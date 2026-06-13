@@ -47,6 +47,10 @@ export class Menus {
   onSelectDifficulty: ((level: DifficultyLevel) => void) | null = null;
   /** Player asked to view the stats screen. */
   onShowStats: (() => void) | null = null;
+  /** Player started an ironman ladder run from the title. */
+  onStartIronman: (() => void) | null = null;
+  /** Player clicked Continue on a winning ironman screen (advance a rung). */
+  onContinueIronman: (() => void) | null = null;
   /** Any first interaction (audio unlock). */
   onFirstInteraction: (() => void) | null = null;
   private interacted = false;
@@ -96,9 +100,13 @@ export class Menus {
       <h1 style="font-family:'Creepster',cursive;font-size:84px;letter-spacing:3px;margin:0;color:#cdb98a;
         text-shadow:0 0 22px #6a1212,0 0 6px #000">STUFFY FRIGHTS</h1>
       <p style="color:#8a7d65;letter-spacing:2px;margin-top:6px">the stuffed animals are awake</p>
-      <div style="margin-top:36px">${this.button('PLAY', 'btn-play')}<br>${this.button('HOW TO PLAY', 'btn-how')}<br>${this.button('STATS', 'btn-stats')}</div>
+      <div style="margin-top:36px">${this.button('PLAY', 'btn-play')}<br>${this.button('IRONMAN', 'btn-iron')}<br>${this.button('HOW TO PLAY', 'btn-how')}<br>${this.button('STATS', 'btn-stats')}</div>
+      <p style="color:#7a6f58;max-width:430px;margin:16px auto 0;font-size:13px;line-height:1.5">
+        Ironman: win all four frights back-to-back, Tuck-In through Stuffy FrightMare.
+        One hug and you're back to the start.</p>
     `);
     this.root.querySelector('#btn-play')!.addEventListener('click', () => this.showDifficultySelect());
+    this.root.querySelector('#btn-iron')!.addEventListener('click', () => this.onStartIronman?.());
     this.root.querySelector('#btn-how')!.addEventListener('click', () => this.showHowTo());
     this.root.querySelector('#btn-stats')!.addEventListener('click', () => this.onShowStats?.());
   }
@@ -162,31 +170,59 @@ export class Menus {
     this.root.querySelector('#btn-resume')!.addEventListener('click', () => this.onResume?.());
   }
 
-  showGameOver(enemyId: string): void {
+  showGameOver(enemyId: string, ironmanReset = false): void {
     const name = ENEMY_NAMES[enemyId] ?? 'SOMETHING SOFT';
+    const ironLine = ironmanReset
+      ? `<p style="color:#d8a35a;max-width:440px;margin:8px auto">Your ironman ladder is over — back to Tuck-In.</p>`
+      : '';
     this.screen(`
       <h1 style="font-size:46px;letter-spacing:4px;color:#c0392b;text-shadow:0 0 14px #400">
         ${name} GOT YOU</h1>
       <p style="color:#8a7d65;max-width:440px;margin:14px auto">
         Squeezed in a very firm hug until everything went dark.<br>
         The house resets. The keys move. Try again?</p>
+      ${ironLine}
       <div>${this.button('TRY AGAIN', 'btn-retry')}</div>
     `);
     this.root.querySelector('#btn-retry')!.addEventListener('click', () => this.onRetry?.());
   }
 
-  showWin(stats: { seconds: number; exitsTried: number }): void {
+  /**
+   * Win screen. With `ironman` set, shows ladder progress + a CONTINUE button
+   * (advance a rung) for a non-final win, or a gauntlet-complete message when
+   * the whole ladder is cleared.
+   */
+  showWin(
+    stats: { seconds: number; exitsTried: number },
+    ironman: 'complete' | { rung: number; total: number; nextName: string } | null = null
+  ): void {
     const mins = Math.floor(stats.seconds / 60);
     const secs = Math.round(stats.seconds % 60);
+    let heading = 'YOU ESCAPED!';
+    let ladderLine = '';
+    let buttons = this.button('PLAY AGAIN', 'btn-retry');
+    if (ironman === 'complete') {
+      heading = 'IRONMAN COMPLETE!';
+      ladderLine = `<p style="color:#d8a35a;max-width:460px;margin:6px auto">
+        All four frights, back-to-back. The whole house fears <b>you</b> now.</p>`;
+    } else if (ironman) {
+      ladderLine = `<p style="color:#d8a35a;max-width:460px;margin:6px auto">
+        Ironman ${ironman.rung}/${ironman.total} cleared — next up: <b>${ironman.nextName}</b>.</p>`;
+      buttons = this.button(`CONTINUE → ${ironman.nextName}`, 'btn-continue');
+    }
     this.screen(`
       <h1 style="font-size:52px;letter-spacing:5px;color:#7fbf6a;text-shadow:0 0 14px #042">
-        YOU ESCAPED!</h1>
+        ${heading}</h1>
       <p style="color:#a99c7c;max-width:460px;margin:14px auto;line-height:1.6">
         Out the front door and into the night, keys jingling.<br>
         Behind you, four fuzzy silhouettes crowd the doorway… waving?<br><br>
         <b>Time:</b> ${mins}m ${secs}s &nbsp;·&nbsp; <b>Doors tried:</b> ${stats.exitsTried} of 3</p>
-      <div>${this.button('PLAY AGAIN', 'btn-retry')}</div>
+      ${ladderLine}
+      <div>${buttons}</div>
     `);
-    this.root.querySelector('#btn-retry')!.addEventListener('click', () => this.onRetry?.());
+    this.root
+      .querySelector('#btn-continue')
+      ?.addEventListener('click', () => this.onContinueIronman?.());
+    this.root.querySelector('#btn-retry')?.addEventListener('click', () => this.onRetry?.());
   }
 }

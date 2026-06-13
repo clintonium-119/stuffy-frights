@@ -185,6 +185,14 @@ export class SettingsStore {
     this.write(s);
   }
 
+  /** Leave the ladder without recording a death (e.g. player chose a normal run). */
+  abandonIronman(): void {
+    const s = this.read();
+    s.ironman.active = false;
+    s.ironman.currentLevel = 'easy';
+    this.write(s);
+  }
+
   // --- persistence ---
 
   private read(): PersistedState {

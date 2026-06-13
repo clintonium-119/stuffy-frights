@@ -81,3 +81,57 @@ describe('SettingsStore — stats & streak math', () => {
     expect(s.getStats().easy.losses).toBe(0);
   });
 });
+
+describe('SettingsStore — ironman ladder', () => {
+  it('starts at Easy and advances one rung per win up to completion', () => {
+    const s = new SettingsStore(fakeBackend());
+    s.startIronman();
+    expect(s.isIronmanActive()).toBe(true);
+    expect(s.getIronman().currentLevel).toBe('easy');
+    expect(s.ironmanRung()).toBe(1);
+    s.advanceIronman(); // easy → medium
+    expect(s.getIronman().currentLevel).toBe('medium');
+    expect(s.ironmanRung()).toBe(2);
+    s.advanceIronman(); // medium → hard
+    s.advanceIronman(); // hard → nightmare
+    expect(s.getIronman().currentLevel).toBe('nightmare');
+    expect(s.isIronmanActive()).toBe(true);
+    s.advanceIronman(); // win nightmare → complete
+    const im = s.getIronman();
+    expect(im.active).toBe(false);
+    expect(im.bestStreak).toBe(4);
+    expect(im.bestLevelReached).toBe('nightmare');
+  });
+
+  it('a death resets the ladder to Easy and records the rung reached', () => {
+    const s = new SettingsStore(fakeBackend());
+    s.startIronman();
+    s.advanceIronman(); // medium
+    s.advanceIronman(); // hard
+    s.failIronman();
+    const im = s.getIronman();
+    expect(im.active).toBe(false);
+    expect(im.currentLevel).toBe('easy');
+    expect(im.bestLevelReached).toBe('hard');
+    expect(im.bestStreak).toBe(2); // cleared easy + medium before dying on hard
+  });
+
+  it('abandoning leaves the ladder without recording a death', () => {
+    const s = new SettingsStore(fakeBackend());
+    s.startIronman();
+    s.advanceIronman();
+    s.abandonIronman();
+    expect(s.isIronmanActive()).toBe(false);
+    expect(s.getIronman().currentLevel).toBe('easy');
+  });
+
+  it('persists the ladder across store instances (a reload)', () => {
+    const b = fakeBackend();
+    const s1 = new SettingsStore(b);
+    s1.startIronman();
+    s1.advanceIronman(); // now on medium
+    const s2 = new SettingsStore(b);
+    expect(s2.isIronmanActive()).toBe(true);
+    expect(s2.getIronman().currentLevel).toBe('medium');
+  });
+});

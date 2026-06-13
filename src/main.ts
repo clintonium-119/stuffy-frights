@@ -29,14 +29,28 @@ import { HUD } from './ui/HUD';
 import { Menus } from './ui/Menus';
 import { AudioEngine } from './audio/AudioEngine';
 import { SettingsStore } from './core/Settings';
-import { applyDifficulty, DIFFICULTY_META } from './core/difficulty';
+import { applyDifficulty, DIFFICULTY_META, DIFFICULTY_ORDER } from './core/difficulty';
 
-// Apply the persisted (or default) difficulty into `config` BEFORE any system
-// reads it — every importer shares the same config object, so this one in-place
-// merge sets the whole run's knobs. Switching difficulty persists + reloads.
+// Apply the persisted difficulty into `config` BEFORE any system reads it — every
+// importer shares the same config object, so this one in-place merge sets the
+// whole run's knobs. An active ironman ladder dictates the level (its current
+// rung); otherwise the player's last choice. Switching persists + reloads.
 const settings = new SettingsStore();
-const bootDifficulty = settings.getLastDifficulty();
+const ironmanOnBoot = settings.isIronmanActive();
+const bootDifficulty = ironmanOnBoot
+  ? settings.getIronman().currentLevel
+  : settings.getLastDifficulty();
 applyDifficulty(bootDifficulty);
+
+/** Set the auto-start flag and reload into the (already-persisted) boot level. */
+function reloadIntoRun(): void {
+  try {
+    sessionStorage.setItem('sf-autoplay', '1');
+  } catch {
+    // sessionStorage may be unavailable; the reload just lands on the title.
+  }
+  window.location.reload();
+}
 
 // ---------------------------------------------------------------- bootstrap
 const canvas = document.getElementById('game') as HTMLCanvasElement;
@@ -334,7 +348,10 @@ jumpscare.onGameOver = (enemyId) => {
   // menu's own near-black background carries the darkness from here.
   redFlash.style.opacity = '0';
   blackout.style.opacity = '0';
-  menus.showGameOver(enemyId);
+  settings.recordRun({ difficulty: bootDifficulty, won: false });
+  // A death anywhere in an ironman ladder resets it to Easy.
+  if (ironmanOnBoot) settings.failIronman();
+  menus.showGameOver(enemyId, ironmanOnBoot);
   input.exitPointerLock();
 };
 for (const enemy of enemies) {
@@ -351,8 +368,25 @@ objectives.onMessage = (text) => hud.showMessage(text);
 objectives.onWin = () => {
   gs.transition('win');
   hud.show(false);
+  settings.recordRun({ difficulty: bootDifficulty, won: true });
+  // Ironman: a non-final win offers Continue (the rung advances on the click);
+  // winning the last rung completes the ladder right here.
+  let ironman: 'complete' | { rung: number; total: number; nextName: string } | null = null;
+  if (ironmanOnBoot) {
+    const idx = DIFFICULTY_ORDER.indexOf(bootDifficulty);
+    if (idx >= DIFFICULTY_ORDER.length - 1) {
+      settings.advanceIronman(); // completes + records the full-ladder streak
+      ironman = 'complete';
+    } else {
+      ironman = {
+        rung: settings.ironmanRung(),
+        total: DIFFICULTY_ORDER.length,
+        nextName: DIFFICULTY_META[DIFFICULTY_ORDER[idx + 1]].name,
+      };
+    }
+  }
   window.setTimeout(() => {
-    menus.showWin({ seconds: runSeconds, exitsTried: objectives.triedExits.size });
+    menus.showWin({ seconds: runSeconds, exitsTried: objectives.triedExits.size }, ironman);
     input.exitPointerLock();
   }, 1400);
 };
@@ -371,26 +405,35 @@ function startRun(): void {
   hud.setBattery(battery.level, battery.isLow);
   hud.setStamina(player.stamina, player.staminaLocked);
   const m = DIFFICULTY_META[bootDifficulty];
-  hud.setDifficultyInfo(m.name, m.tier);
+  hud.setDifficultyInfo(
+    m.name,
+    m.tier,
+    ironmanOnBoot ? `Ironman ${settings.ironmanRung()}/${DIFFICULTY_ORDER.length}` : null
+  );
   input.requestPointerLock();
 }
 
 menus.setCurrentDifficulty(bootDifficulty);
 menus.onStart = startRun;
-// Picking the already-applied level starts straight away; a different level
-// persists the choice and reloads (boot re-applies it) with an auto-start flag.
+// Picking a specific level plays a NORMAL run: leave any active ladder, then
+// start straight away if it's the applied level, else persist + reload into it.
 menus.onSelectDifficulty = (level) => {
-  if (level === bootDifficulty) {
+  if (ironmanOnBoot) settings.abandonIronman();
+  if (level === bootDifficulty && !ironmanOnBoot) {
     startRun();
   } else {
     settings.setLastDifficulty(level);
-    try {
-      sessionStorage.setItem('sf-autoplay', '1');
-    } catch {
-      // sessionStorage may be unavailable; the reload just lands on the title.
-    }
-    window.location.reload();
+    reloadIntoRun();
   }
+};
+// Ironman: start the ladder at Easy (reload applies it), or advance a rung.
+menus.onStartIronman = () => {
+  settings.startIronman();
+  reloadIntoRun();
+};
+menus.onContinueIronman = () => {
+  settings.advanceIronman();
+  reloadIntoRun();
 };
 menus.onResume = () => {
   if (!gs.transition('resume')) return;
