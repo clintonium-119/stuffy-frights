@@ -36,6 +36,24 @@ export interface GameConfig {
     startCharge: number;
   };
 
+  /** Mobile touch controls (only active on phones — see Platform.isMobile). */
+  touch: {
+    /** Radians of view rotation per pixel of look-zone drag. */
+    lookSensitivity: number;
+    /** Joystick travel (px) from origin to full deflection. */
+    joystickRadius: number;
+    /** Fraction of the radius treated as a centered dead-zone. */
+    joystickDeadZone: number;
+  };
+
+  /** VR controller input (only active in an XR session). */
+  vr: {
+    /** Trigger/button pressed-value threshold (0..1). */
+    triggerThreshold: number;
+    /** Stick magnitude below which movement is ignored (drift dead-zone). */
+    stickDeadZone: number;
+  };
+
   ai: {
     /** Sight range (m) when the player's flashlight is ON — the beam betrays you. */
     visionLightOn: number;
@@ -227,6 +245,19 @@ export const config: GameConfig = {
     chargeRatio: 1.2,
     /** Run-start charge fraction. */
     startCharge: 1.0,
+  },
+
+  touch: {
+    // Roughly matches mouse feel: a full screen-width drag (~hundreds of px)
+    // sweeps the view through a comfortable arc.
+    lookSensitivity: 0.004,
+    joystickRadius: 70,
+    joystickDeadZone: 0.15,
+  },
+
+  vr: {
+    triggerThreshold: 0.5,
+    stickDeadZone: 0.15,
   },
 
   ai: {

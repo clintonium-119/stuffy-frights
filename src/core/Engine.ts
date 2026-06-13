@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { config } from './config';
+import { recommendedPixelRatio } from './Platform';
 
 export interface Updatable {
   update(dt: number): void;
@@ -24,7 +25,7 @@ export class Engine {
 
   constructor(canvas: HTMLCanvasElement) {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    this.renderer.setPixelRatio(recommendedPixelRatio());
     this.renderer.setSize(window.innerWidth, window.innerHeight);
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;

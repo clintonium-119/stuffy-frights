@@ -3,6 +3,9 @@ import { RGBELoader } from 'three/examples/jsm/loaders/RGBELoader.js';
 import { Engine } from './core/Engine';
 import { Input } from './core/Input';
 import { ControlManager, KeyboardMouseSource } from './core/Controls';
+import { isMobile } from './core/Platform';
+import { TouchControls } from './ui/TouchControls';
+import { OrientationGate } from './ui/OrientationGate';
 import { PlayerController } from './player/PlayerController';
 import { InteractionSystem } from './player/Interaction';
 import { Flashlight } from './player/Flashlight';
@@ -64,6 +67,13 @@ input.attach(canvas);
 // register here on their platforms. Player + main loop read controls.intent.
 const controls = new ControlManager();
 controls.add(new KeyboardMouseSource(input));
+
+// Mobile: register the touch source + the landscape gate. Desktop leaves both
+// null and behaves exactly as before.
+const mobile = isMobile();
+const touch = mobile ? new TouchControls(ui) : null;
+if (touch) controls.add(touch);
+if (mobile) new OrientationGate(ui);
 
 engine.scene.background = new THREE.Color(config.visibility.fogColor);
 engine.scene.fog = new THREE.FogExp2(
@@ -358,6 +368,7 @@ jumpscare.onGameOver = (enemyId) => {
   // A death anywhere in an ironman ladder resets it to Easy.
   if (ironmanOnBoot) settings.failIronman();
   menus.showGameOver(enemyId, ironmanOnBoot);
+  touch?.hide();
   input.exitPointerLock();
 };
 for (const enemy of enemies) {
@@ -393,6 +404,7 @@ objectives.onWin = () => {
   }
   window.setTimeout(() => {
     menus.showWin({ seconds: runSeconds, exitsTried: objectives.triedExits.size }, ironman);
+    touch?.hide();
     input.exitPointerLock();
   }, 1400);
 };
@@ -424,7 +436,8 @@ function startRun(): void {
     m.tier,
     ironmanOnBoot ? `Ironman ${settings.ironmanRung()}/${DIFFICULTY_ORDER.length}` : null
   );
-  input.requestPointerLock();
+  if (mobile) touch?.show();
+  else input.requestPointerLock();
 }
 
 menus.setCurrentDifficulty(bootDifficulty);
@@ -453,7 +466,8 @@ menus.onShowStats = () => menus.showStats(settings.statsSummary());
 menus.onResume = () => {
   if (!gs.transition('resume')) return;
   menus.hide();
-  input.requestPointerLock();
+  if (mobile) touch?.show();
+  else input.requestPointerLock();
 };
 menus.onRetry = () => window.location.reload(); // fresh seed, fresh house
 
@@ -465,7 +479,7 @@ input.onPointerLockLost = () => {
   }
 };
 canvas.addEventListener('click', () => {
-  if (gs.state === 'playing' || gs.state === 'mapOpen') input.requestPointerLock();
+  if (!mobile && (gs.state === 'playing' || gs.state === 'mapOpen')) input.requestPointerLock();
 });
 
 // After a difficulty-change reload, skip the title and drop straight into the run.
@@ -524,6 +538,14 @@ engine.addUpdatable({
     } else if (gs.state === 'mapOpen') {
       if (intent.mapToggle || intent.interact) {
         if (gs.transition('closeMap')) map.close();
+      }
+    }
+    // Touch pause button (mobile has no Esc / pointer-lock-loss path).
+    if (intent.pause && (gs.state === 'playing' || gs.state === 'mapOpen')) {
+      map.close();
+      if (gs.transition('pause')) {
+        menus.showPause();
+        touch?.hide();
       }
     }
 
