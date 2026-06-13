@@ -461,13 +461,17 @@ export class HouseBuilder {
       { floor: 2, x: 10, z: 13.4 }, // playroom window
     ];
     for (const m of moonPositions) {
-      const light = new THREE.PointLight(0x4a5d8a, 3.2, 7, 1.8);
+      // Faint cool pool — just enough to make a window a dim orientation beacon,
+      // not enough to light the room. The flashlight is the only real light.
+      const light = new THREE.PointLight(0x4a5d8a, 0.6, 7, 1.8);
       const { x, z } = cellToWorld(m.x, Math.round(m.z));
       light.position.set(x, floorY(m.floor) + 2.0, m.z < 7 ? z + 1 : z - 1);
       group.add(light);
     }
 
-    // ---- Flickering fixtures: bare bulbs in basement hall and attic.
+    // ---- Flickering fixtures: bare bulbs in basement hall and attic. A faint,
+    // failing glow (the flashlight stays the dominant light).
+    const FIXTURE_INTENSITY = 1.2;
     const fixtures: { light: THREE.PointLight; bulb: THREE.Mesh; phase: number; drop: number }[] =
       [];
     const fixtureSpots = [
@@ -489,7 +493,7 @@ export class HouseBuilder {
         new THREE.MeshStandardMaterial({ color: 0x1a1a1a })
       );
       cord.position.set(x, y + 0.2, z);
-      const light = new THREE.PointLight(0xcc9944, 4.5, 9, 1.6);
+      const light = new THREE.PointLight(0xcc9944, FIXTURE_INTENSITY, 9, 1.6);
       light.position.set(x, y - 0.1, z);
       group.add(bulb, cord, light);
       fixtures.push({ light, bulb, phase: 0, drop: 1 });
@@ -508,7 +512,7 @@ export class HouseBuilder {
             fx.phase = 0.08 + Math.random() * 0.7;
             fx.drop = Math.random() < 0.25 ? 0.1 + Math.random() * 0.5 : 1;
           }
-          fx.light.intensity = 4.5 * fx.drop;
+          fx.light.intensity = FIXTURE_INTENSITY * fx.drop;
           (fx.bulb.material as THREE.MeshStandardMaterial).emissiveIntensity = 1.4 * fx.drop;
         }
         // Closet doors ease toward their target swing angle.

@@ -163,13 +163,16 @@ export const config: GameConfig = {
     ambientColor: 0x2a3045,
     ambientIntensity: 0.55,
     hemisphereIntensity: 0.22,
-    // Basement is the gloomiest; attic a touch dim; main/upstairs brightest.
-    ambientIntensityByFloor: [0.3, 0.55, 0.52, 0.42],
-    hemisphereIntensityByFloor: [0.1, 0.22, 0.22, 0.16],
-    fogDensityByFloor: [0.15, 0.09, 0.1, 0.14],
+    // Deep darkness: the flashlight is the only real light. Ambient/hemisphere
+    // are cut to a near-black floor — just enough to read silhouettes; the
+    // charging-station LEDs and faint windows are the navigation beacons.
+    // Basement darkest; attic a touch dim; main/upstairs a hair more.
+    ambientIntensityByFloor: [0.05, 0.08, 0.08, 0.06],
+    hemisphereIntensityByFloor: [0.02, 0.035, 0.035, 0.03],
+    fogDensityByFloor: [0.16, 0.11, 0.12, 0.15],
     fogColor: 0x05060a,
     toneExposure: 1.0,
-    environmentIntensity: 0.06, // tuned in-browser: dark with the light off, realism under the beam
+    environmentIntensity: 0.05, // subtle reflectance only — must not lift the gloom
   },
 
   battery: {
