@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import * as THREE from 'three';
 import { PlayerController } from './PlayerController';
 import { Input } from '../core/Input';
+import { ControlManager, KeyboardMouseSource } from '../core/Controls';
 import { ColliderSet } from '../core/Collision';
 import { config } from '../core/config';
 
@@ -9,7 +10,9 @@ const DT = 1 / 60;
 
 function setup() {
   const input = new Input();
-  const player = new PlayerController(new THREE.PerspectiveCamera(), input, new ColliderSet());
+  const controls = new ControlManager();
+  controls.add(new KeyboardMouseSource(input));
+  const player = new PlayerController(new THREE.PerspectiveCamera(), controls, new ColliderSet());
   const down = (input as unknown as { down: Set<string> }).down;
   return { input, player, down };
 }

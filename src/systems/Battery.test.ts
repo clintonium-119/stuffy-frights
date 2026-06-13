@@ -5,6 +5,7 @@ import { ChargingSystem } from './Charging';
 import { ChargingStation } from './ChargingStation';
 import { PlayerController } from '../player/PlayerController';
 import { Input } from '../core/Input';
+import { ControlManager } from '../core/Controls';
 import { ColliderSet } from '../core/Collision';
 import { config } from '../core/config';
 
@@ -96,7 +97,7 @@ describe('ChargingSystem', () => {
   function setup(level = 0.2) {
     const battery = new Battery(level);
     const input = new Input();
-    const player = new PlayerController(new THREE.PerspectiveCamera(), input, new ColliderSet());
+    const player = new PlayerController(new THREE.PerspectiveCamera(), new ControlManager(), new ColliderSet());
     let lightForcedOff = false;
     const charging = new ChargingSystem(battery, player, input, () => {
       lightForcedOff = true;

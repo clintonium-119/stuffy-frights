@@ -1,7 +1,12 @@
 import * as THREE from 'three';
 import { config } from '../core/config';
 import { ColliderSet, CylinderBody } from '../core/Collision';
-import { Input } from '../core/Input';
+import type { ControlIntent } from '../core/Controls';
+
+/** Anything that exposes a per-step control intent (the ControlManager). */
+export interface IntentProvider {
+  readonly intent: ControlIntent;
+}
 
 export type MoveMode = 'standing' | 'crouched';
 
@@ -39,12 +44,12 @@ export class PlayerController {
 
   private eyeHeight = config.player.eyeHeightStanding;
   private colliders: ColliderSet;
-  private input: Input;
+  private controls: IntentProvider;
   private camera: THREE.PerspectiveCamera;
 
-  constructor(camera: THREE.PerspectiveCamera, input: Input, colliders: ColliderSet) {
+  constructor(camera: THREE.PerspectiveCamera, controls: IntentProvider, colliders: ColliderSet) {
     this.camera = camera;
-    this.input = input;
+    this.controls = controls;
     this.colliders = colliders;
   }
 
@@ -74,22 +79,24 @@ export class PlayerController {
 
   update(dt: number): void {
     const p = config.player;
+    const intent = this.controls.intent;
 
-    // Look
-    if (!this.lookLocked && this.input.isPointerLocked) {
-      this.yaw -= this.input.mouseDx * p.lookSensitivity;
-      this.pitch -= this.input.mouseDy * p.lookSensitivity;
+    // Look — deltas arrive already in radians (each source scales its own
+    // sensitivity); the keyboard source zeroes them when pointer-unlocked.
+    if (!this.lookLocked) {
+      this.yaw -= intent.lookDx;
+      this.pitch -= intent.lookDy;
       const maxPitch = Math.PI / 2 - 0.05;
       this.pitch = Math.max(-maxPitch, Math.min(maxPitch, this.pitch));
     }
 
     // Crouch toggle
-    if (this.input.justPressed('KeyC')) {
+    if (intent.crouchToggle) {
       this.mode = this.mode === 'standing' ? 'crouched' : 'standing';
     }
-    // Sprint is gated by stamina: held Shift only sprints while stamina lasts
+    // Sprint is gated by stamina: a held sprint only sprints while stamina lasts
     // and isn't locked out from a prior exhaustion.
-    const wantSprint = this.input.isDown('ShiftLeft') || this.input.isDown('ShiftRight');
+    const wantSprint = intent.sprintHeld;
     const canSprint = !this.staminaLocked && this.stamina > 0 && !this.isCrouched;
     this.sprinting = wantSprint && canSprint;
 
@@ -97,8 +104,8 @@ export class PlayerController {
     let moveX = 0;
     let moveZ = 0;
     if (!this.movementLocked) {
-      const f = (this.input.isDown('KeyW') ? 1 : 0) - (this.input.isDown('KeyS') ? 1 : 0);
-      const s = (this.input.isDown('KeyD') ? 1 : 0) - (this.input.isDown('KeyA') ? 1 : 0);
+      const f = intent.moveY;
+      const s = intent.moveX;
       if (f !== 0 || s !== 0) {
         const len = Math.hypot(f, s);
         const speed = this.currentSpeed;

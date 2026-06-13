@@ -8,7 +8,7 @@ import { PROP_PLACEMENTS } from '../world/Props';
 import { HidingSystem } from '../systems/HidingSpot';
 import { InteractionSystem } from '../player/Interaction';
 import { PlayerController } from '../player/PlayerController';
-import { Input } from '../core/Input';
+import { ControlManager } from '../core/Controls';
 import { ColliderSet } from '../core/Collision';
 import { Rng } from '../core/rng';
 import { config } from '../core/config';
@@ -55,8 +55,7 @@ function snapshot(over: Partial<PlayerSnapshot> = {}): PlayerSnapshot {
 
 function makeHiding() {
   const camera = new THREE.PerspectiveCamera();
-  const input = new Input();
-  const player = new PlayerController(camera, input, new ColliderSet());
+  const player = new PlayerController(camera, new ControlManager(), new ColliderSet());
   const interactions = new InteractionSystem();
   const def = house.hidingSpots[4]; // main-floor living-room wardrobe (1:4,9)
   const worldPos = new THREE.Vector3(9, 3.5, 19);

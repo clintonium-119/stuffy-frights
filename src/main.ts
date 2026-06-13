@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { RGBELoader } from 'three/examples/jsm/loaders/RGBELoader.js';
 import { Engine } from './core/Engine';
 import { Input } from './core/Input';
+import { ControlManager, KeyboardMouseSource } from './core/Controls';
 import { PlayerController } from './player/PlayerController';
 import { InteractionSystem } from './player/Interaction';
 import { Flashlight } from './player/Flashlight';
@@ -59,6 +60,11 @@ const engine = new Engine(canvas);
 const input = new Input();
 input.attach(canvas);
 
+// Source-agnostic control layer: keyboard/mouse is the first source; touch + XR
+// register here on their platforms. Player + main loop read controls.intent.
+const controls = new ControlManager();
+controls.add(new KeyboardMouseSource(input));
+
 engine.scene.background = new THREE.Color(config.visibility.fogColor);
 engine.scene.fog = new THREE.FogExp2(
   config.visibility.fogColor,
@@ -101,7 +107,7 @@ engine.scene.environmentIntensity = config.visibility.environmentIntensity;
 
 const flashlight = new Flashlight(engine.scene);
 const interactions = new InteractionSystem();
-const player = new PlayerController(engine.camera, input, world.colliders);
+const player = new PlayerController(engine.camera, controls, world.colliders);
 const spawn = world.markerWorld(house.playerSpawn);
 player.teleport(spawn.x, spawn.y, spawn.z, Math.PI);
 
@@ -481,6 +487,7 @@ engine.addUpdatable({
   update(dt: number) {
     if (!gs.simulationTicks) {
       input.endStep();
+      controls.endStep();
       return;
     }
     runSeconds += dt;
@@ -490,6 +497,8 @@ engine.addUpdatable({
       !gs.movementAllowed || hiding.active !== null || charging.isCharging || jumpscare.running;
     player.lookLocked = !gs.lookAllowed || jumpscare.running;
 
+    controls.sample();
+    const intent = controls.intent;
     player.update(dt);
     player.floorIndex = world.floorIndexOfY(player.position.y);
     const cell = worldToCell(player.position.x, player.position.z);
@@ -503,17 +512,17 @@ engine.addUpdatable({
     interactions.update(player.position, player.viewDir());
 
     if (gs.state === 'playing') {
-      if (input.justPressed('KeyE') && !charging.isCharging) {
+      if (intent.interact && !charging.isCharging) {
         if (!hiding.exit()) interactions.interact();
       }
-      if (input.justPressed('KeyF') && hiding.active === null && !charging.isCharging) {
+      if (intent.flashlightToggle && hiding.active === null && !charging.isCharging) {
         if (battery.canLight() || flashlight.isOn) flashlight.toggle();
       }
-      if (input.justPressed('KeyM') || input.justPressed('Tab')) {
+      if (intent.mapToggle) {
         if (gs.transition('openMap')) map.open();
       }
     } else if (gs.state === 'mapOpen') {
-      if (input.justPressed('KeyM') || input.justPressed('Tab') || input.justPressed('KeyE')) {
+      if (intent.mapToggle || intent.interact) {
         if (gs.transition('closeMap')) map.close();
       }
     }
@@ -577,6 +586,7 @@ engine.addUpdatable({
     if (map.visible) map.update(player.position.x, player.position.z, player.yaw, player.floorIndex);
 
     input.endStep();
+    controls.endStep();
   },
 });
 

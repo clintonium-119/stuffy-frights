@@ -3,15 +3,14 @@ import * as THREE from 'three';
 import { HidingSystem, labelFor } from './HidingSpot';
 import { InteractionSystem } from '../player/Interaction';
 import { PlayerController } from '../player/PlayerController';
-import { Input } from '../core/Input';
+import { ControlManager } from '../core/Controls';
 import { ColliderSet } from '../core/Collision';
 import { HidingSpotDef } from '../world/layoutTypes';
 
 function setup(lightOn = false) {
   const camera = new THREE.PerspectiveCamera();
-  const input = new Input();
   const colliders = new ColliderSet();
-  const player = new PlayerController(camera, input, colliders);
+  const player = new PlayerController(camera, new ControlManager(), colliders);
   const interactions = new InteractionSystem();
   const def: HidingSpotDef = { pos: { floor: 1, x: 4, z: 9 }, kind: 'wardrobe' };
   const worldPos = new THREE.Vector3(9, 3.5, 19);
@@ -88,8 +87,7 @@ describe('HidingSystem', () => {
   it('a closet has its own label and is an upright (non-crouch) hide', () => {
     expect(labelFor('closet')).toBe('Hide in the closet');
     const camera = new THREE.PerspectiveCamera();
-    const input = new Input();
-    const player = new PlayerController(camera, input, new ColliderSet());
+    const player = new PlayerController(camera, new ControlManager(), new ColliderSet());
     const interactions = new InteractionSystem();
     const def: HidingSpotDef = { pos: { floor: 1, x: 10, z: 9 }, kind: 'closet' };
     const hiding = new HidingSystem(player, interactions, [
