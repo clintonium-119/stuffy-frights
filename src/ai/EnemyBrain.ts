@@ -85,6 +85,29 @@ export class EnemyBrain {
     this.homeFloor = homeFloor;
   }
 
+  /** Restore to a fresh-run patrol state (Director.restart drives this). */
+  reset(): void {
+    if (this.searchTarget) {
+      searchClaims.delete(this.searchTarget);
+      this.searchTarget = null;
+    }
+    this.state = 'patrol';
+    this.memory.clear();
+    this.passive = false;
+    this.speedFactor = 1;
+    this.follower.clear();
+    this.stateTimer = 0;
+    this.repathTimer = 0;
+    this.lungeTimer = 0;
+    this.lungeCooldown = 0;
+    this.now = 0;
+    this.searchResolved = false;
+    this.passageExit = null;
+    this.forcedDestination = null;
+    this.crossFloorDecision = 'undecided';
+    this.enemy.isChasing = false;
+  }
+
   /** Witness hooks — called by the world when concealment happens in view. */
   notePlayerEnteredHiding(at: THREE.Vector3, witnessed: boolean): void {
     if (witnessed) this.memory.sawEnterHidingAt = at.clone();

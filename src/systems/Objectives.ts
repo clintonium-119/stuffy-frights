@@ -130,7 +130,7 @@ export type ExitResult = 'locked' | 'wrongKey' | 'open';
  * nothing visually betrays the right one before trying.
  */
 export class Objectives {
-  readonly setup: ObjectiveSetup;
+  setup: ObjectiveSetup;
   hasKey = false;
   escaped = false;
   /** Exits the player has tried (win-screen recap + map could use it). */
@@ -140,8 +140,19 @@ export class Objectives {
   /** Feedback line for the HUD toaster. */
   onMessage: ((text: string) => void) | null = null;
 
-  constructor(house: House, seed: number) {
+  constructor(
+    private readonly house: House,
+    seed: number
+  ) {
     this.setup = rollObjectives(house, seed);
+  }
+
+  /** Re-randomize the run (the keys move) and clear progress for a fresh start. */
+  reroll(seed: number): void {
+    this.setup = rollObjectives(this.house, seed);
+    this.hasKey = false;
+    this.escaped = false;
+    this.triedExits.clear();
   }
 
   takeKey(): void {

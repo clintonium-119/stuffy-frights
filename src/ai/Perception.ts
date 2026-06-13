@@ -134,4 +134,13 @@ export class PerceptionMemory {
     this.sawEnterHidingAt = null;
     this.sawEnterPassageAt = null;
   }
+
+  /** Wipe all sightings/noise/witness memory for a fresh run. */
+  clear(): void {
+    this.lastSeenPos = null;
+    this.lastSeenAt = -Infinity;
+    this.lastNoisePos = null;
+    this.sawEnterHidingAt = null;
+    this.sawEnterPassageAt = null;
+  }
 }

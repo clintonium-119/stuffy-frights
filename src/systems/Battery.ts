@@ -43,6 +43,12 @@ export class Battery {
     this.set(this.level + dt / (config.battery.drainSeconds * config.battery.chargeRatio));
   }
 
+  /** Refill to the run-start charge (fires onChange so the HUD updates). */
+  reset(): void {
+    this.wasLow = false;
+    this.set(config.battery.startCharge);
+  }
+
   private set(value: number): void {
     const next = clamp01(value);
     if (next === this.level) return;

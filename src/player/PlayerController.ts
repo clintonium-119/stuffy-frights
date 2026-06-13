@@ -66,6 +66,20 @@ export class PlayerController {
     this.pitch = 0;
   }
 
+  /** Reset transient run state (stamina, stance, locks) for a fresh run. */
+  resetState(): void {
+    this.mode = 'standing';
+    this.sprinting = false;
+    this.stamina = 1;
+    this.staminaLocked = false;
+    this.staminaRegenTimer = 0;
+    this.movementLocked = false;
+    this.lookLocked = false;
+    this.forceCrouch = false;
+    this.noiseLevel = 0;
+    this.eyeHeight = config.player.eyeHeightStanding;
+  }
+
   get isCrouched(): boolean {
     return this.mode === 'crouched' || this.forceCrouch;
   }

@@ -331,7 +331,10 @@ player.teleport(spawnWorld.x, spawnWorld.y, spawnWorld.z, Math.PI);
 director.seedSafeSpawns(spawnWorld, objectives.setup.playerSpawn, objectives.setup.playerSpawn.floor);
 const keyProp = new KeyProp();
 engine.scene.add(keyProp.group);
-const keyWorld = world.markerWorld(objectives.setup.keyLocation);
+let keyWorld = world.markerWorld(objectives.setup.keyLocation);
+// Live position object the key interactable reads each step — updated in place
+// when the run re-rolls (the keys move) so the prompt follows the new location.
+const keyInteractPos = keyWorld.clone().add(new THREE.Vector3(0, 0.5, 0));
 keyProp.showAt(keyWorld);
 director.setKeyLocation(keyWorld);
 
@@ -348,7 +351,7 @@ weather.onLightning = () => {
 };
 
 interactions.add({
-  position: keyWorld.clone().add(new THREE.Vector3(0, 0.5, 0)),
+  position: keyInteractPos,
   radius: 1.9,
   label: 'Take the keys',
   enabled: () => !objectives.hasKey,
@@ -525,9 +528,11 @@ const resumeAudio = () => audio.resumeIfSuspended();
 window.addEventListener('pointerdown', resumeAudio, { capture: true });
 window.addEventListener('keydown', resumeAudio, { capture: true });
 
-function startRun(): void {
-  if (!gs.transition('start')) return;
+/** Show the in-run chrome + acquire input. Shared by start and play-again. */
+function enterPlayingChrome(): void {
   menus.hide();
+  vrMessage.hide();
+  vrOverlay = 'none';
   hud.show(true);
   hud.setBattery(battery.level, battery.isLow);
   hud.setStamina(player.stamina, player.staminaLocked);
@@ -544,6 +549,51 @@ function startRun(): void {
   } else if (!engine.renderer.xr.isPresenting) {
     input.requestPointerLock();
   }
+}
+
+function startRun(): void {
+  if (!gs.transition('start')) return;
+  enterPlayingChrome();
+}
+
+/**
+ * Reset the world for a fresh run WITHOUT reloading the page — the keys move,
+ * the player + enemies + battery reset, AI memory clears. Lets VR replay in
+ * place instead of a reload that would end the XR session.
+ */
+function startNewRun(): void {
+  const newSeed = (Math.random() * 0xffffffff) >>> 0;
+  objectives.reroll(newSeed);
+  const sp = world.markerWorld(objectives.setup.playerSpawn);
+  player.teleport(sp.x, sp.y, sp.z, Math.PI);
+  player.resetState();
+  keyWorld = world.markerWorld(objectives.setup.keyLocation);
+  keyInteractPos.copy(keyWorld);
+  keyInteractPos.y += 0.5;
+  keyProp.showAt(keyWorld);
+  director.setKeyLocation(keyWorld);
+  director.restart(sp, objectives.setup.playerSpawn, objectives.setup.playerSpawn.floor);
+  battery.reset();
+  flashlight.setOn(false);
+  hiding.exit();
+  charging.unplug();
+  jumpscare.reset();
+  map.close();
+  runSeconds = 0;
+  hud.setHasKey(false);
+  hud.setPrompt(null);
+  hud.setCharging(false);
+  vrPrompt = null;
+  vrToast = null;
+  vrCharging = false;
+  vrThreat = vrRed = vrBlack = 0;
+}
+
+/** In-place "play again" from game-over / win (keeps the VR session alive). */
+function playAgain(): void {
+  startNewRun();
+  if (!gs.transition('retry')) return;
+  enterPlayingChrome();
 }
 
 /**
@@ -599,7 +649,7 @@ menus.onResume = () => {
   if (mobile) touch?.show();
   else if (!engine.renderer.xr.isPresenting) input.requestPointerLock();
 };
-menus.onRetry = () => window.location.reload(); // fresh seed, fresh house
+menus.onRetry = playAgain; // in-place restart (no reload) — fresh seed, keys move
 
 // Browser Esc exits pointer lock — make it a clean pause instead of chaos.
 input.onPointerLockLost = () => {
@@ -783,7 +833,8 @@ engine.onFrame = (dt) => {
           vrOverlay = 'none';
         }
       } else if (i?.interact) {
-        window.location.reload();
+        // Game-over / win → in-place replay; stays in the VR session.
+        playAgain();
       }
     }
   } else {

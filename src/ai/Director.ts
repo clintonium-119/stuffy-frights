@@ -41,7 +41,7 @@ export class Director {
     private rng: Rng,
     ctx: Omit<BrainContext, 'nav' | 'house' | 'rng'>,
     scene: THREE.Scene,
-    markerWorld: (pos: { floor: number; x: number; z: number }) => THREE.Vector3,
+    private readonly markerWorld: (pos: { floor: number; x: number; z: number }) => THREE.Vector3,
     /** Test hook: swap real characters for stubs (canvas-free). */
     factory?: (id: string) => EnemyBase
   ) {
@@ -115,6 +115,34 @@ export class Director {
         r.brain.forcedDestination = new THREE.Vector3(w.x, floorY(dest.floor), w.z);
       }
     }
+  }
+
+  /**
+   * Reset every enemy to its home spawn + a fresh patrol brain, restore the
+   * grace window and pacing timers, and re-apply the run-start fair placement
+   * around the (new) player spawn. For an in-place "play again" (no reload).
+   * The caller re-adds the key focus point via setKeyLocation afterward.
+   */
+  restart(playerPos: THREE.Vector3, playerCell: { x: number; z: number }, playerFloor: number): void {
+    this.graceLeft = config.ai.gracePeriod;
+    this.mercyLeft = 0;
+    this.keyTaken = false;
+    this.migrationTimers = [];
+    this.campTimers = [];
+    this.house.enemySpawns.forEach((spawn, i) => {
+      const r = this.residents[i];
+      if (!r) return;
+      const wp = this.markerWorld(spawn.pos);
+      r.enemy.position.copy(wp);
+      r.enemy.floorIndex = spawn.pos.floor;
+      r.brain.reset();
+      r.brain.passive = true; // grace
+      this.migrationTimers.push(config.ai.migrationInterval * (0.6 + this.rng.next() * 0.8));
+      this.campTimers.push(0);
+    });
+    this.focusPoints = [];
+    for (const exit of this.house.exits) this.focusPoints.push(this.markerWorld(exit.pos));
+    this.seedSafeSpawns(playerPos, playerCell, playerFloor);
   }
 
   /** Cells reachable from `start` without crossing a door — the player's room. */
