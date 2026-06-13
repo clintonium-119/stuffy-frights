@@ -8,66 +8,67 @@ title: "Coding Standards"
 status: in_progress
 owner: ""
 created: '2026-06-12'
-updated: '2026-06-12'
-reviewed_on: ""
+updated: '2026-06-13'
+reviewed_on: '2026-06-13'
 related_notes: []
 tags: [apovault, knowledge, standards]
 ---
 
 # Coding Standards
 
-The repo has 0 source files (**Source:** `find . -path ./.git -prune -o -path ./.apo -prune -o -type f -print` → only `.claude/settings.local.json`, read 2026-06-12), so every "Observed" section below records the empty baseline. Re-run `/apo:rescan stuffy-frights` after the base scaffold lands — that scan becomes the real rails.
+Re-mined 2026-06-13 against the now-populated codebase (35 source + 17 test files). The empty-baseline placeholders are replaced below with observed rules.
 
 ## Lint / format (vault-wide)
 
-No `.eslintrc*`, `biome.json`, `.prettierrc*`, or `.editorconfig` exists (read 2026-06-12).
+No linter or formatter config exists — no `.eslintrc*`, `biome.json`, `.prettierrc*`, or `.editorconfig` (read 2026-06-13). Code style is enforced only by the TypeScript compiler. **Observed style:** 2-space indent, single quotes, semicolons, trailing-comma-friendly. If a linter is added later, record the choice with a DEC note.
 
-> **(verify)** — lint/format stack to be chosen at scaffold time
->
-> Expected answers when this section is filled:
-> - [ ] Linter (ESLint flat config? Biome?)
-> - [ ] Formatter + indent/quote style
-> - [ ] TS strictness flags
->
-> Look at: scaffold-phase decision notes; config files once created.
+`tsconfig.json` (read 2026-06-13) is the de-facto style gate: `strict: true`, `noUnusedLocals`, `noUnusedParameters`, `noFallthroughCasesInSwitch`, `target/module ES2022/ESNext`, `moduleResolution: bundler`, `noEmit` (Vite does the bundling, `tsc` only type-checks).
+
+## Naming Conventions (Observed) — vault-wide
+
+**Scanned 2026-06-13, 52 `.ts` files.**
+
+- **Files:** PascalCase for class-per-file modules (`Engine.ts`, `PlayerController.ts`, `HouseBuilder.ts`, …) — 30 files. camelCase for pure-data / utility / config modules (`config.ts`, `rng.ts`, `houseLayout.ts`, `layoutTypes.ts`, `main.ts`).
+  - Documented exceptions: `rng.ts` exports a class (`Rng`) but is named as a utility; `Props.ts` exports functions/types but keeps PascalCase. Both intentional.
+- **Tests:** co-located `*.test.ts` next to the module under test (17 files). No `__tests__/` directories.
+- **Symbols:** PascalCase types/classes/interfaces; camelCase functions/vars; `SCREAMING_SNAKE` for module-level layout constants (`CELL_SIZE`, `FLOOR_SPACING`).
+- **UI-primitive suffixes** (`*Dialog`, `*Modal`, `*Card`, etc.): **0 each** — not a web-app UI; the `ui/` subsystem names by role (`HUD`, `MapOverlay`, `Menus`), not primitive.
+
+## API-Usage Patterns (Observed) — vault-wide
+
+**Scanned 2026-06-13.** All findings are dominant/clean — no mixed newer-vs-older area, so no modernity ASK fired.
+
+| Area | Convention | Evidence |
+|---|---|---|
+| Module exports | **Named exports only** — zero `export default` | 33 `export class`, 19 `export function`, 8 `export const`, 0 defaults |
+| Type contracts | `interface` for data/collaborator shapes, `type` for unions/aliases | 33 `interface`, 13 `type`; 0 `enum` (string-literal unions instead) |
+| Three.js import | Namespace import `import * as THREE from 'three'` everywhere | all rendering files |
+| Three.js geometry | Modern `BufferGeometry`-based primitives only; no legacy `Geometry` | `BoxGeometry`, `CapsuleGeometry`, `LatheGeometry`, … |
+| Class encapsulation | `private` fields default; `readonly` for immutable data; constructor-param modifiers | 136 `private`, 25 `readonly`, 0 `public` (implicit) |
+| Type safety | No `any` in the codebase | grep → 0 |
+| Dependency wiring | Constructor injection of collaborators; no service-locator/global lookup | universal |
+| Randomness | Seeded `Rng` (mulberry32) injected into systems; `Math.random()` only for the initial seed | `core/rng.ts`, AI/objectives |
 
 ## Theme Tokens (Observed) (vault-wide)
 
-No token system detected — no theme module, Tailwind config, token JSON, CSS custom properties, or SCSS variables exist (repo empty, read 2026-06-12). For a Three.js game, the analogous concern is a centralized palette/material/lighting constants module — flag its location here when it appears.
+The game's analog of a design-token module is **`src/core/config.ts`** — a single `GameConfig` interface plus an exported `config` constant. It holds every tunable number (no magic numbers in logic): `timestep`, `player.*` (speeds, eye height, stamina), `battery.*`, `ai.*` (vision/hearing ranges, speeds, grace/migration timings, anti-camp radii), `enemy.*` (threat/contact/catch distances, jumpscare timing), `visibility.*` (per-floor fog, light intensities, tone exposure), `flashlight.*` (color/intensity/range/angle/sway). Imported and read by 20+ modules. Treat it as the central tuning surface: gameplay-feel changes go here, not inline.
 
 ## Build / run commands (vault-wide)
 
-None — no `package.json` or Makefile exists (read 2026-06-12). Verify config expects a dev server at `http://localhost:3000` (`.apo/.config.json`, user-confirmed 2026-06-12), so the scaffold's dev script should serve there.
+From `package.json` (read 2026-06-13):
 
-## Naming Conventions (Observed) — stuffy-frights
+- `npm run dev` — Vite dev server at `http://localhost:3000` (`strictPort: true`; matches the verify-config dev URL).
+- `npm run build` — `tsc --noEmit && vite build`; output to `docs/` (GitHub Pages publish dir), base path `/stuffy-frights/`.
+- `npm run preview` — serve the production build.
+- `npm test` — `vitest run --passWithNoTests`.
 
-**Subsystem path:** `.` (whole repo) — scanned 2026-06-12, 0 source files.
+## File organization (observed) — vault-wide
 
-- All UI-primitive suffix counts (`*Dialog`, `*Modal`, `*Card`, `*Form`, `*Section`, `*Drawer`, `*Panel`, `*Page`, `*View`, `*Sheet`, `*Popover`, `*Tooltip`): 0 each — nothing exists to count.
-- **Patterns NOT present:** all of the above (0 each). The first scaffold commit sets the precedent; record it via `/apo:rescan`.
-- Test file suffix, hook prefix, module naming: no occurrences (0 files).
-
-## API-Usage Patterns (Observed) — stuffy-frights
-
-**Subsystem path:** `.` (whole repo) — scanned 2026-06-12, 0 source files.
-
-| Area | Newer | Older | Verdict |
-|---|---|---|---|
-| _none scannable_ | — | — | No code exists; no modern-vs-legacy split possible. First scaffold defines the baseline. |
-
-## File organization (observed) — stuffy-frights
-
-Nothing beyond `.git/`, `.apo/`, `.claude/` (read 2026-06-12). No organization to observe.
+Source lives under `src/`, split by subsystem directory (`core`, `player`, `world`, `systems`, `enemies`, `ai`, `ui`, `audio`) with `main.ts` as the wiring entry point. One primary export per file; tests co-located. See [[01_Knowledge/Code_Map|Code Map]] for the full layout and boundaries.
 
 ## Test conventions (observed) (vault-wide)
 
-No test framework, test files, or test config exist (read 2026-06-12).
-
-> **(verify)** — test stack to be chosen at scaffold time
->
-> Expected answers when this section is filled:
-> - [ ] Framework (Vitest is the usual pairing with a Vite/Three.js stack — confirm)
-> - [ ] File convention (`*.test.ts` vs `__tests__/`)
-> - [ ] How game-loop/rendering code gets tested (headless? mocked WebGL?)
->
-> Look at: first test file committed.
+- **Framework:** Vitest. `describe/it/expect` imported from `'vitest'`; run headless via `vitest run`.
+- **Convention:** co-located `*.test.ts` (17 files).
+- **Rendering avoidance:** tests never touch WebGL. AI/collision/nav/objectives tests are math-only over plain data; enemy/brain tests use lightweight stub bodies (`{ position, group.rotation.y, setMoveTarget() }`) instead of real Three.js meshes.
+- **Coverage gaps (by design):** `Props.ts` builders, `AudioEngine` synthesis, and `Menus` DOM logic have no unit tests (cost of mocking WebAudio/DOM outweighs value); they're verified in-browser instead.
