@@ -12,3 +12,7 @@
 
 # Node
 node_modules/
+
+# Build output — GitHub Pages is built fresh in CI (.github/workflows/deploy.yml),
+# so the bundle is never committed.
+docs/
