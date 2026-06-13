@@ -88,6 +88,8 @@ export interface GameConfig {
     /** Jumpscare beats, seconds. */
     jumpscareTurn: number;
     jumpscareLunge: number;
+    /** Red wash before the cut to black (suggests blood, no gore). */
+    jumpscareRedFade: number;
     jumpscareBlackout: number;
   };
 
@@ -198,8 +200,9 @@ export const config: GameConfig = {
     expressionHold: 0.6,
     contactRadius: 0.85,
     jumpscareTurn: 0.12,
-    jumpscareLunge: 0.85,
-    jumpscareBlackout: 0.45,
+    jumpscareLunge: 0.55, // snappier rush so the face slams into frame
+    jumpscareRedFade: 0.4,
+    jumpscareBlackout: 0.5,
   },
 
   flashlight: {

@@ -252,16 +252,23 @@ const stations = house.chargingStations.map((cell) => {
 });
 
 // ------------------------------------------------------ jumpscare + flow
+// Red wash (suggests blood, no gore) underneath the black cut-to-dark.
+const redFlash = document.createElement('div');
+redFlash.style.cssText =
+  'position:absolute;inset:0;background:radial-gradient(ellipse at center,#7a0000 0%,#3a0000 100%);opacity:0;pointer-events:none';
+ui.appendChild(redFlash);
 const blackout = document.createElement('div');
 blackout.style.cssText = 'position:absolute;inset:0;background:#000;opacity:0;pointer-events:none';
 ui.appendChild(blackout);
+jumpscare.onRedFade = (a) => (redFlash.style.opacity = String(a * 0.85));
 jumpscare.onBlackout = (a) => (blackout.style.opacity = String(a));
 jumpscare.onSting = () => audio.sting();
 jumpscare.onGameOver = (enemyId) => {
   gs.transition('gameOverShown');
-  // The blackout overlay sits above the menu root in the DOM; clear it so the
+  // The overlays sit above the menu root in the DOM; clear them so the
   // game-over screen (and its restart button) is visible and clickable. The
   // menu's own near-black background carries the darkness from here.
+  redFlash.style.opacity = '0';
   blackout.style.opacity = '0';
   menus.showGameOver(enemyId);
   input.exitPointerLock();

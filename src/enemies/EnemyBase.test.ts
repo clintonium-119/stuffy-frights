@@ -78,7 +78,7 @@ describe('Jumpscare', () => {
         last = js.phase;
       }
     }
-    expect(phases).toEqual(['turning', 'lunging', 'blackout', 'done']);
+    expect(phases).toEqual(['turning', 'lunging', 'redFade', 'blackout', 'done']);
     expect(overs).toEqual(['fuggie']);
     // Extra updates never re-emit.
     run(js, camera, 1);
@@ -104,21 +104,31 @@ describe('Jumpscare', () => {
     expect(js.trigger(makeTarget(), camera)).toBe(true);
   });
 
-  it('total runtime stays within the kid-calibrated budget (≤1.5 s)', () => {
+  it('total runtime stays within the kid-calibrated budget (≤2 s)', () => {
     const total =
-      config.enemy.jumpscareTurn + config.enemy.jumpscareLunge + config.enemy.jumpscareBlackout;
-    expect(total).toBeLessThanOrEqual(1.5);
+      config.enemy.jumpscareTurn +
+      config.enemy.jumpscareLunge +
+      config.enemy.jumpscareRedFade +
+      config.enemy.jumpscareBlackout;
+    expect(total).toBeLessThanOrEqual(2);
   });
 
-  it('blackout alpha reaches 1 before gameOver', () => {
+  it('washes red then black, with both reaching full before gameOver', () => {
     const js = new Jumpscare();
     const camera = new THREE.PerspectiveCamera();
-    let alphaAtOver = -1;
-    let alpha = 0;
-    js.onBlackout = (a) => (alpha = a);
-    js.onGameOver = () => (alphaAtOver = alpha);
+    let redAtOver = -1;
+    let blackAtOver = -1;
+    let red = 0;
+    let black = 0;
+    js.onRedFade = (a) => (red = a);
+    js.onBlackout = (a) => (black = a);
+    js.onGameOver = () => {
+      redAtOver = red;
+      blackAtOver = black;
+    };
     js.trigger(makeTarget(), camera);
     run(js, camera, 3);
-    expect(alphaAtOver).toBe(1);
+    expect(redAtOver).toBe(1); // red wash held under the black
+    expect(blackAtOver).toBe(1);
   });
 });

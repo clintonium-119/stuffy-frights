@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { config } from '../core/config';
 
-export type JumpscarePhase = 'idle' | 'turning' | 'lunging' | 'blackout' | 'done';
+export type JumpscarePhase = 'idle' | 'turning' | 'lunging' | 'redFade' | 'blackout' | 'done';
 
 /** What the jumpscare needs from an enemy (EnemyBase satisfies this). */
 export interface JumpscareTarget {
@@ -24,6 +24,8 @@ export class Jumpscare {
   onGameOver: ((enemyId: string) => void) | null = null;
   /** Audio sting hook, fired at lunge start. */
   onSting: (() => void) | null = null;
+  /** Red-wash fade 0..1 (suggests blood, no gore) — main wires it to a red overlay. */
+  onRedFade: ((alpha: number) => void) | null = null;
   /** Blackout fade 0..1 — main wires this to an overlay div. */
   onBlackout: ((alpha: number) => void) | null = null;
 
@@ -58,6 +60,7 @@ export class Jumpscare {
   reset(): void {
     this.phase = 'idle';
     this.target = null;
+    this.onRedFade?.(0);
     this.onBlackout?.(0);
   }
 
@@ -76,16 +79,28 @@ export class Jumpscare {
       }
     } else if (this.phase === 'lunging') {
       const t = Math.min(1, this.timer / cfg.jumpscareLunge);
-      // The enemy face rushes the camera with an accelerating ease.
+      // The enemy face rushes almost all the way into the camera so its
+      // teeth-bared face fills the frame.
       const ease = t * t;
       const toCamera = camera.position
         .clone()
         .sub(this.lungeFrom)
-        .multiplyScalar(ease * 0.82);
+        .multiplyScalar(ease * 0.97);
       toCamera.y = 0;
       this.target.position.copy(this.lungeFrom.clone().add(toCamera));
-      // Shake.
-      const shake = 0.035 * (0.3 + t);
+      // Hard shake, building to impact.
+      const shake = 0.05 * (0.4 + t);
+      camera.position.x += (Math.random() - 0.5) * shake;
+      camera.position.y += (Math.random() - 0.5) * shake;
+      if (t >= 1) {
+        this.phase = 'redFade';
+        this.timer = 0;
+      }
+    } else if (this.phase === 'redFade') {
+      // Face fills frame; the screen washes to red (a bloody end, suggested).
+      const t = Math.min(1, this.timer / cfg.jumpscareRedFade);
+      this.onRedFade?.(t);
+      const shake = 0.04 * (1 - t);
       camera.position.x += (Math.random() - 0.5) * shake;
       camera.position.y += (Math.random() - 0.5) * shake;
       if (t >= 1) {
@@ -94,6 +109,7 @@ export class Jumpscare {
       }
     } else if (this.phase === 'blackout') {
       const t = Math.min(1, this.timer / cfg.jumpscareBlackout);
+      this.onRedFade?.(1); // hold the red wash under the black
       this.onBlackout?.(t);
       if (t >= 1) {
         this.phase = 'done';
