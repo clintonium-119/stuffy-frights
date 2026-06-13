@@ -63,6 +63,14 @@ describe('Battery', () => {
     expect(warnings).toBe(2);
   });
 
+  it('charging never out-paces draining (chargeRatio ≥ 1)', () => {
+    expect(config.battery.chargeRatio).toBeGreaterThanOrEqual(1);
+  });
+
+  it('drains noticeably faster than the old balance (conservation matters)', () => {
+    expect(config.battery.drainSeconds).toBeLessThanOrEqual(100);
+  });
+
   it('charge rate is chargeRatio× slower than drain', () => {
     const b = new Battery(0);
     const seconds = 30;

@@ -259,6 +259,29 @@ describe('EnemyBrain transitions', () => {
     expect(gap).toBeLessThan(config.enemy.contactRadius + 0.35); // within catch range
   });
 
+  it('loses interest and returns to patrol soon after sight breaks (escape window)', () => {
+    const { hiding } = makeHiding();
+    const body = stubBody(15, 3.5, 19);
+    const brain = brainWith(body, hiding, new Rng(1));
+    brain.update(DT, snapshot({ position: new THREE.Vector3(15, 3.5, 23), lightOn: true }));
+    expect(brain.state).toBe('chase');
+    // Player gone (different floor, no noise). Should reach patrol within the
+    // tuned window: memory + investigateLinger + loseInterest (+ slack).
+    const gone = snapshot({ position: new THREE.Vector3(5, 0, 5), floor: 0, noiseLevel: 0 });
+    const window =
+      config.ai.memorySeconds + config.ai.investigateLinger + config.ai.loseInterestSeconds + 1;
+    let reached = -1;
+    for (let i = 0; i < window / DT; i++) {
+      brain.update(DT, gone);
+      if (brain.state === 'patrol') {
+        reached = i * DT;
+        break;
+      }
+    }
+    expect(reached).toBeGreaterThan(0);
+    expect(reached).toBeLessThanOrEqual(window);
+  });
+
   it('passive (grace/mercy) brains neither see nor hear', () => {
     const { hiding } = makeHiding();
     const body = stubBody(15, 3.5, 19);

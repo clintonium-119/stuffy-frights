@@ -7,6 +7,7 @@
 export class HUD {
   private root: HTMLDivElement;
   private batteryFill: HTMLDivElement;
+  private staminaFill: HTMLDivElement;
   private keyBadge: HTMLDivElement;
   private prompt: HTMLDivElement;
   private chargingBadge: HTMLDivElement;
@@ -30,10 +31,23 @@ export class HUD {
     batteryLabel.textContent = '🔦';
     batteryLabel.style.cssText = 'position:absolute;bottom:18px;left:198px;font-size:18px';
 
+    // Stamina meter, just above the battery.
+    const staminaWrap = document.createElement('div');
+    staminaWrap.style.cssText =
+      'position:absolute;bottom:46px;left:22px;width:170px;height:10px;' +
+      'border:2px solid #5a5f49;border-radius:3px;background:#161310cc;padding:2px';
+    this.staminaFill = document.createElement('div');
+    this.staminaFill.style.cssText =
+      'height:100%;width:100%;background:#6fa8c4;border-radius:1px;transition:background .3s';
+    staminaWrap.appendChild(this.staminaFill);
+    const staminaLabel = document.createElement('div');
+    staminaLabel.textContent = '👟';
+    staminaLabel.style.cssText = 'position:absolute;bottom:42px;left:198px;font-size:15px';
+
     this.keyBadge = document.createElement('div');
     this.keyBadge.textContent = '🗝 the keys';
     this.keyBadge.style.cssText =
-      'position:absolute;bottom:52px;left:22px;color:#d8c372;display:none;' +
+      'position:absolute;bottom:74px;left:22px;color:#d8c372;display:none;' +
       "font:600 15px 'Trebuchet MS';text-shadow:0 0 6px #000";
 
     this.prompt = document.createElement('div');
@@ -57,7 +71,7 @@ export class HUD {
       'position:absolute;inset:0;pointer-events:none;opacity:0;' +
       'background:radial-gradient(ellipse at center, transparent 46%, rgba(60,0,0,0.55) 100%)';
 
-    this.root.append(this.vignette, batteryWrap, batteryLabel, this.keyBadge, this.prompt, this.chargingBadge, this.toast);
+    this.root.append(this.vignette, batteryWrap, batteryLabel, staminaWrap, staminaLabel, this.keyBadge, this.prompt, this.chargingBadge, this.toast);
     ui.appendChild(this.root);
   }
 
@@ -68,6 +82,12 @@ export class HUD {
   setBattery(level: number, low: boolean): void {
     this.batteryFill.style.width = `${(level * 100).toFixed(1)}%`;
     this.batteryFill.style.background = low ? '#b0402e' : '#9aa45e';
+  }
+
+  setStamina(level: number, locked: boolean): void {
+    this.staminaFill.style.width = `${(level * 100).toFixed(1)}%`;
+    // Blue when fine, washed-grey-red when exhausted/locked.
+    this.staminaFill.style.background = locked ? '#9a5550' : '#6fa8c4';
   }
 
   setHasKey(has: boolean): void {

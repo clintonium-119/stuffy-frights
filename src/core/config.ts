@@ -18,6 +18,16 @@ export interface GameConfig {
     stepUpHeight: number; // max climbable ledge, m
     lookSensitivity: number; // rad per mouse px
     crouchLerpSpeed: number; // eye-height interpolation speed, 1/s
+    stamina: {
+      /** Seconds of continuous sprint from full to empty. */
+      drainSeconds: number;
+      /** Seconds of not-sprinting to refill from empty to full. */
+      regenSeconds: number;
+      /** Delay before stamina starts regenerating after sprinting stops, s. */
+      regenDelay: number;
+      /** After exhaustion, sprint re-enables only once stamina recovers past this fraction. */
+      recoverThreshold: number;
+    };
   };
 
   battery: {
@@ -121,6 +131,12 @@ export const config: GameConfig = {
     stepUpHeight: 0.28,
     lookSensitivity: 0.0023,
     crouchLerpSpeed: 8,
+    stamina: {
+      drainSeconds: 6, // ~6 s of all-out sprint
+      regenSeconds: 9, // a bit slower to recover than to burn
+      regenDelay: 0.8,
+      recoverThreshold: 0.3, // must recover to 30% before sprinting again
+    },
   },
 
   visibility: {
@@ -133,10 +149,14 @@ export const config: GameConfig = {
   },
 
   battery: {
-    /** Seconds of continuous flashlight use from full to empty. */
-    drainSeconds: 150,
-    /** Recharging takes this many times longer than draining. */
-    chargeRatio: 3,
+    /** Seconds of continuous flashlight use from full to empty. Playtest-tunable. */
+    drainSeconds: 90,
+    /**
+     * Recharging takes this many times longer than draining — near-parity so a
+     * full charge (~108 s) is nearly as costly as a full drain. Must stay ≥ 1
+     * (charging never out-paces draining). Playtest-tunable.
+     */
+    chargeRatio: 1.2,
     /** Run-start charge fraction. */
     startCharge: 1.0,
   },
@@ -154,9 +174,9 @@ export const config: GameConfig = {
     patrolSpeed: 1.6,
     investigateSpeed: 2.7,
     chaseSpeed: 4.5,
-    memorySeconds: 4,
-    investigateLinger: 2.5,
-    loseInterestSeconds: 2,
+    memorySeconds: 2.5, // short: breaking line of sight is a real escape
+    investigateLinger: 2,
+    loseInterestSeconds: 1.5,
     searchProbLightOn: 0.75,
     searchProbLightOff: 0.25,
     gracePeriod: 20,

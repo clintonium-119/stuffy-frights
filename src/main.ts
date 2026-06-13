@@ -290,6 +290,7 @@ menus.onStart = () => {
   menus.hide();
   hud.show(true);
   hud.setBattery(battery.level, battery.isLow);
+  hud.setStamina(player.stamina, player.staminaLocked);
   input.requestPointerLock();
 };
 menus.onResume = () => {
@@ -395,6 +396,7 @@ engine.addUpdatable({
     flashlight.setLevel(battery.level);
     flashlight.setFlickering(battery.isLow && !battery.isEmpty);
 
+    hud.setStamina(player.stamina, player.staminaLocked);
     hud.setThreat(jumpscare.running ? 0 : nearest);
     audio.setListener(player.position, player.yaw);
     audio.update(dt, nearest, anyChasing);

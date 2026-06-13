@@ -21,6 +21,11 @@ export class PlayerController {
 
   mode: MoveMode = 'standing';
   sprinting = false;
+  /** Stamina 0..1 — sprinting drains it, not-sprinting regenerates it. */
+  stamina = 1;
+  /** Exhausted: sprint stays disabled until stamina recovers past the threshold. */
+  staminaLocked = false;
+  private staminaRegenTimer = 0;
   /** External systems (hiding, charging, map, jumpscare) freeze movement. */
   movementLocked = false;
   /** Map overlay locks look as well; charging leaves look free. */
@@ -82,7 +87,11 @@ export class PlayerController {
     if (this.input.justPressed('KeyC')) {
       this.mode = this.mode === 'standing' ? 'crouched' : 'standing';
     }
-    this.sprinting = this.input.isDown('ShiftLeft') || this.input.isDown('ShiftRight');
+    // Sprint is gated by stamina: held Shift only sprints while stamina lasts
+    // and isn't locked out from a prior exhaustion.
+    const wantSprint = this.input.isDown('ShiftLeft') || this.input.isDown('ShiftRight');
+    const canSprint = !this.staminaLocked && this.stamina > 0 && !this.isCrouched;
+    this.sprinting = wantSprint && canSprint;
 
     // Move
     let moveX = 0;
@@ -103,6 +112,21 @@ export class PlayerController {
 
     const moving = moveX !== 0 || moveZ !== 0;
     this.noiseLevel = !moving ? 0 : this.isCrouched ? 1 : this.sprinting ? 3 : 2;
+
+    // Stamina: drain while actually sprint-moving; otherwise regen after a delay.
+    const st = config.player.stamina;
+    if (this.sprinting && moving) {
+      this.stamina = Math.max(0, this.stamina - dt / st.drainSeconds);
+      this.staminaRegenTimer = st.regenDelay;
+      if (this.stamina <= 0) {
+        this.staminaLocked = true;
+        this.sprinting = false;
+      }
+    } else {
+      if (this.staminaRegenTimer > 0) this.staminaRegenTimer -= dt;
+      else this.stamina = Math.min(1, this.stamina + dt / st.regenSeconds);
+      if (this.staminaLocked && this.stamina >= st.recoverThreshold) this.staminaLocked = false;
+    }
 
     const body: CylinderBody = {
       x: this.position.x,
