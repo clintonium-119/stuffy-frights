@@ -135,3 +135,28 @@ describe('SettingsStore — ironman ladder', () => {
     expect(s2.getIronman().currentLevel).toBe('medium');
   });
 });
+
+describe('SettingsStore — statsSummary', () => {
+  it('aggregates per-difficulty games/winRate/bestStreak + ironman best', () => {
+    const s = new SettingsStore(fakeBackend());
+    s.recordRun({ difficulty: 'hard', won: true });
+    s.recordRun({ difficulty: 'hard', won: true });
+    s.recordRun({ difficulty: 'hard', won: false }); // 2/3 = 67%, best streak 2
+    s.startIronman();
+    s.advanceIronman(); // medium
+    s.failIronman(); // best streak 1, furthest medium
+    const sum = s.statsSummary();
+    expect(sum.perDifficulty.hard).toEqual({ games: 3, winRate: 67, bestStreak: 2 });
+    expect(sum.ironman.bestStreak).toBe(1);
+    expect(sum.ironman.bestLevelReached).toBe('medium');
+  });
+
+  it('a fresh profile summarizes to all zeros with no furthest rung', () => {
+    const sum = new SettingsStore(fakeBackend()).statsSummary();
+    for (const lvl of ['easy', 'medium', 'hard', 'nightmare'] as const) {
+      expect(sum.perDifficulty[lvl]).toEqual({ games: 0, winRate: 0, bestStreak: 0 });
+    }
+    expect(sum.ironman.bestStreak).toBe(0);
+    expect(sum.ironman.bestLevelReached).toBeNull();
+  });
+});

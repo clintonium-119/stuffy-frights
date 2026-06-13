@@ -41,6 +41,12 @@ export interface PersistedState {
   ironman: IronmanSession;
 }
 
+/** Display-ready aggregate for the stats screen. */
+export interface StatsSummary {
+  perDifficulty: Record<DifficultyLevel, { games: number; winRate: number; bestStreak: number }>;
+  ironman: { bestStreak: number; bestLevelReached: DifficultyLevel | null };
+}
+
 /** Minimal storage surface — satisfied by `localStorage` or the in-memory shim. */
 type Backend = Pick<Storage, 'getItem' | 'setItem'>;
 
@@ -128,6 +134,28 @@ export class SettingsStore {
     const st = this.read().stats[level];
     const games = st.wins + st.losses;
     return games === 0 ? 0 : Math.round((st.wins / games) * 100);
+  }
+
+  /** Display-ready aggregate of per-difficulty + ironman stats for the stats screen. */
+  statsSummary(): StatsSummary {
+    const s = this.read();
+    const perDifficulty = {} as StatsSummary['perDifficulty'];
+    for (const lvl of DIFFICULTY_ORDER) {
+      const st = s.stats[lvl];
+      const games = st.wins + st.losses;
+      perDifficulty[lvl] = {
+        games,
+        winRate: games === 0 ? 0 : Math.round((st.wins / games) * 100),
+        bestStreak: st.bestStreak,
+      };
+    }
+    return {
+      perDifficulty,
+      ironman: {
+        bestStreak: s.ironman.bestStreak,
+        bestLevelReached: s.ironman.bestLevelReached,
+      },
+    };
   }
 
   // --- ironman ladder ---

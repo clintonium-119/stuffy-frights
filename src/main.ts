@@ -435,6 +435,7 @@ menus.onContinueIronman = () => {
   settings.advanceIronman();
   reloadIntoRun();
 };
+menus.onShowStats = () => menus.showStats(settings.statsSummary());
 menus.onResume = () => {
   if (!gs.transition('resume')) return;
   menus.hide();

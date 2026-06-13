@@ -1,4 +1,5 @@
 import { DIFFICULTY_META, DIFFICULTY_ORDER, type DifficultyLevel } from '../core/difficulty';
+import type { StatsSummary } from '../core/Settings';
 
 /** Per-difficulty accent font-family (bundled in public/fonts/, declared in index.html). */
 export const DIFFICULTY_FONTS: Record<DifficultyLevel, string> = {
@@ -148,6 +149,39 @@ export class Menus {
       b.addEventListener('focus', () => paint(lvl));
       b.addEventListener('click', () => this.onSelectDifficulty?.(lvl));
     });
+    this.root.querySelector('#btn-back')!.addEventListener('click', () => this.showTitle());
+  }
+
+  /** Stats screen: per-difficulty win % + best streak + games, plus ironman best. */
+  showStats(summary: StatsSummary): void {
+    const rows = DIFFICULTY_ORDER.map((lvl) => {
+      const m = DIFFICULTY_META[lvl];
+      const d = summary.perDifficulty[lvl];
+      return (
+        `<tr><td style="text-align:left;padding:4px 16px;color:#d8c9a0">${m.name}` +
+        ` <span style="color:#7a6f58">· ${m.tier}</span></td>` +
+        `<td style="padding:4px 16px">${d.winRate}%</td>` +
+        `<td style="padding:4px 16px">${d.bestStreak}</td>` +
+        `<td style="padding:4px 16px;color:#8a7d65">${d.games}</td></tr>`
+      );
+    }).join('');
+    const im = summary.ironman;
+    const reached = im.bestLevelReached ? DIFFICULTY_META[im.bestLevelReached].name : '—';
+    this.screen(`
+      <h2 style="font-family:'Creepster',cursive;letter-spacing:2px;color:#cdb98a;
+        text-shadow:0 0 14px #6a1212">YOUR FRIGHTS</h2>
+      <table style="margin:16px auto 6px;border-spacing:0;color:#cfc3a2">
+        <tr style="color:#9a8d6c;font-size:13px;letter-spacing:1px">
+          <td style="text-align:left;padding:4px 16px">DIFFICULTY</td>
+          <td style="padding:4px 16px">WIN %</td>
+          <td style="padding:4px 16px">BEST STREAK</td>
+          <td style="padding:4px 16px">GAMES</td>
+        </tr>
+        ${rows}
+      </table>
+      <p style="color:#d8a35a;margin:6px auto">Ironman — best streak <b>${im.bestStreak}/${DIFFICULTY_ORDER.length}</b> · furthest reached <b>${reached}</b></p>
+      <div style="margin-top:12px">${this.button('BACK', 'btn-back')}</div>
+    `);
     this.root.querySelector('#btn-back')!.addEventListener('click', () => this.showTitle());
   }
 
