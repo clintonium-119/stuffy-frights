@@ -1,4 +1,26 @@
 import * as THREE from 'three';
+import { config } from '../core/config';
+
+/**
+ * Rain bed gain from the player's distance to the nearest window: loudest at the
+ * glass, fading to a faint floor far inside / in windowless rooms. Monotonic.
+ */
+export function rainGainForWindow(nearestWindow: number): number {
+  const a = config.audio;
+  const t = Math.max(0, Math.min(1, nearestWindow / a.rainWindowFalloff)); // 0 at glass → 1 past falloff
+  return a.rainMaxGain + (a.rainMinGain - a.rainMaxGain) * t;
+}
+
+/**
+ * Extra music-bed gain that swells in as the nearest enemy closes (0 beyond the
+ * swell range, up to musicSwellMax right on top of the player).
+ */
+export function musicSwell(nearestEnemy: number): number {
+  const a = config.audio;
+  if (!Number.isFinite(nearestEnemy) || nearestEnemy >= a.musicSwellRange) return 0;
+  const t = 1 - Math.max(0, nearestEnemy) / a.musicSwellRange; // 0 far → 1 at the player
+  return a.musicSwellMax * t;
+}
 
 /**
  * Fully synthesized WebAudio horror soundscape — zero audio files.
@@ -15,6 +37,7 @@ export class AudioEngine {
   private heartbeatTimer = 0;
   private heartbeatInterval = 1.2;
   private chaseGain: GainNode | null = null;
+  private rainGain: GainNode | null = null;
   private creakTimer = 4;
   private listenerPos = new THREE.Vector3();
   private listenerYaw = 0;
@@ -41,6 +64,45 @@ export class AudioEngine {
     this.startAmbientBed();
     this.startChaseLayer();
     this.startMusicBed();
+    this.startRain();
+  }
+
+  // ---- Rain bed: bright filtered-noise hiss + patter. Its gain is set per
+  // frame from window proximity (loud at the glass, faint deep inside).
+  private startRain(): void {
+    const ctx = this.ctx!;
+    this.rainGain = ctx.createGain();
+    this.rainGain.gain.value = config.audio.rainMinGain;
+    this.rainGain.connect(this.ambientBus);
+    // Hiss: high-passed noise (the steady sheet of rain).
+    const hiss = ctx.createBufferSource();
+    hiss.buffer = this.noiseBuffer(5);
+    hiss.loop = true;
+    const hp = ctx.createBiquadFilter();
+    hp.type = 'highpass';
+    hp.frequency.value = 1600;
+    const hissGain = ctx.createGain();
+    hissGain.gain.value = 0.7;
+    hiss.connect(hp).connect(hissGain).connect(this.rainGain);
+    hiss.start();
+    // Patter: band-passed noise with a fluttering LFO (drops on the glass).
+    const patter = ctx.createBufferSource();
+    patter.buffer = this.noiseBuffer(5);
+    patter.loop = true;
+    const bp = ctx.createBiquadFilter();
+    bp.type = 'bandpass';
+    bp.frequency.value = 900;
+    bp.Q.value = 0.7;
+    const patterGain = ctx.createGain();
+    patterGain.gain.value = 0.5;
+    const lfo = ctx.createOscillator();
+    lfo.frequency.value = 11;
+    const lfoGain = ctx.createGain();
+    lfoGain.gain.value = 0.25;
+    lfo.connect(lfoGain).connect(patterGain.gain);
+    patter.connect(bp).connect(patterGain).connect(this.rainGain);
+    patter.start();
+    lfo.start();
   }
 
   get ready(): boolean {
@@ -222,8 +284,11 @@ export class AudioEngine {
     drift.start();
   }
 
-  /** Per-frame: tension systems. nearestEnemy in meters; chasing flag. */
-  update(dt: number, nearestEnemy: number, anyChasing: boolean): void {
+  /**
+   * Per-frame tension + ambience. nearestEnemy / nearestWindow in metres
+   * (Infinity when none); chasing flag drives the chase layer.
+   */
+  update(dt: number, nearestEnemy: number, anyChasing: boolean, nearestWindow = Infinity): void {
     if (!this.ctx) return;
 
     // Heartbeat quickens as the nearest stuffy closes (within 12 m).
@@ -241,6 +306,17 @@ export class AudioEngine {
     const target = anyChasing ? 0.85 : 0;
     const g = this.chaseGain!.gain;
     g.value += (target - g.value) * Math.min(1, dt * 2.5);
+
+    // The whole music bed swells as the enemy closes (drone + chase + heartbeat
+    // all ride this bus), keeping distinct layers but rising in dread.
+    const musicTarget = config.audio.musicBaseGain + musicSwell(nearestEnemy);
+    this.musicBus.gain.value += (musicTarget - this.musicBus.gain.value) * Math.min(1, dt * 2);
+
+    // Rain gets louder the closer the player is to a window.
+    if (this.rainGain) {
+      const rainTarget = rainGainForWindow(nearestWindow);
+      this.rainGain.gain.value += (rainTarget - this.rainGain.gain.value) * Math.min(1, dt * 3);
+    }
 
     // Random house creaks, far away on purpose.
     this.creakTimer -= dt;
@@ -384,6 +460,30 @@ export class AudioEngine {
 
   hideRustle(): void {
     if (this.ctx) this.thump(this.sfxBus, 1100, 0.25, 0.3, 'highpass');
+  }
+
+  /** A lightning rumble — deep crack, body, and a long low decay. Fired (after a
+   *  realistic delay) when the weather system flashes. */
+  thunder(): void {
+    if (!this.ctx) return;
+    const ctx = this.ctx;
+    const a = config.audio;
+    const src = ctx.createBufferSource();
+    src.buffer = this.noiseBuffer(3.6);
+    const lp = ctx.createBiquadFilter();
+    lp.type = 'lowpass';
+    lp.frequency.setValueAtTime(240, ctx.currentTime);
+    lp.frequency.exponentialRampToValueAtTime(55, ctx.currentTime + 3);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, ctx.currentTime);
+    g.gain.exponentialRampToValueAtTime(a.thunderGain, ctx.currentTime + 0.12); // crack
+    g.gain.exponentialRampToValueAtTime(a.thunderGain * 0.4, ctx.currentTime + 0.7); // body
+    g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 3.4); // rumble tail
+    src.connect(lp).connect(g).connect(this.ambientBus);
+    src.start();
+    src.stop(ctx.currentTime + 3.5);
+    // Sub-bass sweep for the chest-thump.
+    this.tone(this.ambientBus, 48, 2.6, a.thunderGain * 0.5, 'sine', 26);
   }
 
   /** A distant, muffled stair-creak + heavy footfall — a stuffy moving floors. */

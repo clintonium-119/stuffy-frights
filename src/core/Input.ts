@@ -41,7 +41,10 @@ export class Input {
   }
 
   requestPointerLock(): void {
-    this.target?.requestPointerLock();
+    // Swallow benign rejections (e.g. the request races a document change or is
+    // denied) so they don't surface as an uncaught promise in the console.
+    const r = this.target?.requestPointerLock() as unknown as Promise<void> | undefined;
+    if (r && typeof r.catch === 'function') r.catch(() => {});
   }
 
   exitPointerLock(): void {

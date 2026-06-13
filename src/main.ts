@@ -223,6 +223,12 @@ const hud = new HUD(ui);
 const menus = new Menus(ui);
 const map = new MapOverlay(house, ui);
 const audio = new AudioEngine();
+// Thunder follows each lightning flash after a realistic delay.
+weather.onLightning = () => {
+  const a = config.audio;
+  const delay = a.thunderDelayMin + Math.random() * (a.thunderDelayMax - a.thunderDelayMin);
+  window.setTimeout(() => audio.thunder(), delay * 1000);
+};
 
 interactions.add({
   position: keyWorld.clone().add(new THREE.Vector3(0, 0.5, 0)),
@@ -453,7 +459,11 @@ engine.addUpdatable({
     hud.setStamina(player.stamina, player.staminaLocked);
     hud.setThreat(jumpscare.running ? 0 : nearest);
     audio.setListener(player.position, player.yaw);
-    audio.update(dt, nearest, anyChasing);
+    let nearestWindow = Infinity;
+    for (const wp of world.windowWorldPositions) {
+      nearestWindow = Math.min(nearestWindow, wp.distanceTo(player.position));
+    }
+    audio.update(dt, nearest, anyChasing, nearestWindow);
 
     if (map.visible) map.update(player.position.x, player.position.z, player.yaw, player.floorIndex);
 

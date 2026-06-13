@@ -118,6 +118,23 @@ export interface GameConfig {
     flashDecaySeconds: number;
   };
 
+  audio: {
+    /** Rain bed gain at a window (close) vs far from any window. */
+    rainMaxGain: number;
+    rainMinGain: number;
+    /** Distance (m) over which rain fades from max (at glass) to min. */
+    rainWindowFalloff: number;
+    /** Music bed base gain + the extra it swells by as the enemy closes. */
+    musicBaseGain: number;
+    musicSwellMax: number;
+    /** Enemy distance (m) at/under which the swell ramps in. */
+    musicSwellRange: number;
+    /** Thunder after a lightning flash: delay range (s) + peak gain. */
+    thunderDelayMin: number;
+    thunderDelayMax: number;
+    thunderGain: number;
+  };
+
   visibility: {
     /** Hex color + intensity of the global gloom (never zero — "not pitch black"). */
     ambientColor: number;
@@ -253,6 +270,18 @@ export const config: GameConfig = {
     strikeIntervalJitter: 9,
     flashIntensity: 12.0, // peak per-window flash-light spill (short range, falls off fast)
     flashDecaySeconds: 0.45,
+  },
+
+  audio: {
+    rainMaxGain: 0.34, // right by a window
+    rainMinGain: 0.04, // deep inside / windowless
+    rainWindowFalloff: 9,
+    musicBaseGain: 0.5,
+    musicSwellMax: 0.5, // bed up to ~1.0 when an enemy is right on you
+    musicSwellRange: 14,
+    thunderDelayMin: 0.7,
+    thunderDelayMax: 2.6,
+    thunderGain: 0.6,
   },
 
   flashlight: {
