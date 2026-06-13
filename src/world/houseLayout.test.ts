@@ -69,6 +69,7 @@ describe('house layout integrity', () => {
   it('every marker sits on a walkable cell', () => {
     const markers: { floor: number; x: number; z: number }[] = [
       house.playerSpawn,
+      ...house.playerSpawns,
       ...house.enemySpawns.map((e) => e.pos),
       ...house.hidingSpots.map((h) => h.pos),
       ...house.chargingStations,
@@ -84,6 +85,7 @@ describe('house layout integrity', () => {
   it('reaches every gameplay target from spawn (grid walk)', () => {
     const seen = reachableFrom(house.playerSpawn, false);
     const targets = [
+      ...house.playerSpawns,
       ...house.keyCandidates,
       ...house.exits.map((e) => e.pos),
       ...house.chargingStations,

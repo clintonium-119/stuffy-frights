@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest';
-import { Objectives, rollObjectives } from './Objectives';
+import { Objectives, rollObjectives, keyExclusion } from './Objectives';
 import { house } from '../world/houseLayout';
+
+const ck = (c: { floor: number; x: number; z: number }) => `${c.floor}:${c.x},${c.z}`;
 
 describe('objective randomization', () => {
   it('is deterministic per seed', () => {
@@ -9,24 +11,53 @@ describe('objective randomization', () => {
     expect(a).toEqual(b);
   });
 
-  it('always picks from the candidate pool and a real exit', () => {
+  it('always picks a real key candidate, a real exit, and a real spawn', () => {
     for (let seed = 0; seed < 50; seed++) {
       const roll = rollObjectives(house, seed * 7919 + 3);
       expect(house.keyCandidates).toContainEqual(roll.keyLocation);
       expect(['A', 'B', 'C']).toContain(roll.correctExit);
+      expect(house.playerSpawns).toContainEqual(roll.playerSpawn);
     }
   });
 
-  it('covers every candidate and every exit across many seeds', () => {
-    const keys = new Set<string>();
-    const exits = new Set<string>();
-    for (let seed = 0; seed < 200; seed++) {
+  it('places the key off the main floor the large majority of the time', () => {
+    let mainCount = 0;
+    const N = 300;
+    for (let seed = 0; seed < N; seed++) {
       const roll = rollObjectives(house, seed * 104729 + 17);
-      keys.add(`${roll.keyLocation.floor}:${roll.keyLocation.x},${roll.keyLocation.z}`);
-      exits.add(roll.correctExit);
+      if (roll.keyLocation.floor === 1) mainCount++;
     }
-    expect(keys.size).toBe(house.keyCandidates.length);
-    expect(exits).toEqual(new Set(['A', 'B', 'C']));
+    expect(mainCount / N).toBeLessThan(0.2); // rarely on the main floor
+  });
+
+  it('never places the key in an excluded cell (spawn/connected room or stair-adjacent)', () => {
+    for (let seed = 0; seed < 300; seed++) {
+      const roll = rollObjectives(house, seed * 7919 + 11);
+      const excl = keyExclusion(house, roll.playerSpawn);
+      expect(excl.has(ck(roll.keyLocation)), `seed ${seed}: key in excluded cell`).toBe(false);
+    }
+  });
+
+  it('spawns are all main-floor and away from stairs; the pick varies by seed', () => {
+    const stairCells = new Set<string>();
+    for (const s of house.stairs)
+      for (const fl of [s.lower, s.upper]) for (const c of s.cells) stairCells.add(`${fl}:${c.x},${c.z}`);
+    const stairAdjacent = (c: { floor: number; x: number; z: number }) =>
+      [
+        [0, 0],
+        [1, 0],
+        [-1, 0],
+        [0, 1],
+        [0, -1],
+      ].some(([dx, dz]) => stairCells.has(`${c.floor}:${c.x + dx},${c.z + dz}`));
+    expect(house.playerSpawns.length).toBeGreaterThanOrEqual(3);
+    for (const s of house.playerSpawns) {
+      expect(s.floor).toBe(1);
+      expect(stairAdjacent(s), `spawn ${ck(s)} is stair-adjacent`).toBe(false);
+    }
+    const picked = new Set<string>();
+    for (let seed = 0; seed < 100; seed++) picked.add(ck(rollObjectives(house, seed * 31 + 5).playerSpawn));
+    expect(picked.size).toBeGreaterThanOrEqual(2); // multiple spawns actually used
   });
 });
 

@@ -35,7 +35,7 @@ const BASEMENT = [
 const MAIN = [
   '###############',
   '#H...#.B.#....#',
-  '#....+...+..K.#',
+  '#.P..+...+.PK.#',
   '#....#...#.E..#',
   '##+####+####+##',
   '#C...v...#...D#',
@@ -45,7 +45,7 @@ const MAIN = [
   '#...H#...#H...#',
   '#....#...#....#',
   '#S...+.P.+....#',
-  '#S.K.#...#....#',
+  '#S.K.#...#..P.#',
   '#S...#.A.#...C#',
   '###############',
 ];
@@ -139,6 +139,7 @@ export function parseLayout(): House {
     width,
     depth,
     playerSpawn: { floor: 1, x: 0, z: 0 },
+    playerSpawns: [],
     enemySpawns: [],
     hidingSpots: [],
     chargingStations: [],
@@ -182,8 +183,11 @@ export function parseLayout(): House {
         const pos: CellPos = { floor, x, z };
         switch (ch) {
           case 'P':
-            house.playerSpawn = pos;
-            sawSpawn = true;
+            house.playerSpawns.push(pos);
+            if (!sawSpawn) {
+              house.playerSpawn = pos; // first P = back-compat default
+              sawSpawn = true;
+            }
             break;
           case 'E': {
             const enemy = ENEMY_AT[`${f}:${x},${z}`];

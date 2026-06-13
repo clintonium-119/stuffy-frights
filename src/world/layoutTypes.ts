@@ -71,7 +71,10 @@ export interface House {
   grids: CellKind[][][];
   width: number;
   depth: number;
+  /** First spawn (back-compat); the full set lives in playerSpawns. */
   playerSpawn: CellPos;
+  /** All candidate player spawns (main floor); a run picks one by seed. */
+  playerSpawns: CellPos[];
   enemySpawns: EnemySpawnDef[];
   hidingSpots: HidingSpotDef[];
   chargingStations: CellPos[];

@@ -178,6 +178,9 @@ noiseBus.subscribe((e) => {
 const gs = new GameState();
 const seed = (Math.random() * 0xffffffff) >>> 0;
 const objectives = new Objectives(house, seed);
+// Re-spawn the player at this run's seeded main-floor spawn point.
+const spawnWorld = world.markerWorld(objectives.setup.playerSpawn);
+player.teleport(spawnWorld.x, spawnWorld.y, spawnWorld.z, Math.PI);
 const keyProp = new KeyProp();
 engine.scene.add(keyProp.group);
 const keyWorld = world.markerWorld(objectives.setup.keyLocation);
