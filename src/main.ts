@@ -13,6 +13,7 @@ import { VRMessage } from './vr/VRMessage';
 import { VRHud } from './vr/VRHud';
 import { VRMap } from './vr/VRMap';
 import { VRFade } from './vr/VRFade';
+import { VRMenu, type VRMenuItem } from './vr/VRMenu';
 import { PlayerController } from './player/PlayerController';
 import { InteractionSystem } from './player/Interaction';
 import { Flashlight } from './player/Flashlight';
@@ -40,15 +41,17 @@ import { HUD } from './ui/HUD';
 import { Menus, ENEMY_NAMES } from './ui/Menus';
 import { AudioEngine } from './audio/AudioEngine';
 import { SettingsStore } from './core/Settings';
-import { applyDifficulty, DIFFICULTY_META, DIFFICULTY_ORDER } from './core/difficulty';
+import { applyDifficulty, DIFFICULTY_META, DIFFICULTY_ORDER, type DifficultyLevel } from './core/difficulty';
 
 // Apply the persisted difficulty into `config` BEFORE any system reads it — every
 // importer shares the same config object, so this one in-place merge sets the
 // whole run's knobs. An active ironman ladder dictates the level (its current
 // rung); otherwise the player's last choice. Switching persists + reloads.
 const settings = new SettingsStore();
-const ironmanOnBoot = settings.isIronmanActive();
-const bootDifficulty = ironmanOnBoot
+// `let` so the VR menu can switch difficulty / ironman live (applyDifficulty is
+// safe to re-apply; see difficulty.ts). Desktop still persists + reloads.
+let ironmanOnBoot = settings.isIronmanActive();
+let bootDifficulty = ironmanOnBoot
   ? settings.getIronman().currentLevel
   : settings.getLastDifficulty();
 applyDifficulty(bootDifficulty);
@@ -89,6 +92,7 @@ let xrControls: XRControllerSource | null = null;
 const vrMessage = new VRMessage();
 const vrHud = new VRHud();
 const vrFade = new VRFade();
+const vrMenu = new VRMenu();
 /** Which head-locked overlay is up (drives the controller poll in onFrame). */
 let vrOverlay: 'none' | 'gameover' | 'win' | 'pause' = 'none';
 // VR mirrors of DOM-only HUD state (prompt / toast / charging / threat / fades).
@@ -108,8 +112,9 @@ engine.renderer.xr.addEventListener('sessionstart', () => {
   controls.add(xrControls);
   vrHud.show(engine.camera);
   vrFade.show(engine.camera);
-  // Entering VR from the title drops straight into a run.
-  if (gs.state === 'menu') startRun();
+  // Show the in-headset main menu (choose difficulty / ironman) instead of
+  // auto-starting, unless a run is already underway.
+  if (gs.state === 'menu') openVRMenu();
 });
 engine.renderer.xr.addEventListener('sessionend', () => {
   player.lookLocked = false;
@@ -122,6 +127,7 @@ engine.renderer.xr.addEventListener('sessionend', () => {
   vrFade.hide();
   vrMap.hide();
   vrMessage.hide();
+  vrMenu.hide();
   vrOverlay = 'none';
 });
 
@@ -532,6 +538,7 @@ window.addEventListener('keydown', resumeAudio, { capture: true });
 function enterPlayingChrome(): void {
   menus.hide();
   vrMessage.hide();
+  vrMenu.hide();
   vrOverlay = 'none';
   hud.show(true);
   hud.setBattery(battery.level, battery.isLow);
@@ -594,6 +601,50 @@ function playAgain(): void {
   startNewRun();
   if (!gs.transition('retry')) return;
   enterPlayingChrome();
+}
+
+/** Launch a fresh run in place from the VR menu (handles menu or post-death). */
+function launchRun(): void {
+  startNewRun();
+  const event = gs.state === 'menu' ? 'start' : 'retry';
+  if (!gs.transition(event)) return;
+  enterPlayingChrome();
+}
+
+/** Switch difficulty live (config re-applies cleanly) and refresh HUD/menu label. */
+function setVRDifficulty(level: DifficultyLevel): void {
+  if (ironmanOnBoot) settings.abandonIronman();
+  ironmanOnBoot = false;
+  bootDifficulty = level;
+  applyDifficulty(level);
+  settings.setLastDifficulty(level);
+}
+
+/** Build + show the in-headset main menu. */
+function openVRMenu(): void {
+  const items: VRMenuItem[] = [
+    { label: `PLAY — ${DIFFICULTY_META[bootDifficulty].name}`, onSelect: () => launchRun() },
+    ...DIFFICULTY_ORDER.map((lvl) => ({
+      label: DIFFICULTY_META[lvl].name,
+      onSelect: () => {
+        setVRDifficulty(lvl);
+        launchRun();
+      },
+    })),
+    {
+      label: 'IRONMAN',
+      onSelect: () => {
+        settings.startIronman();
+        ironmanOnBoot = true;
+        bootDifficulty = settings.getIronman().currentLevel;
+        applyDifficulty(bootDifficulty);
+        launchRun();
+      },
+    },
+  ];
+  vrMessage.hide();
+  vrOverlay = 'none';
+  vrMenu.show(engine.camera, 'STUFFY FRIGHTS', items);
 }
 
 /**
@@ -833,8 +884,16 @@ engine.onFrame = (dt) => {
           vrOverlay = 'none';
         }
       } else if (i?.interact) {
-        // Game-over / win → in-place replay; stays in the VR session.
-        playAgain();
+        // Game-over / win → back to the in-headset main menu (stays in VR).
+        openVRMenu();
+      }
+    } else if (vrMenu.visible) {
+      xrControls?.sample();
+      const i = xrControls?.intent;
+      if (i) {
+        const nav = xrControls?.takeMenuNav() ?? 0;
+        if (nav !== 0) vrMenu.move(nav);
+        if (i.interact) vrMenu.select();
       }
     }
   } else {

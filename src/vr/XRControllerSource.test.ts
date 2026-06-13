@@ -95,6 +95,20 @@ describe('XRControllerSource mapping', () => {
     expect(src.takeSnapTurn()).toBeCloseTo(step, 6);
   });
 
+  it('left stick-Y flick steps the menu (up = -1, down = +1), once per flick', () => {
+    // Stick forward (negative Y) → menu up.
+    const up = new XRControllerSource(fakeRenderer(pad([0, 0, 0, -1], []), undefined));
+    up.sample();
+    expect(up.takeMenuNav()).toBe(-1);
+    expect(up.takeMenuNav()).toBe(0); // consumed
+    up.sample(); // still held — no re-fire
+    expect(up.takeMenuNav()).toBe(0);
+    // Stick back (positive Y) → menu down.
+    const down = new XRControllerSource(fakeRenderer(pad([0, 0, 0, 1], []), undefined));
+    down.sample();
+    expect(down.takeMenuNav()).toBe(1);
+  });
+
   it('zeroes movement when no session is active', () => {
     const src = new XRControllerSource({ xr: { getSession: () => null } } as unknown as THREE.WebGLRenderer);
     src.sample();

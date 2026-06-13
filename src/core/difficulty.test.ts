@@ -103,3 +103,18 @@ describe('difficulty model', () => {
     expect(e.battery.chargeRatio).toBeLessThan(1.2); // strictly faster than base
   });
 });
+
+describe('applyDifficulty live switching', () => {
+  it('restores the base config between switches (no stale carry-over)', () => {
+    // easy overrides chargeRatio to 1.0; hard does NOT touch chargeRatio, so
+    // after easy → hard it must revert to the base (1.2), not stay at 1.0.
+    applyDifficulty('easy');
+    expect(config.battery.chargeRatio).toBeCloseTo(1.0, 5);
+    applyDifficulty('hard');
+    expect(config.battery.chargeRatio).toBeCloseTo(1.2, 5);
+    // A key both presets override switches cleanly.
+    expect(config.ai.visionLightOn).toBe(DIFFICULTY_PRESETS.hard.ai!.visionLightOn);
+    applyDifficulty('easy');
+    expect(config.ai.visionLightOn).toBe(DIFFICULTY_PRESETS.easy.ai!.visionLightOn);
+  });
+});

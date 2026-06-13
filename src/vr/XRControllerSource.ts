@@ -53,6 +53,9 @@ export class XRControllerSource implements ControlSource {
   // Right-stick snap-turn — accumulates radians, consumed by takeSnapTurn().
   private snapArmed = true;
   private pendingSnap = 0;
+  // Left-stick Y flick — menu navigation (consumed by takeMenuNav()).
+  private navArmed = true;
+  private pendingNav = 0;
 
   private rightIndex = -1;
   private tmpPos = new THREE.Vector3();
@@ -92,6 +95,15 @@ export class XRControllerSource implements ControlSource {
       this._moveX = this._moveY = 0;
       this._sprintHeld = false;
     }
+    // Left stick Y → menu navigation flicks (up = stick forward = negative Y).
+    const ly = left?.axes[STICK_Y] ?? 0;
+    if (this.navArmed && Math.abs(ly) > cfg.snapTurnThreshold) {
+      this.pendingNav += ly < 0 ? -1 : 1;
+      this.navArmed = false;
+    } else if (Math.abs(ly) < cfg.snapTurnRelease) {
+      this.navArmed = true;
+    }
+
     const leftGrip = pressed(left, GRIP, cfg.triggerThreshold);
     const leftX = pressed(left, BTN_PRIMARY, cfg.triggerThreshold);
     if (leftGrip && !this.prevLeftGrip) this._crouchToggle = true;
@@ -149,6 +161,13 @@ export class XRControllerSource implements ControlSource {
     const s = this.pendingSnap;
     this.pendingSnap = 0;
     return s;
+  }
+
+  /** Pending menu step: -1 (up), +1 (down), or 0; resets when read. */
+  takeMenuNav(): number {
+    const n = Math.sign(this.pendingNav);
+    this.pendingNav = 0;
+    return n;
   }
 
   /**

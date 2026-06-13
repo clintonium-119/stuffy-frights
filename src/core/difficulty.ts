@@ -184,9 +184,23 @@ function deepMerge(target: Mergeable, src: Mergeable): void {
 }
 
 /**
+ * Snapshot of the base (un-merged) config, captured the first time
+ * applyDifficulty runs. Lets later calls restore the baseline before merging a
+ * different level, so switching difficulty live (VR menu) doesn't leave stale
+ * values from the previously-applied preset.
+ */
+let baseConfig: GameConfig | null = null;
+
+/**
  * Apply a difficulty level's overrides into the shared `config` object in place.
- * Call once at boot before any system reads `config`. Idempotent per level.
+ * Safe to call repeatedly with different levels — it restores the base config
+ * first, so switches are clean (not cumulative).
  */
 export function applyDifficulty(level: DifficultyLevel): void {
+  if (!baseConfig) {
+    baseConfig = structuredClone(config);
+  } else {
+    deepMerge(config as unknown as Mergeable, baseConfig as unknown as Mergeable);
+  }
   deepMerge(config as unknown as Mergeable, DIFFICULTY_PRESETS[level] as Mergeable);
 }
