@@ -48,12 +48,113 @@ function speckle(ctx: CanvasRenderingContext2D, size: number, color: string, n: 
   ctx.globalAlpha = 1;
 }
 
+/** Dark scuff streaks + a few gouges/stains — wear on a wood floor. */
+function scuffs(ctx: CanvasRenderingContext2D, size: number) {
+  ctx.strokeStyle = '#2c2118';
+  for (let i = 0; i < 26; i++) {
+    const x = Math.random() * size;
+    const y = Math.random() * size;
+    const len = 6 + Math.random() * 30;
+    const a = (Math.random() - 0.5) * 0.5; // mostly along the grain
+    ctx.globalAlpha = 0.05 + Math.random() * 0.18;
+    ctx.lineWidth = 0.5 + Math.random() * 1.5;
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.lineTo(x + Math.cos(a) * len, y + Math.sin(a) * len);
+    ctx.stroke();
+  }
+  // Occasional dark stain blotches.
+  for (let i = 0; i < 5; i++) {
+    ctx.fillStyle = '#3a2c1d';
+    ctx.globalAlpha = 0.1 + Math.random() * 0.14;
+    ctx.beginPath();
+    ctx.ellipse(
+      Math.random() * size,
+      Math.random() * size,
+      6 + Math.random() * 16,
+      5 + Math.random() * 12,
+      Math.random() * Math.PI,
+      0,
+      Math.PI * 2
+    );
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+}
+
+/** A peeled/torn wallpaper patch revealing a darker layer beneath. */
+function tornPatch(ctx: CanvasRenderingContext2D, size: number, under: string) {
+  for (let i = 0; i < 3; i++) {
+    const x = Math.random() * size;
+    const y = Math.random() * size;
+    const w = 16 + Math.random() * 36;
+    const h = 22 + Math.random() * 48;
+    ctx.fillStyle = under;
+    ctx.globalAlpha = 0.85;
+    ctx.beginPath();
+    // Ragged torn edge: a jittered polygon.
+    const steps = 10;
+    for (let s = 0; s <= steps; s++) {
+      const t = (s / steps) * Math.PI * 2;
+      const rr = 0.5 + Math.random() * 0.5;
+      const px = x + Math.cos(t) * w * 0.5 * rr;
+      const py = y + Math.sin(t) * h * 0.5 * rr;
+      if (s === 0) ctx.moveTo(px, py);
+      else ctx.lineTo(px, py);
+    }
+    ctx.closePath();
+    ctx.fill();
+    // A curled lighter edge along the top of the tear.
+    ctx.strokeStyle = '#9c917c';
+    ctx.globalAlpha = 0.3;
+    ctx.lineWidth = 2;
+    ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+}
+
 function paintConcrete(ctx: CanvasRenderingContext2D, size: number) {
   ctx.fillStyle = '#5a5d58';
   ctx.fillRect(0, 0, size, size);
   speckle(ctx, size, '#454843', 900, 3);
   speckle(ctx, size, '#6d706a', 500, 2);
   speckle(ctx, size, '#3a3e3a', 250, 4);
+  waterDamage(ctx, size);
+}
+
+/** Damp, neglected concrete: dark water blooms, efflorescence rings, drips. */
+function waterDamage(ctx: CanvasRenderingContext2D, size: number) {
+  // Irregular dark blooms with a slightly darker core.
+  for (let i = 0; i < 6; i++) {
+    const x = Math.random() * size;
+    const y = Math.random() * size;
+    const r = 14 + Math.random() * 40;
+    const grd = ctx.createRadialGradient(x, y, 1, x, y, r);
+    grd.addColorStop(0, 'rgba(38,46,44,0.42)');
+    grd.addColorStop(0.6, 'rgba(44,52,50,0.22)');
+    grd.addColorStop(1, 'rgba(58,62,58,0)');
+    ctx.fillStyle = grd;
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.fill();
+    // Pale efflorescence ring at the bloom edge.
+    ctx.strokeStyle = 'rgba(150,156,148,0.18)';
+    ctx.lineWidth = 1 + Math.random() * 1.5;
+    ctx.beginPath();
+    ctx.arc(x, y, r * (0.7 + Math.random() * 0.2), 0, Math.PI * 2);
+    ctx.stroke();
+  }
+  // Vertical drip streaks (read as wall runoff).
+  ctx.strokeStyle = 'rgba(34,40,38,0.3)';
+  for (let i = 0; i < 10; i++) {
+    const x = Math.random() * size;
+    const y0 = Math.random() * size * 0.4;
+    ctx.lineWidth = 0.5 + Math.random() * 2;
+    ctx.beginPath();
+    ctx.moveTo(x, y0);
+    ctx.lineTo(x + (Math.random() - 0.5) * 4, y0 + 20 + Math.random() * 60);
+    ctx.stroke();
+  }
 }
 
 function paintMainWallpaper(ctx: CanvasRenderingContext2D, size: number) {
@@ -70,6 +171,7 @@ function paintMainWallpaper(ctx: CanvasRenderingContext2D, size: number) {
     ctx.stroke();
   }
   speckle(ctx, size, '#3f3a30', 350, 5); // grime
+  tornPatch(ctx, size, '#544a3b'); // peeled sections revealing the layer beneath
 }
 
 function paintBedroomWallpaper(ctx: CanvasRenderingContext2D, size: number) {
@@ -84,6 +186,7 @@ function paintBedroomWallpaper(ctx: CanvasRenderingContext2D, size: number) {
     }
   }
   speckle(ctx, size, '#4d4347', 300, 4);
+  tornPatch(ctx, size, '#5b5054');
 }
 
 function paintPlanks(ctx: CanvasRenderingContext2D, size: number, base: string, gap: string) {
@@ -96,6 +199,36 @@ function paintPlanks(ctx: CanvasRenderingContext2D, size: number, base: string, 
     ctx.fillRect(off, y, 2, 24);
   }
   speckle(ctx, size, gap, 400, 2);
+  scuffs(ctx, size); // marks + gouges + stains
+}
+
+/** A radial spider-web (transparent background) for attic cobwebs. */
+function paintCobweb(ctx: CanvasRenderingContext2D, size: number) {
+  ctx.clearRect(0, 0, size, size);
+  const c = size / 2;
+  ctx.strokeStyle = 'rgba(228,228,222,0.55)';
+  ctx.lineWidth = 1.2;
+  const spokes = 9;
+  for (let i = 0; i < spokes; i++) {
+    const a = (i / spokes) * Math.PI * 2;
+    ctx.beginPath();
+    ctx.moveTo(c, c);
+    ctx.lineTo(c + Math.cos(a) * c, c + Math.sin(a) * c);
+    ctx.stroke();
+  }
+  for (let r = c * 0.18; r < c; r += c * 0.16) {
+    ctx.beginPath();
+    for (let i = 0; i <= spokes; i++) {
+      const a = (i / spokes) * Math.PI * 2;
+      const jr = r * (0.9 + Math.random() * 0.16);
+      const px = c + Math.cos(a) * jr;
+      const py = c + Math.sin(a) * jr;
+      if (i === 0) ctx.moveTo(px, py);
+      else ctx.lineTo(px, py);
+    }
+    ctx.closePath();
+    ctx.stroke();
+  }
 }
 
 interface FloorMaterials {
@@ -458,6 +591,43 @@ export class HouseBuilder {
         frame.position.set(wx, y0, wz);
         group.add(frame);
       }
+    }
+
+    // ---- Attic cobwebs: translucent webs tucked into ceiling corners and
+    // rafters. Purely decorative — no colliders, never block pathing/sight.
+    const atticFloorIdx = house.grids.length - 1;
+    const webTex = canvasTexture(128, paintCobweb);
+    const webMat = new THREE.MeshBasicMaterial({
+      map: webTex,
+      transparent: true,
+      opacity: 0.5,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+    });
+    const atticY = floorY(atticFloorIdx);
+    const ceil = atticY + WALL_HEIGHT;
+    const centerX = (house.width / 2) * CELL_SIZE;
+    const centerZ = (house.depth / 2) * CELL_SIZE;
+    // Corner webs (cell coords) angled across the wall/ceiling junction to face
+    // the room, plus a couple smaller rafter webs.
+    const webSpots: { x: number; z: number; size: number }[] = [
+      { x: 1.4, z: 1.4, size: 1.6 },
+      { x: 13.6, z: 1.4, size: 1.5 },
+      { x: 1.4, z: 13.6, size: 1.4 },
+      { x: 13.6, z: 13.6, size: 1.7 },
+      { x: 7, z: 2, size: 1.0 },
+      { x: 4.5, z: 8, size: 0.9 },
+      { x: 10.5, z: 11, size: 1.2 },
+    ];
+    for (const s of webSpots) {
+      const web = new THREE.Mesh(new THREE.PlaneGeometry(s.size, s.size), webMat);
+      const wx = s.x * CELL_SIZE;
+      const wz = s.z * CELL_SIZE;
+      // Face the room center, tucked high and tilted down like a hanging web.
+      web.position.set(wx, ceil - 0.5, wz);
+      web.rotation.y = Math.atan2(centerX - wx, centerZ - wz);
+      web.rotation.x = 0.5; // tilt the top back into the corner
+      group.add(web);
     }
 
     // ---- Moonlight pools: small cool lights at a few windows (no shadows).
