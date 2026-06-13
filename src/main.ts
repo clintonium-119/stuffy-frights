@@ -6,6 +6,9 @@ import { ControlManager, KeyboardMouseSource } from './core/Controls';
 import { isMobile } from './core/Platform';
 import { TouchControls } from './ui/TouchControls';
 import { OrientationGate } from './ui/OrientationGate';
+import { EnterVRButton } from './vr/EnterVRButton';
+import { XRSession } from './vr/XRSession';
+import { XRControllerSource } from './vr/XRControllerSource';
 import { PlayerController } from './player/PlayerController';
 import { InteractionSystem } from './player/Interaction';
 import { Flashlight } from './player/Flashlight';
@@ -74,6 +77,29 @@ const mobile = isMobile();
 const touch = mobile ? new TouchControls(ui) : null;
 if (touch) controls.add(touch);
 if (mobile) new OrientationGate(ui);
+
+// VR: an Enter-VR button appears on the title when the device supports it.
+const enterVR = new EnterVRButton(ui, engine.renderer);
+let xrSession: XRSession | null = null;
+let xrControls: XRControllerSource | null = null;
+engine.renderer.xr.addEventListener('sessionstart', () => {
+  // Headset owns the camera + look; the body still moves from the left stick.
+  player.lookLocked = true;
+  player.cameraOwnedExternally = true;
+  xrSession = new XRSession(engine, player);
+  xrControls = new XRControllerSource(engine.renderer);
+  controls.add(xrControls);
+  // Entering VR from the title drops straight into a run.
+  if (gs.state === 'menu') startRun();
+});
+engine.renderer.xr.addEventListener('sessionend', () => {
+  player.lookLocked = false;
+  player.cameraOwnedExternally = false;
+  if (xrControls) controls.remove(xrControls);
+  xrControls = null;
+  xrSession?.dispose();
+  xrSession = null;
+});
 
 engine.scene.background = new THREE.Color(config.visibility.fogColor);
 engine.scene.fog = new THREE.FogExp2(
@@ -436,8 +462,9 @@ function startRun(): void {
     m.tier,
     ironmanOnBoot ? `Ironman ${settings.ironmanRung()}/${DIFFICULTY_ORDER.length}` : null
   );
+  enterVR.hide();
   if (mobile) touch?.show();
-  else input.requestPointerLock();
+  else if (!engine.renderer.xr.isPresenting) input.requestPointerLock();
 }
 
 menus.setCurrentDifficulty(bootDifficulty);
@@ -467,7 +494,7 @@ menus.onResume = () => {
   if (!gs.transition('resume')) return;
   menus.hide();
   if (mobile) touch?.show();
-  else input.requestPointerLock();
+  else if (!engine.renderer.xr.isPresenting) input.requestPointerLock();
 };
 menus.onRetry = () => window.location.reload(); // fresh seed, fresh house
 
@@ -613,7 +640,12 @@ engine.addUpdatable({
 });
 
 engine.onFrame = (dt) => {
-  flashlight.update(dt, engine.camera);
+  if (xrSession) {
+    xrSession.sync();
+    flashlight.update(dt, engine.camera, xrControls?.rightControllerPose() ?? undefined);
+  } else {
+    flashlight.update(dt, engine.camera);
+  }
   world.updateFixtures(dt);
   world.updateWindows(dt, weather.flash);
   for (const s of stations) s.updateVisual(dt);

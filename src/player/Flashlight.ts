@@ -53,20 +53,38 @@ export class Flashlight {
     return this.on && this.level > 0;
   }
 
-  /** Per-frame: follow the camera with lag; apply dim/flicker. */
-  update(dt: number, camera: THREE.PerspectiveCamera): void {
+  /**
+   * Per-frame: follow the camera with handheld lag, OR — when `aim` is given
+   * (VR right controller) — track that pose 1:1 so the torch aims independently
+   * of where the head looks. Desktop/mobile (no `aim`) keep the camera-follow.
+   */
+  update(
+    dt: number,
+    camera: THREE.PerspectiveCamera,
+    aim?: { position: THREE.Vector3; forward: THREE.Vector3 }
+  ): void {
     const f = config.flashlight;
-    this.light.position.copy(camera.position);
-    // Slightly below the eye, like a handheld torch.
-    this.light.position.y -= 0.12;
-
-    const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
-    const idealTarget = camera.position.clone().add(forward.multiplyScalar(8));
-    if (!this.initialized) {
+    let idealTarget: THREE.Vector3;
+    if (aim) {
+      // Controller-aimed: snap to the hand pose (the physical hand already
+      // supplies natural motion — added sway would feel laggy).
+      this.light.position.copy(aim.position);
+      idealTarget = aim.position.clone().add(aim.forward.clone().multiplyScalar(8));
       this.smoothedTarget.copy(idealTarget);
       this.initialized = true;
+    } else {
+      this.light.position.copy(camera.position);
+      // Slightly below the eye, like a handheld torch.
+      this.light.position.y -= 0.12;
+
+      const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
+      idealTarget = camera.position.clone().add(forward.multiplyScalar(8));
+      if (!this.initialized) {
+        this.smoothedTarget.copy(idealTarget);
+        this.initialized = true;
+      }
+      this.smoothedTarget.lerp(idealTarget, Math.min(1, f.swayLag * dt));
     }
-    this.smoothedTarget.lerp(idealTarget, Math.min(1, f.swayLag * dt));
     this.light.target.position.copy(this.smoothedTarget);
 
     if (!this.isOn) {

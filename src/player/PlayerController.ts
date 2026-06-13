@@ -41,6 +41,9 @@ export class PlayerController {
   noiseLevel = 0;
   /** Which floor the player is on — maintained by world floor queries. */
   floorIndex = 1;
+  /** In an XR session the headset/rig owns the camera transform; skip writing
+   *  camera.position/quaternion here (movement + collision still run). */
+  cameraOwnedExternally = false;
 
   private eyeHeight = config.player.eyeHeightStanding;
   private colliders: ColliderSet;
@@ -157,8 +160,12 @@ export class PlayerController {
     const targetEye = this.isCrouched ? p.eyeHeightCrouched : p.eyeHeightStanding;
     this.eyeHeight += (targetEye - this.eyeHeight) * Math.min(1, p.crouchLerpSpeed * dt);
 
-    this.camera.position.set(this.position.x, this.position.y + this.eyeHeight, this.position.z);
-    this.camera.quaternion.setFromEuler(new THREE.Euler(this.pitch, this.yaw, 0, 'YXZ'));
+    // In VR the headset drives the camera (positioned by the XR rig); writing it
+    // here would fight the pose. Body position/yaw above still update.
+    if (!this.cameraOwnedExternally) {
+      this.camera.position.set(this.position.x, this.position.y + this.eyeHeight, this.position.z);
+      this.camera.quaternion.setFromEuler(new THREE.Euler(this.pitch, this.yaw, 0, 'YXZ'));
+    }
   }
 
   /** View direction on the horizontal plane (for interaction facing checks). */

@@ -27,6 +27,9 @@ export class Engine {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
     this.renderer.setPixelRatio(recommendedPixelRatio());
     this.renderer.setSize(window.innerWidth, window.innerHeight);
+    // WebXR — inert until a session is requested (Enter-VR button). With no
+    // session this does not affect desktop/mobile rendering.
+    this.renderer.xr.enabled = true;
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
