@@ -468,6 +468,10 @@ export class AudioEngine {
     if (!this.ctx) return;
     const ctx = this.ctx;
     const a = config.audio;
+    // The CRACK: a bright, sharp noise burst + a mid slap — the thunderclap that
+    // sells the strike, layered over the low rumble below.
+    this.thump(this.ambientBus, 3600, 0.22, a.thunderGain * 1.5, 'highpass');
+    this.thump(this.ambientBus, 1500, 0.5, a.thunderGain * 1.0, 'bandpass');
     const src = ctx.createBufferSource();
     src.buffer = this.noiseBuffer(3.6);
     const lp = ctx.createBiquadFilter();

@@ -309,6 +309,8 @@ export class HouseBuilder {
           emissive: 0x16223a,
           emissiveIntensity: WINDOW_EMISSIVE_BASE,
           roughness: 0.35,
+          transparent: true,
+          opacity: 0.5, // see-through glass — the rain falls behind it
         });
         for (let x = 2; x < house.width - 2; x += 4) {
           for (const [z, dz] of [
@@ -317,13 +319,16 @@ export class HouseBuilder {
           ] as const) {
             if (grid[z][x] !== 'wall') continue;
             const { x: wx, z: wz } = cellToWorld(x, z);
+            // Glass sits a touch into the room; the rain layer is BEHIND it
+            // (toward the wall) so it reads as rain falling outside, seen through
+            // the glass, rather than streaks painted on the surface.
             const pane = new THREE.Mesh(new THREE.PlaneGeometry(1.0, 1.2), paneMat);
-            pane.position.set(wx, y0 + 1.7, wz + dz * (CELL_SIZE / 2 + 0.02));
+            pane.position.set(wx, y0 + 1.7, wz + dz * (CELL_SIZE / 2 + 0.1));
             if (dz < 0) pane.rotation.y = Math.PI;
             floorGroup.add(pane);
             windowPanes.push(pane);
             windowWorldPositions.push(pane.position.clone());
-            // Rain running on the glass: a scrolling streak overlay just inside.
+            // Rain behind the glass: a scrolling streak plane against the dark wall.
             const rain = new THREE.Mesh(new THREE.PlaneGeometry(1.0, 1.2), rainMat);
             rain.position.set(wx, y0 + 1.7, wz + dz * (CELL_SIZE / 2 + 0.05));
             if (dz < 0) rain.rotation.y = Math.PI;

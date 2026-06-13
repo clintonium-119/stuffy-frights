@@ -197,8 +197,8 @@ export const config: GameConfig = {
     // are cut to a near-black floor — just enough to read silhouettes; the
     // charging-station LEDs and faint windows are the navigation beacons.
     // Basement darkest; attic a touch dim; main/upstairs a hair more.
-    ambientIntensityByFloor: [0.05, 0.08, 0.08, 0.06],
-    hemisphereIntensityByFloor: [0.02, 0.035, 0.035, 0.03],
+    ambientIntensityByFloor: [0.035, 0.06, 0.06, 0.045],
+    hemisphereIntensityByFloor: [0.015, 0.025, 0.025, 0.02],
     fogDensityByFloor: [0.16, 0.11, 0.12, 0.15],
     fogColor: 0x05060a,
     toneExposure: 1.0,
@@ -273,15 +273,15 @@ export const config: GameConfig = {
   },
 
   audio: {
-    rainMaxGain: 0.34, // right by a window
+    rainMaxGain: 0.18, // right by a window (kept soft)
     rainMinGain: 0.04, // deep inside / windowless
     rainWindowFalloff: 9,
     musicBaseGain: 0.5,
     musicSwellMax: 0.5, // bed up to ~1.0 when an enemy is right on you
     musicSwellRange: 14,
-    thunderDelayMin: 0.7,
-    thunderDelayMax: 2.6,
-    thunderGain: 0.6,
+    thunderDelayMin: 0.4, // crack feels connected to the flash
+    thunderDelayMax: 2.4,
+    thunderGain: 0.7,
   },
 
   flashlight: {
