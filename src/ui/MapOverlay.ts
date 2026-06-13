@@ -67,6 +67,11 @@ export class MapOverlay {
     ui.appendChild(this.root);
   }
 
+  /** The live composited map canvas (floor + player marker) — mirrored by the VR map panel. */
+  get mapCanvas(): HTMLCanvasElement {
+    return this.canvas;
+  }
+
   open(): void {
     this.visible = true;
     this.root.style.display = 'flex';

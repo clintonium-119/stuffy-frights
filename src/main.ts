@@ -11,6 +11,8 @@ import { XRSession } from './vr/XRSession';
 import { XRControllerSource } from './vr/XRControllerSource';
 import { VRMessage } from './vr/VRMessage';
 import { VRHud } from './vr/VRHud';
+import { VRMap } from './vr/VRMap';
+import { VRFade } from './vr/VRFade';
 import { PlayerController } from './player/PlayerController';
 import { InteractionSystem } from './player/Interaction';
 import { Flashlight } from './player/Flashlight';
@@ -86,8 +88,17 @@ let xrSession: XRSession | null = null;
 let xrControls: XRControllerSource | null = null;
 const vrMessage = new VRMessage();
 const vrHud = new VRHud();
+const vrFade = new VRFade();
 /** Which head-locked overlay is up (drives the controller poll in onFrame). */
 let vrOverlay: 'none' | 'gameover' | 'win' | 'pause' = 'none';
+// VR mirrors of DOM-only HUD state (prompt / toast / charging / threat / fades).
+let vrPrompt: string | null = null;
+let vrToast: string | null = null;
+let vrToastUntil = 0;
+let vrCharging = false;
+let vrThreat = 0;
+let vrRed = 0;
+let vrBlack = 0;
 engine.renderer.xr.addEventListener('sessionstart', () => {
   // Headset owns the camera + look; the body still moves from the left stick.
   player.lookLocked = true;
@@ -96,6 +107,7 @@ engine.renderer.xr.addEventListener('sessionstart', () => {
   xrControls = new XRControllerSource(engine.renderer);
   controls.add(xrControls);
   vrHud.show(engine.camera);
+  vrFade.show(engine.camera);
   // Entering VR from the title drops straight into a run.
   if (gs.state === 'menu') startRun();
 });
@@ -107,6 +119,8 @@ engine.renderer.xr.addEventListener('sessionend', () => {
   xrSession?.dispose();
   xrSession = null;
   vrHud.hide();
+  vrFade.hide();
+  vrMap.hide();
   vrMessage.hide();
   vrOverlay = 'none';
 });
@@ -324,6 +338,7 @@ director.setKeyLocation(keyWorld);
 const hud = new HUD(ui);
 const menus = new Menus(ui);
 const map = new MapOverlay(house, ui);
+const vrMap = new VRMap(map.mapCanvas);
 const audio = new AudioEngine();
 // Thunder follows each lightning flash after a realistic delay.
 weather.onLightning = () => {
@@ -400,8 +415,14 @@ ui.appendChild(redFlash);
 const blackout = document.createElement('div');
 blackout.style.cssText = 'position:absolute;inset:0;background:#000;opacity:0;pointer-events:none';
 ui.appendChild(blackout);
-jumpscare.onRedFade = (a) => (redFlash.style.opacity = String(a * 0.85));
-jumpscare.onBlackout = (a) => (blackout.style.opacity = String(a));
+jumpscare.onRedFade = (a) => {
+  redFlash.style.opacity = String(a * 0.85);
+  vrRed = a;
+};
+jumpscare.onBlackout = (a) => {
+  blackout.style.opacity = String(a);
+  vrBlack = a;
+};
 jumpscare.onSting = () => audio.sting();
 jumpscare.onGameOver = (enemyId) => {
   gs.transition('gameOverShown');
@@ -410,6 +431,7 @@ jumpscare.onGameOver = (enemyId) => {
   // menu's own near-black background carries the darkness from here.
   redFlash.style.opacity = '0';
   blackout.style.opacity = '0';
+  vrRed = vrBlack = vrThreat = 0; // clear the VR fade so the panel is unobstructed
   settings.recordRun({ difficulty: bootDifficulty, won: false });
   // A death anywhere in an ironman ladder resets it to Easy.
   if (ironmanOnBoot) settings.failIronman();
@@ -438,7 +460,11 @@ for (const enemy of enemies) {
 }
 
 let runSeconds = 0;
-objectives.onMessage = (text) => hud.showMessage(text);
+objectives.onMessage = (text) => {
+  hud.showMessage(text);
+  vrToast = text;
+  vrToastUntil = performance.now() + 3600;
+};
 objectives.onWin = () => {
   gs.transition('win');
   hud.show(false);
@@ -480,8 +506,14 @@ objectives.onWin = () => {
 
 battery.onChange = (level) => hud.setBattery(level, battery.isLow);
 battery.onLowWarning = () => hud.showMessage('The flashlight is dying…');
-charging.onPlugChange = (on) => hud.setCharging(on);
-interactions.onPromptChange = (label) => hud.setPrompt(label);
+charging.onPlugChange = (on) => {
+  hud.setCharging(on);
+  vrCharging = on;
+};
+interactions.onPromptChange = (label) => {
+  hud.setPrompt(label);
+  vrPrompt = label;
+};
 
 menus.onFirstInteraction = () => audio.resumeIfSuspended();
 // Resume audio on the first real input regardless of start path — covers drop-ins
@@ -700,6 +732,7 @@ engine.addUpdatable({
 
     hud.setStamina(player.stamina, player.staminaLocked);
     hud.setThreat(jumpscare.running ? 0 : nearest);
+    vrThreat = jumpscare.running ? 0 : Math.max(0, Math.min(1, 1 - nearest / 10));
     audio.setListener(player.position, player.yaw);
     let nearestWindow = Infinity;
     for (const wp of world.windowWorldPositions) {
@@ -719,7 +752,23 @@ engine.onFrame = (dt) => {
     if (xrControls) xrSession.applyTurn(xrControls.takeSnapTurn());
     xrSession.sync();
     flashlight.update(dt, engine.camera, xrControls?.rightControllerPose() ?? undefined);
-    vrHud.update(player.stamina, player.staminaLocked, battery.level, battery.isLow);
+    vrHud.update({
+      stamina: player.stamina,
+      staminaLocked: player.staminaLocked,
+      battery: battery.level,
+      batteryLow: battery.isLow,
+      prompt: vrPrompt,
+      message: performance.now() < vrToastUntil ? vrToast : null,
+      charging: vrCharging,
+    });
+    vrFade.update(vrThreat, vrRed, vrBlack);
+    // Mirror the live map onto a head-locked panel while it's open.
+    if (map.visible) {
+      vrMap.show(engine.camera);
+      vrMap.update();
+    } else {
+      vrMap.hide();
+    }
     // Head-locked overlay (game-over / win / paused). The sim is frozen on these
     // screens, so poll the controller here (onFrame always runs). Trigger resumes
     // a pause; on game-over / win it reloads to the title (a reload ends the XR
