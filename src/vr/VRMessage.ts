@@ -1,8 +1,8 @@
 /**
- * In-headset message panel. DOM overlays (the game-over / win menus) don't
- * render inside an immersive XR session, so this draws the same text onto a
- * canvas-textured billboard placed in front of the player. Updated each frame
- * to lead the head so it stays in view, and dismissed with the right trigger.
+ * In-headset message panel (game-over / win / paused). DOM overlays don't
+ * render inside an immersive XR session, so this draws the text onto a
+ * canvas-textured plane parented directly to the camera — head-locked, so it's
+ * always centered in view regardless of where the player is looking.
  */
 import * as THREE from 'three';
 
@@ -12,9 +12,8 @@ export class VRMessage {
   private ctx: CanvasRenderingContext2D;
   private texture: THREE.CanvasTexture;
   private _visible = false;
-  private tmpForward = new THREE.Vector3();
 
-  constructor(private readonly scene: THREE.Scene) {
+  constructor() {
     this.canvas = document.createElement('canvas');
     this.canvas.width = 1024;
     this.canvas.height = 576;
@@ -27,18 +26,22 @@ export class VRMessage {
       transparent: true,
       depthTest: false, // always drawn on top of the dark scene
     });
-    this.mesh = new THREE.Mesh(new THREE.PlaneGeometry(1.3, 0.73), mat);
+    this.mesh = new THREE.Mesh(new THREE.PlaneGeometry(1.0, 0.56), mat);
+    this.mesh.position.set(0, 0, -1.4); // 1.4 m in front of the face
     this.mesh.renderOrder = 999;
-    this.mesh.visible = false;
     this.mesh.frustumCulled = false;
+    this.mesh.visible = false;
   }
 
   get visible(): boolean {
     return this._visible;
   }
 
-  /** Draw the message and show the panel. `accent` colors the heading. */
-  show(title: string, body: string, accent: string): void {
+  /**
+   * Draw and show the panel, parented to `anchor` (the camera) so it stays in
+   * view. `accent` colors the heading; `prompt` is the call-to-action line.
+   */
+  show(anchor: THREE.Object3D, title: string, body: string, accent: string, prompt: string): void {
     const c = this.ctx;
     const w = this.canvas.width;
     const h = this.canvas.height;
@@ -62,26 +65,17 @@ export class VRMessage {
 
     c.fillStyle = '#8fb6ff';
     c.font = "bold 38px 'Trebuchet MS', sans-serif";
-    c.fillText('Pull the right trigger to try again', w / 2, h - 70);
+    c.fillText(prompt, w / 2, h - 70);
 
     this.texture.needsUpdate = true;
+    if (this.mesh.parent !== anchor) anchor.add(this.mesh);
     this.mesh.visible = true;
-    if (!this.mesh.parent) this.scene.add(this.mesh);
     this._visible = true;
   }
 
   hide(): void {
     this.mesh.visible = false;
+    this.mesh.removeFromParent();
     this._visible = false;
-  }
-
-  /** Billboard 1.6 m in front of the head, facing it. Call each frame. */
-  update(camera: THREE.Camera): void {
-    if (!this._visible) return;
-    const camPos = new THREE.Vector3();
-    camera.getWorldPosition(camPos);
-    camera.getWorldDirection(this.tmpForward);
-    this.mesh.position.copy(camPos).addScaledVector(this.tmpForward, 1.6);
-    this.mesh.lookAt(camPos);
   }
 }

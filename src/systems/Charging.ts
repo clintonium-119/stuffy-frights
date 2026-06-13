@@ -1,7 +1,6 @@
 import { Battery } from './Battery';
 import { ChargingStation } from './ChargingStation';
 import { PlayerController } from '../player/PlayerController';
-import { Input } from '../core/Input';
 
 /**
  * The vulnerable-charging loop: plugged in, the flashlight is forced off,
@@ -28,7 +27,9 @@ export class ChargingSystem {
   constructor(
     private battery: Battery,
     private player: PlayerController,
-    private input: Input,
+    /** True when the player wants to leave the station (move or interact). Fed
+     *  from the control intent so it works for keyboard, touch, and VR alike. */
+    private wantsUnplug: () => boolean,
     private forceLightOff: () => void
   ) {}
 
@@ -61,8 +62,8 @@ export class ChargingSystem {
     // session survives to actually charge.
     if (this.justPlugged) {
       this.justPlugged = false;
-    } else if (this.input.anyMovementDown() || this.input.justPressed('KeyE')) {
-      // Any movement intent (or another E press) breaks the session instantly.
+    } else if (this.wantsUnplug()) {
+      // Any movement intent (or another interact) breaks the session instantly.
       this.unplug();
       return;
     }

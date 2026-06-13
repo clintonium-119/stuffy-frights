@@ -73,15 +73,15 @@ export class TouchControls implements ControlSource {
   private _lookDx = 0;
   private _lookDy = 0;
 
-  // Buttons — run is a persistent toggle; the rest are one-step edges.
-  private _sprintHeld = false;
+  // Run is analog: deflecting the move stick past runThreshold sprints.
+  private _moveMag = 0;
+  // Buttons — crouch is a persistent toggle; the rest are one-step edges.
   private _crouchOn = false;
   private _flashlightToggle = false;
   private _interact = false;
   private _crouchToggle = false;
   private _mapToggle = false;
   private _pause = false;
-  private runBtn!: HTMLButtonElement;
   private crouchBtn!: HTMLButtonElement;
 
   constructor(ui: HTMLElement) {
@@ -108,11 +108,11 @@ export class TouchControls implements ControlSource {
 
   /**
    * Round, semi-transparent, icon-only buttons (icons tinted the same cream as
-   * the menu text). Layout matches the control sides: LEFT half = movement, so
-   * run + crouch toggles live on the left edge; RIGHT half = look, so flashlight
-   * + interact live on the right edge. Pause + map sit in the top corners. The
-   * action buttons stay clear of the bottom-left HUD bars. Each button captures
-   * its own touch so the zone underneath doesn't also react.
+   * the menu text). LEFT half = movement (run is analog — push the stick far to
+   * sprint), so only the crouch toggle sits on the left edge; RIGHT half = look,
+   * so flashlight + interact live on the right edge. Pause + map sit in the top
+   * corners. Buttons stay clear of the centered bottom HUD. Each captures its
+   * own touch so the zone underneath doesn't also react.
    */
   private buildButtons(): void {
     // Top corners (occasional) — smaller.
@@ -122,11 +122,7 @@ export class TouchControls implements ControlSource {
     this.makeButton(ICONS.map, 'right:16px;top:16px', 46, () => {
       this._mapToggle = true;
     });
-    // Left edge (movement side) — run + crouch toggles, mid-height, above the HUD.
-    this.runBtn = this.makeButton(ICONS.run, 'left:16px;bottom:190px', 60, () => {
-      this._sprintHeld = !this._sprintHeld;
-      this.paintToggle(this.runBtn, this._sprintHeld);
-    });
+    // Left edge (movement side) — crouch toggle.
     this.crouchBtn = this.makeButton(ICONS.crouch, 'left:16px;bottom:118px', 60, () => {
       this._crouchToggle = true;
       this._crouchOn = !this._crouchOn;
@@ -185,13 +181,12 @@ export class TouchControls implements ControlSource {
     this.lookTouchId = null;
     this._moveX = 0;
     this._moveY = 0;
+    this._moveMag = 0;
     this._lookDx = 0;
     this._lookDy = 0;
-    this._sprintHeld = false;
     this._crouchOn = false;
     this.endStep();
     this.knob.style.display = 'none';
-    this.paintToggle(this.runBtn, false);
     this.paintToggle(this.crouchBtn, false);
   }
 
@@ -228,6 +223,7 @@ export class TouchControls implements ControlSource {
         );
         this._moveX = v.moveX;
         this._moveY = v.moveY;
+        this._moveMag = Math.hypot(v.moveX, v.moveY);
       } else if (t.identifier === this.lookTouchId) {
         this._lookDx += (t.clientX - this.lookLastX) * config.touch.lookSensitivity;
         this._lookDy += (t.clientY - this.lookLastY) * config.touch.lookSensitivity;
@@ -243,6 +239,7 @@ export class TouchControls implements ControlSource {
         this.moveTouchId = null;
         this._moveX = 0;
         this._moveY = 0;
+        this._moveMag = 0;
         this.knob.style.display = 'none';
       } else if (t.identifier === this.lookTouchId) {
         this.lookTouchId = null;
@@ -260,7 +257,7 @@ export class TouchControls implements ControlSource {
       moveY: this._moveY,
       lookDx: this._lookDx,
       lookDy: this._lookDy,
-      sprintHeld: this._sprintHeld,
+      sprintHeld: this._moveMag >= config.touch.runThreshold,
       crouchToggle: this._crouchToggle,
       flashlightToggle: this._flashlightToggle,
       interact: this._interact,

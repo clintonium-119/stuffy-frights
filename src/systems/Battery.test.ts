@@ -99,9 +99,14 @@ describe('ChargingSystem', () => {
     const input = new Input();
     const player = new PlayerController(new THREE.PerspectiveCamera(), new ControlManager(), new ColliderSet());
     let lightForcedOff = false;
-    const charging = new ChargingSystem(battery, player, input, () => {
-      lightForcedOff = true;
-    });
+    const charging = new ChargingSystem(
+      battery,
+      player,
+      () => input.anyMovementDown() || input.justPressed('KeyE'),
+      () => {
+        lightForcedOff = true;
+      }
+    );
     const station = new ChargingStation(
       { floor: 1, x: 1, z: 5 },
       new THREE.Vector3(3, 3.5, 11),

@@ -20,30 +20,44 @@ export class HUD {
     this.root = document.createElement('div');
     this.root.style.cssText = 'position:absolute;inset:0;display:none';
 
-    const batteryWrap = document.createElement('div');
-    batteryWrap.style.cssText =
-      'position:absolute;bottom:22px;left:22px;width:170px;height:16px;' +
-      'border:2px solid #6b6149;border-radius:3px;background:#161310cc;padding:2px';
-    this.batteryFill = document.createElement('div');
-    this.batteryFill.style.cssText =
-      'height:100%;width:100%;background:#9aa45e;border-radius:1px;transition:background .4s';
-    batteryWrap.appendChild(this.batteryFill);
-    const batteryLabel = document.createElement('div');
-    batteryLabel.textContent = '🔦';
-    batteryLabel.style.cssText = 'position:absolute;bottom:18px;left:198px;font-size:18px';
+    // Stamina + battery meters, centered along the bottom (clear of the thumbs
+    // on mobile). Stamina on top, battery below; each row is [icon][bar].
+    const meters = document.createElement('div');
+    meters.style.cssText =
+      'position:absolute;bottom:16px;left:50%;transform:translateX(-50%);' +
+      'display:flex;flex-direction:column;gap:7px;align-items:stretch';
 
-    // Stamina meter, just above the battery.
+    const meterRow = (icon: string, iconSize: number): HTMLDivElement => {
+      const row = document.createElement('div');
+      row.style.cssText = 'display:flex;align-items:center;gap:8px';
+      const label = document.createElement('div');
+      label.textContent = icon;
+      label.style.cssText = `font-size:${iconSize}px;width:24px;text-align:center`;
+      row.appendChild(label);
+      return row;
+    };
+
+    const staminaRow = meterRow('👟', 15);
     const staminaWrap = document.createElement('div');
     staminaWrap.style.cssText =
-      'position:absolute;bottom:46px;left:22px;width:170px;height:10px;' +
-      'border:2px solid #5a5f49;border-radius:3px;background:#161310cc;padding:2px';
+      'width:170px;height:10px;border:2px solid #5a5f49;border-radius:3px;background:#161310cc;padding:2px';
     this.staminaFill = document.createElement('div');
     this.staminaFill.style.cssText =
       'height:100%;width:100%;background:#6fa8c4;border-radius:1px;transition:background .3s';
     staminaWrap.appendChild(this.staminaFill);
-    const staminaLabel = document.createElement('div');
-    staminaLabel.textContent = '👟';
-    staminaLabel.style.cssText = 'position:absolute;bottom:42px;left:198px;font-size:15px';
+    staminaRow.appendChild(staminaWrap);
+
+    const batteryRow = meterRow('🔦', 18);
+    const batteryWrap = document.createElement('div');
+    batteryWrap.style.cssText =
+      'width:170px;height:16px;border:2px solid #6b6149;border-radius:3px;background:#161310cc;padding:2px';
+    this.batteryFill = document.createElement('div');
+    this.batteryFill.style.cssText =
+      'height:100%;width:100%;background:#9aa45e;border-radius:1px;transition:background .4s';
+    batteryWrap.appendChild(this.batteryFill);
+    batteryRow.appendChild(batteryWrap);
+
+    meters.append(staminaRow, batteryRow);
 
     this.keyBadge = document.createElement('div');
     this.keyBadge.textContent = '🗝 the keys';
@@ -78,7 +92,7 @@ export class HUD {
       'position:absolute;top:18px;right:22px;text-align:right;color:#b9ad8c;' +
       "font:600 14px 'Trebuchet MS';text-shadow:0 1px 4px #000;letter-spacing:1px";
 
-    this.root.append(this.vignette, batteryWrap, batteryLabel, staminaWrap, staminaLabel, this.keyBadge, this.prompt, this.chargingBadge, this.toast, this.difficultyBadge);
+    this.root.append(this.vignette, meters, this.keyBadge, this.prompt, this.chargingBadge, this.toast, this.difficultyBadge);
     ui.appendChild(this.root);
   }
 

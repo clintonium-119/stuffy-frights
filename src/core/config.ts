@@ -44,6 +44,8 @@ export interface GameConfig {
     joystickRadius: number;
     /** Fraction of the radius treated as a centered dead-zone. */
     joystickDeadZone: number;
+    /** Joystick deflection (0..1) at/above which movement becomes a run. */
+    runThreshold: number;
   };
 
   /** VR controller input (only active in an XR session). */
@@ -52,6 +54,12 @@ export interface GameConfig {
     triggerThreshold: number;
     /** Stick magnitude below which movement is ignored (drift dead-zone). */
     stickDeadZone: number;
+    /** Degrees rotated per right-stick snap-turn flick. */
+    snapTurnDegrees: number;
+    /** Right-stick X magnitude that triggers a snap turn. */
+    snapTurnThreshold: number;
+    /** Right-stick X must fall below this before another snap can fire. */
+    snapTurnRelease: number;
   };
 
   ai: {
@@ -253,11 +261,16 @@ export const config: GameConfig = {
     lookSensitivity: 0.012,
     joystickRadius: 70,
     joystickDeadZone: 0.15,
+    // Push the stick past ~85% to break into a run; gentler tilts walk.
+    runThreshold: 0.85,
   },
 
   vr: {
     triggerThreshold: 0.5,
     stickDeadZone: 0.15,
+    snapTurnDegrees: 30,
+    snapTurnThreshold: 0.7,
+    snapTurnRelease: 0.3,
   },
 
   ai: {

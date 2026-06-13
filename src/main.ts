@@ -10,6 +10,7 @@ import { EnterVRButton } from './vr/EnterVRButton';
 import { XRSession } from './vr/XRSession';
 import { XRControllerSource } from './vr/XRControllerSource';
 import { VRMessage } from './vr/VRMessage';
+import { VRHud } from './vr/VRHud';
 import { PlayerController } from './player/PlayerController';
 import { InteractionSystem } from './player/Interaction';
 import { Flashlight } from './player/Flashlight';
@@ -83,7 +84,10 @@ if (mobile) new OrientationGate(ui);
 const enterVR = new EnterVRButton(ui, engine.renderer);
 let xrSession: XRSession | null = null;
 let xrControls: XRControllerSource | null = null;
-const vrMessage = new VRMessage(engine.scene);
+const vrMessage = new VRMessage();
+const vrHud = new VRHud();
+/** Which head-locked overlay is up (drives the controller poll in onFrame). */
+let vrOverlay: 'none' | 'gameover' | 'win' | 'pause' = 'none';
 engine.renderer.xr.addEventListener('sessionstart', () => {
   // Headset owns the camera + look; the body still moves from the left stick.
   player.lookLocked = true;
@@ -91,6 +95,7 @@ engine.renderer.xr.addEventListener('sessionstart', () => {
   xrSession = new XRSession(engine, player);
   xrControls = new XRControllerSource(engine.renderer);
   controls.add(xrControls);
+  vrHud.show(engine.camera);
   // Entering VR from the title drops straight into a run.
   if (gs.state === 'menu') startRun();
 });
@@ -101,6 +106,9 @@ engine.renderer.xr.addEventListener('sessionend', () => {
   xrControls = null;
   xrSession?.dispose();
   xrSession = null;
+  vrHud.hide();
+  vrMessage.hide();
+  vrOverlay = 'none';
 });
 
 engine.scene.background = new THREE.Color(config.visibility.fogColor);
@@ -162,7 +170,17 @@ hiding.forceLightOff = () => flashlight.setOn(false);
 passages.isLightOn = () => flashlight.isOn;
 
 const battery = new Battery();
-const charging = new ChargingSystem(battery, player, input, () => flashlight.setOn(false));
+const charging = new ChargingSystem(
+  battery,
+  player,
+  // Unplug on any movement or interact, from any input source (keyboard WASD,
+  // touch joystick, or VR stick all feed the intent's move vector).
+  () => {
+    const i = controls.intent;
+    return i.moveX !== 0 || i.moveY !== 0 || i.interact;
+  },
+  () => flashlight.setOn(false)
+);
 
 // ------------------------------------------------------------------- AI
 const rng = new Rng((Math.random() * 0xffffffff) >>> 0);
@@ -399,7 +417,14 @@ jumpscare.onGameOver = (enemyId) => {
   touch?.hide();
   if (xrSession) {
     const name = ENEMY_NAMES[enemyId] ?? 'SOMETHING SOFT';
-    vrMessage.show(`${name} GOT YOU`, 'Squeezed in a very firm hug\nuntil everything went dark.', '#c0392b');
+    vrMessage.show(
+      engine.camera,
+      `${name} GOT YOU`,
+      'Squeezed in a very firm hug\nuntil everything went dark.',
+      '#c0392b',
+      'Pull the right trigger to try again'
+    );
+    vrOverlay = 'gameover';
   }
   input.exitPointerLock();
 };
@@ -440,7 +465,14 @@ objectives.onWin = () => {
     if (xrSession) {
       const mins = Math.floor(runSeconds / 60);
       const secs = Math.round(runSeconds % 60);
-      vrMessage.show('YOU ESCAPED!', `Out the front door, keys jingling.\nTime: ${mins}m ${secs}s`, '#7fbf6a');
+      vrMessage.show(
+        engine.camera,
+        'YOU ESCAPED!',
+        `Out the front door, keys jingling.\nTime: ${mins}m ${secs}s`,
+        '#7fbf6a',
+        'Pull the right trigger to play again'
+      );
+      vrOverlay = 'win';
     }
     input.exitPointerLock();
   }, 1400);
@@ -606,12 +638,16 @@ engine.addUpdatable({
         if (gs.transition('closeMap')) map.close();
       }
     }
-    // Touch pause button (mobile has no Esc / pointer-lock-loss path).
+    // Pause button (touch pause / VR A — neither has Esc + pointer-lock loss).
     if (intent.pause && (gs.state === 'playing' || gs.state === 'mapOpen')) {
       map.close();
       if (gs.transition('pause')) {
         menus.showPause();
         touch?.hide();
+        if (xrSession) {
+          vrMessage.show(engine.camera, 'PAUSED', 'the stuffies are waiting…', '#cdb98a', 'Pull the right trigger to resume');
+          vrOverlay = 'pause';
+        }
       }
     }
 
@@ -680,17 +716,26 @@ engine.addUpdatable({
 
 engine.onFrame = (dt) => {
   if (xrSession) {
+    if (xrControls) xrSession.applyTurn(xrControls.takeSnapTurn());
     xrSession.sync();
     flashlight.update(dt, engine.camera, xrControls?.rightControllerPose() ?? undefined);
-    // In-headset game-over / win panel: billboard it and let the right trigger
-    // retry. The sim is paused on these screens, so we poll the controller here
-    // (onFrame always runs) rather than through the fixed-step input path.
+    vrHud.update(player.stamina, player.staminaLocked, battery.level, battery.isLow);
+    // Head-locked overlay (game-over / win / paused). The sim is frozen on these
+    // screens, so poll the controller here (onFrame always runs). Trigger resumes
+    // a pause; on game-over / win it reloads to the title (a reload ends the XR
+    // session anyway) where the headset browser re-enters VR with one tap.
     if (vrMessage.visible) {
-      vrMessage.update(engine.renderer.xr.getCamera());
       xrControls?.sample();
-      // Reload to the title (a page reload ends the XR session anyway), where
-      // the headset browser can re-enter VR with one tap.
-      if (xrControls?.intent.interact) window.location.reload();
+      const i = xrControls?.intent;
+      if (vrOverlay === 'pause') {
+        if (i && (i.interact || i.pause)) {
+          gs.transition('resume');
+          vrMessage.hide();
+          vrOverlay = 'none';
+        }
+      } else if (i?.interact) {
+        window.location.reload();
+      }
     }
   } else {
     flashlight.update(dt, engine.camera);

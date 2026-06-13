@@ -21,6 +21,8 @@ export class XRSession {
   private rig: THREE.Group;
   private tmpQuat = new THREE.Quaternion();
   private crouchDrop = config.player.eyeHeightStanding - config.player.eyeHeightCrouched;
+  /** Artificial yaw from right-stick snap turns (added to the headset yaw). */
+  private turnYaw = 0;
 
   constructor(
     private readonly engine: Engine,
@@ -37,9 +39,15 @@ export class XRSession {
     engine.renderer.xr.setReferenceSpaceType('local-floor');
   }
 
+  /** Apply a snap-turn delta (radians) to the artificial view rotation. */
+  applyTurn(deltaRadians: number): void {
+    this.turnYaw += deltaRadians;
+  }
+
   /** Per-frame: place the rig at the player's feet, feed headset yaw back. */
   sync(): void {
     const p = this.player.position;
+    this.rig.rotation.y = this.turnYaw;
     this.rig.position.set(p.x, p.y, p.z);
     // Crouch sinks the whole rig so the world rises around the player.
     if (this.player.isCrouched) this.rig.position.y -= this.crouchDrop;
@@ -47,14 +55,19 @@ export class XRSession {
     // Cancel the headset's physical horizontal offset within the play space so
     // the view sits directly over the collision body. Without this, room-scale
     // drift makes the camera and the body diverge — you'd have to walk the body
-    // sideways through a wall to line your view up with a doorway. (Locomotion
-    // is stick-driven, so physical translation is intentionally ignored;
-    // head rotation is unaffected.) camera.position is the headset pose within
-    // the rig, updated by the renderer the previous frame.
+    // sideways through a wall to line your view up with a doorway. The offset is
+    // rotated by the snap-turn yaw because the rig is rotated. (Locomotion is
+    // stick-driven, so physical translation is intentionally ignored; head
+    // rotation is unaffected.) camera.position is the headset pose within the
+    // rig, updated by the renderer the previous frame.
     const cam = this.engine.camera;
-    this.rig.position.x -= cam.position.x;
-    this.rig.position.z -= cam.position.z;
+    const a = this.turnYaw;
+    const cos = Math.cos(a);
+    const sin = Math.sin(a);
+    this.rig.position.x -= cam.position.x * cos + cam.position.z * sin;
+    this.rig.position.z -= -cam.position.x * sin + cam.position.z * cos;
 
+    // Headset world yaw already includes the rig's snap-turn rotation.
     const headQuat = this.engine.renderer.xr.getCamera().getWorldQuaternion(this.tmpQuat);
     this.player.yaw = yawFromQuaternion(headQuat);
   }
