@@ -1,3 +1,13 @@
+import type { DifficultyLevel } from '../core/difficulty';
+
+/** Per-difficulty accent font-family (bundled in public/fonts/, declared in index.html). */
+export const DIFFICULTY_FONTS: Record<DifficultyLevel, string> = {
+  easy: "'Patrick Hand', cursive",
+  medium: "'Special Elite', 'Courier New', monospace",
+  hard: "'Eater', cursive",
+  nightmare: "'Nosifer', cursive",
+};
+
 /** Internal enemy id → player-facing display name (game-over screen). */
 export const ENEMY_NAMES: Record<string, string> = {
   charles: 'LITTLE TIMMY',
@@ -72,8 +82,8 @@ export class Menus {
 
   showTitle(): void {
     this.screen(`
-      <h1 style="font-size:64px;letter-spacing:6px;margin:0;color:#d8c9a0;
-        text-shadow:0 0 18px #5a1010,0 0 4px #000">STUFFY FRIGHTS</h1>
+      <h1 style="font-family:'Creepster',cursive;font-size:84px;letter-spacing:3px;margin:0;color:#cdb98a;
+        text-shadow:0 0 22px #6a1212,0 0 6px #000">STUFFY FRIGHTS</h1>
       <p style="color:#8a7d65;letter-spacing:2px;margin-top:6px">the stuffed animals are awake</p>
       <div style="margin-top:36px">${this.button('PLAY', 'btn-play')}<br>${this.button('HOW TO PLAY', 'btn-how')}</div>
     `);
