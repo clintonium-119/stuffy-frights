@@ -105,6 +105,19 @@ export interface GameConfig {
     ventFoldSeconds: number;
   };
 
+  weather: {
+    /** Steady rain strength 0..1 (drives glass rain + rain audio). */
+    rainIntensity: number;
+    /** Mean seconds between lightning strikes, and the +/- jitter around it. */
+    strikeIntervalMean: number;
+    strikeIntervalJitter: number;
+    /** Peak per-window flash-light intensity at a strike (short range; lights
+     *  the area by each window, not the whole house). */
+    flashIntensity: number;
+    /** Seconds for a flash to decay from full back to dark. */
+    flashDecaySeconds: number;
+  };
+
   visibility: {
     /** Hex color + intensity of the global gloom (never zero — "not pitch black"). */
     ambientColor: number;
@@ -232,6 +245,14 @@ export const config: GameConfig = {
 
   passage: {
     ventFoldSeconds: 0.6,
+  },
+
+  weather: {
+    rainIntensity: 0.7,
+    strikeIntervalMean: 17, // a strike every ~8-26 s
+    strikeIntervalJitter: 9,
+    flashIntensity: 12.0, // peak per-window flash-light spill (short range, falls off fast)
+    flashDecaySeconds: 0.45,
   },
 
   flashlight: {

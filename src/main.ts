@@ -12,6 +12,7 @@ import { initMaterials } from './world/materialLibrary';
 import { worldToCell } from './world/layoutTypes';
 import { HidingSystem } from './systems/HidingSpot';
 import { PassageSystem } from './systems/SecretPassage';
+import { WeatherSystem } from './systems/Weather';
 import { ChargingStation } from './systems/ChargingStation';
 import { ExitDoor, KeyProp } from './world/ExitDoor';
 import { Battery } from './systems/Battery';
@@ -87,6 +88,7 @@ const hiding = new HidingSystem(
   house.hidingSpots.map((def) => ({ def, worldPos: world.markerWorld(def.pos) }))
 );
 const passages = new PassageSystem(house, world.colliders, player, interactions, world.group);
+const weather = new WeatherSystem();
 
 hiding.isLightOn = () => flashlight.isOn;
 hiding.forceLightOff = () => flashlight.setOn(false);
@@ -383,6 +385,7 @@ engine.addUpdatable({
     player.forceCrouch = kind === 'vent' || hidingCrouch;
 
     passages.update(dt);
+    weather.update(dt);
     interactions.update(player.position, player.viewDir());
 
     if (gs.state === 'playing') {
@@ -461,6 +464,7 @@ engine.addUpdatable({
 engine.onFrame = (dt) => {
   flashlight.update(dt, engine.camera);
   world.updateFixtures(dt);
+  world.updateWindows(dt, weather.flash);
   for (const s of stations) s.updateVisual(dt);
   keyProp.updateVisual(dt);
 };
@@ -598,6 +602,7 @@ if (import.meta.env.DEV) {
   }
 
   (window as unknown as Record<string, unknown>).__game = {
+    weather,
     player,
     engine,
     house,

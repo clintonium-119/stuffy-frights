@@ -11,6 +11,7 @@ import {
 } from './layoutTypes';
 import { PROP_PLACEMENTS, buildProp, hidingHostKind } from './Props';
 import { pbrMaterial } from './materialLibrary';
+import { config } from '../core/config';
 
 const SLAB_THICKNESS = 0.25;
 const VENT_CLEARANCE = 1.1; // crawl height under a bored wall
@@ -49,6 +50,27 @@ function canvasTexture(
   tex.repeat.set(repeatX, repeatY);
   tex.colorSpace = THREE.SRGBColorSpace;
   return tex;
+}
+
+/** Base self-glow of a window pane in the dark (a faint stormy beacon). */
+const WINDOW_EMISSIVE_BASE = 0.4;
+
+/** Translucent rain streaks (transparent background) scrolled down the glass. */
+function paintRain(ctx: CanvasRenderingContext2D, size: number) {
+  ctx.clearRect(0, 0, size, size);
+  ctx.strokeStyle = 'rgba(178,198,228,1)';
+  for (let i = 0; i < 80; i++) {
+    const x = Math.random() * size;
+    const y = Math.random() * size;
+    const len = 7 + Math.random() * 22;
+    ctx.globalAlpha = 0.1 + Math.random() * 0.28;
+    ctx.lineWidth = 0.5 + Math.random() * 0.9;
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.lineTo(x + (Math.random() - 0.5) * 2.5, y + len);
+    ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
 }
 
 /** A radial spider-web (transparent background) for attic cobwebs. */
@@ -115,8 +137,12 @@ export interface BuiltWorld {
   /** "floor:x,z" cells filled by solid props — excluded from enemy navigation. */
   solidCells: Set<string>;
   windowPanes: THREE.Mesh[];
+  /** World positions of every window (for rain-proximity audio). */
+  windowWorldPositions: THREE.Vector3[];
   /** Flickering fixture bulbs + closet-door swings: call per frame. */
   updateFixtures(dt: number): void;
+  /** Scroll the rain on the glass and blaze the panes on a lightning flash (0..1). */
+  updateWindows(dt: number, flash: number): void;
   markerWorld(pos: { floor: number; x: number; z: number }, height?: number): THREE.Vector3;
   floorIndexOfY(y: number): number;
   /** Swing a closet door open (a hunting enemy checking the closet). */
@@ -129,6 +155,16 @@ export class HouseBuilder {
     const colliders = new ColliderSet();
     const mats = makeMaterials();
     const windowPanes: THREE.Mesh[] = [];
+    const windowWorldPositions: THREE.Vector3[] = [];
+    const windowLights: THREE.PointLight[] = []; // per-window lightning spill
+    // Shared scrolling rain texture + overlay material for all window glass.
+    const rainTex = canvasTexture(128, paintRain, 1, 2);
+    const rainMat = new THREE.MeshBasicMaterial({
+      map: rainTex,
+      transparent: true,
+      opacity: 0.5,
+      depthWrite: false,
+    });
 
     // ---- Slab holes per floor (stair runs open the UPPER floor's slab;
     // chute mouths open their own floor's slab).
@@ -264,13 +300,15 @@ export class HouseBuilder {
         }
       }
 
-      // ---- Windows: dim moonlit panes on exterior walls (main + upstairs).
+      // ---- Windows: dark stormy night panes on exterior walls (main + upstairs),
+      // with rain running on the glass. Deep night-blue, a faint glow (just a
+      // beacon in the dark) that blazes briefly on a lightning flash.
       if (f === 1 || f === 2) {
         const paneMat = new THREE.MeshStandardMaterial({
-          color: 0x33405e,
-          emissive: 0x22304d,
-          emissiveIntensity: 0.9,
-          roughness: 0.4,
+          color: 0x0b1320,
+          emissive: 0x16223a,
+          emissiveIntensity: WINDOW_EMISSIVE_BASE,
+          roughness: 0.35,
         });
         for (let x = 2; x < house.width - 2; x += 4) {
           for (const [z, dz] of [
@@ -278,12 +316,25 @@ export class HouseBuilder {
             [house.depth - 1, -1],
           ] as const) {
             if (grid[z][x] !== 'wall') continue;
-            const pane = new THREE.Mesh(new THREE.PlaneGeometry(1.0, 1.2), paneMat);
             const { x: wx, z: wz } = cellToWorld(x, z);
+            const pane = new THREE.Mesh(new THREE.PlaneGeometry(1.0, 1.2), paneMat);
             pane.position.set(wx, y0 + 1.7, wz + dz * (CELL_SIZE / 2 + 0.02));
             if (dz < 0) pane.rotation.y = Math.PI;
             floorGroup.add(pane);
             windowPanes.push(pane);
+            windowWorldPositions.push(pane.position.clone());
+            // Rain running on the glass: a scrolling streak overlay just inside.
+            const rain = new THREE.Mesh(new THREE.PlaneGeometry(1.0, 1.2), rainMat);
+            rain.position.set(wx, y0 + 1.7, wz + dz * (CELL_SIZE / 2 + 0.05));
+            if (dz < 0) rain.rotation.y = Math.PI;
+            floorGroup.add(rain);
+            // A short-range flash light just inside the room — lightning spills
+            // in through THIS window only, lighting the area by the glass and
+            // falling off fast (windowless rooms stay dark on a strike).
+            const flashLight = new THREE.PointLight(0xcfe0ff, 0, 7, 2.2);
+            flashLight.position.set(wx, y0 + 1.7, wz + dz * (CELL_SIZE / 2 + 1.2));
+            floorGroup.add(flashLight);
+            windowLights.push(flashLight);
           }
         }
       }
@@ -505,6 +556,20 @@ export class HouseBuilder {
       slabHoles,
       solidCells,
       windowPanes,
+      windowWorldPositions,
+      updateWindows(dt: number, flash: number) {
+        // Rain falls DOWN the glass (increasing offset.y scrolls the streaks
+        // downward); panes blaze + flash lights spill in on a lightning strike.
+        rainTex.offset.y = (rainTex.offset.y + dt * 0.55) % 1;
+        rainMat.opacity = 0.5 + flash * 0.45;
+        const emissive = WINDOW_EMISSIVE_BASE + flash * 7.0;
+        for (const pane of windowPanes) {
+          (pane.material as THREE.MeshStandardMaterial).emissiveIntensity = emissive;
+        }
+        // Lightning spills through each window into the nearby room only.
+        const lightIntensity = flash * config.weather.flashIntensity;
+        for (const wl of windowLights) wl.intensity = lightIntensity;
+      },
       updateFixtures(dt: number) {
         for (const fx of fixtures) {
           fx.phase -= dt;
