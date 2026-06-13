@@ -103,6 +103,9 @@ const director = new Director(
   (pos) => world.markerWorld(pos)
 );
 const enemies = director.residents.map((r) => r.enemy);
+// Telegraph floor migrations with a distant stair-creak so the house's
+// unpredictability reads as dread, not a glitch.
+director.onMigrate = (r) => audio.migrationCue(r.enemy.position.clone());
 
 function witnessSnapshot(at: THREE.Vector3): PlayerSnapshot {
   return {

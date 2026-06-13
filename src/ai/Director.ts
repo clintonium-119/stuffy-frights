@@ -30,6 +30,8 @@ export class Director {
   private campTimers: number[] = [];
   private mercyLeft = 0;
   private keyTaken = false;
+  /** Fired when a resident adopts a new home floor (audio telegraph hook). */
+  onMigrate: ((resident: Resident, fromFloor: number, toFloor: number) => void) | null = null;
   /** Anti-camp focus points: the 3 exits, plus the key once placed. */
   private focusPoints: THREE.Vector3[] = [];
 
@@ -120,7 +122,9 @@ export class Director {
           const delta = this.rng.chance(0.5) ? 1 : -1;
           const next = Math.max(0, Math.min(3, r.brain.homeFloor + delta));
           if (next !== r.brain.homeFloor && !(r.brain.passive && next === playerFloor)) {
+            const from = r.brain.homeFloor;
             r.brain.homeFloor = next;
+            this.onMigrate?.(r, from, next);
           }
         }
       }

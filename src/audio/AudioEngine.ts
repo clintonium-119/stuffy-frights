@@ -40,6 +40,7 @@ export class AudioEngine {
 
     this.startAmbientBed();
     this.startChaseLayer();
+    this.startMusicBed();
   }
 
   get ready(): boolean {
@@ -176,6 +177,51 @@ export class AudioEngine {
     }
   }
 
+  // ---- Eerie music bed: a slow, detuned minor drone with a wandering high
+  // partial — continuous dread under the ambient + chase layers.
+  private startMusicBed(): void {
+    const ctx = this.ctx!;
+    const bed = ctx.createGain();
+    bed.gain.value = 0.16; // sits well under footsteps and the sting
+    bed.connect(this.musicBus);
+
+    // Low detuned drone (a minor-ish cluster: root + slightly flat fifth).
+    for (const f of [55, 58.27, 82.4]) {
+      const osc = ctx.createOscillator();
+      osc.type = 'triangle';
+      osc.frequency.value = f;
+      const g = ctx.createGain();
+      g.gain.value = 0.09;
+      // Slow amplitude swell so the bed breathes.
+      const lfo = ctx.createOscillator();
+      lfo.frequency.value = 0.045 + Math.random() * 0.03;
+      const lfoGain = ctx.createGain();
+      lfoGain.gain.value = 0.05;
+      lfo.connect(lfoGain).connect(g.gain);
+      osc.connect(g).connect(bed);
+      osc.start();
+      lfo.start();
+    }
+
+    // Wandering high partial — a thin, uneasy whine that drifts in pitch.
+    const high = ctx.createOscillator();
+    high.type = 'sine';
+    high.frequency.value = 660;
+    const highGain = ctx.createGain();
+    highGain.gain.value = 0.015;
+    const drift = ctx.createOscillator();
+    drift.frequency.value = 0.07;
+    const driftGain = ctx.createGain();
+    driftGain.gain.value = 40; // ± Hz wander
+    drift.connect(driftGain).connect(high.frequency);
+    const hp = ctx.createBiquadFilter();
+    hp.type = 'highpass';
+    hp.frequency.value = 400;
+    high.connect(hp).connect(highGain).connect(bed);
+    high.start();
+    drift.start();
+  }
+
   /** Per-frame: tension systems. nearestEnemy in meters; chasing flag. */
   update(dt: number, nearestEnemy: number, anyChasing: boolean): void {
     if (!this.ctx) return;
@@ -255,9 +301,35 @@ export class AudioEngine {
   // ---- One-shots.
   sting(): void {
     if (!this.ctx) return;
-    this.thump(this.sfxBus, 3500, 0.5, 1.2, 'highpass');
-    this.tone(this.sfxBus, 880, 0.7, 0.9, 'sawtooth', 110);
-    this.tone(this.sfxBus, 660, 0.7, 0.7, 'square', 90);
+    const ctx = this.ctx;
+    // Sharp metallic transient (the strike).
+    this.thump(this.sfxBus, 4200, 0.45, 1.2, 'highpass');
+    // Dissonant detuned cluster screeching downward — the chilling core.
+    for (const f of [990, 1046, 1318]) {
+      this.tone(this.sfxBus, f, 0.9, 0.5, 'sawtooth', f * 0.18);
+    }
+    // A low sub thud for body/impact.
+    this.tone(this.sfxBus, 120, 0.7, 0.8, 'sine', 42);
+    this.thump(this.sfxBus, 90, 0.6, 0.7);
+    // A brief shiver tail: tremolo'd high whine fading out.
+    const whine = ctx.createOscillator();
+    whine.type = 'sawtooth';
+    whine.frequency.setValueAtTime(2300, ctx.currentTime);
+    whine.frequency.exponentialRampToValueAtTime(700, ctx.currentTime + 1.1);
+    const wg = ctx.createGain();
+    wg.gain.setValueAtTime(0.0001, ctx.currentTime);
+    wg.gain.exponentialRampToValueAtTime(0.28, ctx.currentTime + 0.04);
+    wg.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 1.2);
+    const trem = ctx.createOscillator();
+    trem.frequency.value = 18;
+    const tremGain = ctx.createGain();
+    tremGain.gain.value = 0.15;
+    trem.connect(tremGain).connect(wg.gain);
+    whine.connect(wg).connect(this.sfxBus);
+    whine.start();
+    whine.stop(ctx.currentTime + 1.25);
+    trem.start();
+    trem.stop(ctx.currentTime + 1.25);
   }
 
   grateCreak(pos: THREE.Vector3): void {
@@ -312,5 +384,17 @@ export class AudioEngine {
 
   hideRustle(): void {
     if (this.ctx) this.thump(this.sfxBus, 1100, 0.25, 0.3, 'highpass');
+  }
+
+  /** A distant, muffled stair-creak + heavy footfall — a stuffy moving floors. */
+  migrationCue(pos?: THREE.Vector3): void {
+    if (!this.ctx) return;
+    const dest = pos ? this.spatial(pos, 30)?.gain ?? this.ambientBus : this.ambientBus;
+    // Low groaning creak that bends down, plus a soft distant thud.
+    this.tone(dest, 220, 1.3, 0.16, 'sawtooth', 90);
+    this.tone(dest, 150, 1.1, 0.1, 'triangle', 70);
+    setTimeout(() => {
+      if (this.ctx) this.thump(this.ambientBus, 90, 0.22, 0.18);
+    }, 420);
   }
 }
