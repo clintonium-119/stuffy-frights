@@ -20,4 +20,10 @@ roughness + AO at 512 px, re-encoded JPEG). Re-run that script to refresh.
 | `metal/` | `metal_plate` | albedo, normal, rough | https://polyhaven.com/a/metal_plate |
 | `tile/` | `floor_tiles_06` | albedo, normal, rough | https://polyhaven.com/a/floor_tiles_06 |
 
+## HDRI (image-based lighting)
+
+| File | Poly Haven asset | Source |
+|---|---|---|
+| `public/hdri/abandoned_games_room_01_1k.hdr` | `abandoned_games_room_01` | https://polyhaven.com/a/abandoned_games_room_01 |
+
 Licence: https://polyhaven.com/license (CC0).

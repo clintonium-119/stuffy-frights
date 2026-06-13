@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { RGBELoader } from 'three/examples/jsm/loaders/RGBELoader.js';
 import { Engine } from './core/Engine';
 import { Input } from './core/Input';
 import { PlayerController } from './player/PlayerController';
@@ -58,6 +59,21 @@ const hemisphereLight = new THREE.HemisphereLight(
   config.visibility.hemisphereIntensityByFloor[1]
 );
 engine.scene.add(hemisphereLight);
+
+// Image-based lighting: a dim, abandoned-interior CC0 HDRI gives PBR surfaces
+// realistic environment reflectance. Used for reflectance only — the visible
+// background stays near-black and environmentIntensity is gated low, so the
+// scene without the flashlight stays as dark as before.
+engine.scene.environmentIntensity = config.visibility.environmentIntensity;
+{
+  const pmrem = new THREE.PMREMGenerator(engine.renderer);
+  pmrem.compileEquirectangularShader();
+  new RGBELoader().load(`${import.meta.env.BASE_URL}hdri/abandoned_games_room_01_1k.hdr`, (hdr) => {
+    engine.scene.environment = pmrem.fromEquirectangular(hdr).texture;
+    hdr.dispose();
+    pmrem.dispose();
+  });
+}
 
 const flashlight = new Flashlight(engine.scene);
 const interactions = new InteractionSystem();

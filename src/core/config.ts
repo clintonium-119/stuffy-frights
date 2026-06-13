@@ -117,6 +117,9 @@ export interface GameConfig {
     fogDensityByFloor: [number, number, number, number];
     fogColor: number;
     toneExposure: number;
+    /** scene.environment (HDRI/IBL) contribution. Kept LOW so the unlit scene
+     *  stays dark — IBL adds material realism, not visibility. */
+    environmentIntensity: number;
   };
 
   flashlight: {
@@ -166,6 +169,7 @@ export const config: GameConfig = {
     fogDensityByFloor: [0.15, 0.09, 0.1, 0.14],
     fogColor: 0x05060a,
     toneExposure: 1.0,
+    environmentIntensity: 0.06, // tuned in-browser: dark with the light off, realism under the beam
   },
 
   battery: {
