@@ -215,7 +215,9 @@ const exitDoors = house.exits.map((def) => {
 const stations = house.chargingStations.map((cell) => {
   const wp = world.markerWorld(cell);
   const grid = house.grids[cell.floor];
-  let dir = new THREE.Vector3(0, 0, 1);
+  // Zero direction = no adjacent wall found → ChargingStation mounts flush at
+  // the cell instead of floating off into open space on a default axis.
+  let dir = new THREE.Vector3(0, 0, 0);
   for (const [dx, dz] of [
     [1, 0],
     [-1, 0],
@@ -242,6 +244,10 @@ jumpscare.onBlackout = (a) => (blackout.style.opacity = String(a));
 jumpscare.onSting = () => audio.sting();
 jumpscare.onGameOver = (enemyId) => {
   gs.transition('gameOverShown');
+  // The blackout overlay sits above the menu root in the DOM; clear it so the
+  // game-over screen (and its restart button) is visible and clickable. The
+  // menu's own near-black background carries the darkness from here.
+  blackout.style.opacity = '0';
   menus.showGameOver(enemyId);
   input.exitPointerLock();
 };

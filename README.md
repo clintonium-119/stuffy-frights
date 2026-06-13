@@ -18,8 +18,8 @@ standing still, watching the darkness while the meter slowly climbs…
 
 | | Name | Habits |
 |---|---|---|
-| 🦍 | **Charles** | A mint-green gorilla in a rainbow party hat. Walks on his hands. Haunts the attic. You'll hear the knuckles. |
-| 👽 | **Poo** | A small tan… something, with eyes on stalks. Bounces. Lives in the basement. Small enough to follow you anywhere. |
+| 🦍 | **Little Timmy** | A mint-green gorilla in a rainbow party hat. Walks on his hands. Haunts the attic. You'll hear the knuckles. |
+| 👽 | **Pou** | A small tan… something, with eyes on stalks. Bounces. Lives in the basement. Small enough to follow you anywhere. |
 | 🦙 | **New Yama** | A llama the size of a pony. Patrols the main floor. Fills doorways. |
 | 🧶 | **Fuggie** | Teal, fuzzy, far too many human teeth. Shambles around upstairs. Sometimes he giggles. |
 

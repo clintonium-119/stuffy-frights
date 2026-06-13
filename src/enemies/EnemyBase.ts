@@ -168,7 +168,11 @@ export abstract class EnemyBase {
   /** Per fixed step. playerPos drives mood + catch. */
   update(dt: number, playerPos: THREE.Vector3, playerCatchable: boolean): void {
     // Movement toward the AI's target (waypoints come from the AI layer).
-    if (this.moveTarget) {
+    // Drop a degenerate target rather than propagate NaN into the position.
+    if (this.moveTarget && !isVecFinite(this.moveTarget)) {
+      this.moveTarget = null;
+    }
+    if (this.moveTarget && isVecFinite(this.position)) {
       const to = this.moveTarget.clone().sub(this.position);
       const dy3 = to.y;
       to.y = 0;
@@ -231,4 +235,8 @@ function wrapAngle(a: number): number {
   while (a > Math.PI) a -= Math.PI * 2;
   while (a < -Math.PI) a += Math.PI * 2;
   return a;
+}
+
+function isVecFinite(v: THREE.Vector3): boolean {
+  return Number.isFinite(v.x) && Number.isFinite(v.y) && Number.isFinite(v.z);
 }

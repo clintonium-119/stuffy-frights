@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { EnemyBase, Mood, fabricTexture } from './EnemyBase';
 
 /**
- * Poo — the tan blob alien plush. Smooth pear body, two big glossy black
+ * Poo (displayed in-game as "Pou") — the tan blob alien plush. Smooth pear body, two big glossy black
  * eyes on stalks sprouting from the top, minimal flat mouth. Bounces along
  * with cartoon squash-and-stretch; the smallest stuffy — it fits anywhere.
  */

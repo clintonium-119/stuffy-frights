@@ -26,6 +26,14 @@ export type BrainState =
 /** One spot may be searched by one enemy at a time. */
 const searchClaims = new Set<HidingSpot>();
 
+/**
+ * Within this horizontal distance (m) of a seen player, the chaser drives at
+ * the player's real position instead of the path graph's cell-center waypoint —
+ * the graph snaps to cell centers, which can leave a cornered player just
+ * outside contact reach.
+ */
+const FINAL_APPROACH_RANGE = 3.0;
+
 export interface BrainContext {
   house: House;
   nav: NavGraph;
@@ -161,8 +169,10 @@ export class EnemyBrain {
         }
         if (this.follower.done) {
           const node = this.ctx.nav.randomNodeOnFloor(this.homeFloor, this.ctx.rng);
-          const w = cellToWorld(node.x, node.z);
-          this.pathTo(new THREE.Vector3(w.x, floorY(node.floor), w.z));
+          if (node) {
+            const w = cellToWorld(node.x, node.z);
+            this.pathTo(new THREE.Vector3(w.x, floorY(node.floor), w.z));
+          }
         }
         this.follower.drive(this.enemy, this.speed(config.ai.patrolSpeed));
         break;
@@ -183,6 +193,17 @@ export class EnemyBrain {
       }
 
       case 'chase': {
+        const toPlayer = Math.hypot(
+          player.position.x - this.enemy.position.x,
+          player.position.z - this.enemy.position.z
+        );
+        if (seen && toPlayer < FINAL_APPROACH_RANGE) {
+          // Close the last gap directly so a cornered player can't sit just
+          // beyond the cell-center waypoint and out of contact range.
+          this.follower.clear();
+          this.enemy.setMoveTarget(player.position, this.speed(config.ai.chaseSpeed));
+          break;
+        }
         if (seen) {
           if (this.repathTimer <= 0) {
             this.pathTo(player.position);

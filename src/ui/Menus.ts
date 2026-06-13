@@ -1,6 +1,7 @@
-const ENEMY_NAMES: Record<string, string> = {
-  charles: 'CHARLES',
-  poo: 'POO',
+/** Internal enemy id → player-facing display name (game-over screen). */
+export const ENEMY_NAMES: Record<string, string> = {
+  charles: 'LITTLE TIMMY',
+  poo: 'POU',
   newYama: 'NEW YAMA',
   fuggie: 'FUGGIE',
 };

@@ -137,6 +137,7 @@ export class Director {
           // Send it to a random far node.
           for (let tries = 0; tries < 6; tries++) {
             const node = this.nav.randomNodeOnFloor(r.brain.homeFloor, this.rng);
+            if (!node) break;
             const w = cellToWorld(node.x, node.z);
             const dest = new THREE.Vector3(w.x, floorY(node.floor), w.z);
             if (!this.focusPoints.some((f) => dest.distanceTo(f) < config.ai.antiCampRadius * 2)) {

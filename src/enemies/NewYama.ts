@@ -28,16 +28,17 @@ export class NewYama extends EnemyBase {
       roughness: 0.95,
     });
 
-    // Torso.
+    // Torso — long axis runs front-to-back along +Z (model-forward convention).
     const torso = new THREE.Mesh(new THREE.CapsuleGeometry(0.27, 0.6, 6, 14), fleece);
-    torso.rotation.z = Math.PI / 2;
+    torso.rotation.x = Math.PI / 2;
     torso.position.y = 0.95;
     this.group.add(torso);
 
-    // Legs with white socks.
+    // Legs with white socks. fx selects the front/back pair (+Z front),
+    // fz selects the left/right side (±X).
     const makeLeg = (fx: number, fz: number) => {
       const leg = new THREE.Mesh(new THREE.CapsuleGeometry(0.085, 0.62, 5, 8), fleece);
-      leg.position.set(fx * 0.3, 0.48, fz * 0.16);
+      leg.position.set(fz * 0.16, 0.48, fx * 0.3);
       const sock = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.1, 0.22, 10), pale);
       sock.position.y = -0.32;
       leg.add(sock);
@@ -82,8 +83,8 @@ export class NewYama extends EnemyBase {
 
     head.position.y = 0.62;
     this.neck.add(head);
-    this.neck.position.set(0.32, 1.05, 0); // front of torso
-    this.neck.rotation.z = -0.12;
+    this.neck.position.set(0, 1.05, 0.32); // front of torso (+Z)
+    this.neck.rotation.x = 0.12; // gentle forward lean toward +Z
     this.group.add(this.neck);
 
     return facePlane;
@@ -140,10 +141,12 @@ export class NewYama extends EnemyBase {
     this.legs[2].rotation.x = Math.sin(phase + Math.PI) * amp;
     // Neck/head bob forward each stride; idle = slow scanning sweep.
     if (speed > 0) {
-      this.neck.rotation.z = -0.12 + Math.sin(phase * 2) * 0.07;
+      this.neck.rotation.x = 0.12 + Math.sin(phase * 2) * 0.07;
+      this.neck.rotation.y *= Math.max(0, 1 - 6 * dt); // settle any idle sweep
       if (Math.abs(Math.sin(phase)) < 0.06 && dt > 0) this.onGaitBeat?.('hoof');
     } else {
       this.neck.rotation.y = Math.sin(t * 0.4) * 0.5;
+      this.neck.rotation.x += (0.12 - this.neck.rotation.x) * Math.min(1, 6 * dt);
     }
     // Ears pin back when menacing.
     const pin = this.mood === 'menacing' ? 0.9 : 0;

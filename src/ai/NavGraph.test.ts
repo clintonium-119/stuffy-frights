@@ -1,8 +1,9 @@
 import { describe, it, expect } from 'vitest';
 import * as THREE from 'three';
-import { NavGraph } from './NavGraph';
+import { NavGraph, PathFollower } from './NavGraph';
 import { house } from '../world/houseLayout';
 import { PROP_PLACEMENTS } from '../world/Props';
+import { Rng } from '../core/rng';
 
 function solidCells(): Set<string> {
   const solid = new Set<string>();
@@ -77,5 +78,33 @@ describe('NavGraph on the real house', () => {
     const wp = nav.toWaypoints(p);
     expect(wp.length).toBeLessThanOrEqual(p.length);
     expect(wp[wp.length - 1].y).toBeCloseTo(3.5);
+  });
+});
+
+describe('NavGraph degenerate-input hardening', () => {
+  it('randomNodeOnFloor returns null for a floor with no cells (no throw)', () => {
+    const rng = new Rng(1);
+    expect(() => nav.randomNodeOnFloor(99, rng)).not.toThrow();
+    expect(nav.randomNodeOnFloor(99, rng)).toBeNull();
+  });
+
+  it('randomNodeOnFloor still returns a valid node for a real floor', () => {
+    const node = nav.randomNodeOnFloor(1, new Rng(1));
+    expect(node).not.toBeNull();
+    expect(node!.floor).toBe(1);
+  });
+
+  it('PathFollower.drive on an empty path is a safe no-op', () => {
+    const follower = new PathFollower();
+    let targetSet: unknown = 'untouched';
+    const enemy = {
+      position: new THREE.Vector3(0, 0, 0),
+      setMoveTarget(t: THREE.Vector3 | null) {
+        targetSet = t;
+      },
+    };
+    expect(() => follower.drive(enemy, 4)).not.toThrow();
+    expect(follower.done).toBe(true);
+    expect(targetSet).toBeNull();
   });
 });

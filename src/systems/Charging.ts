@@ -17,6 +17,13 @@ export class ChargingSystem {
   /** Fired on plug/unplug for audio + HUD. */
   onPlugChange: ((charging: boolean) => void) | null = null;
   private humTimer = 0;
+  /**
+   * The keystroke that plugged in is still "just pressed" for the rest of this
+   * fixed step, so the unplug check below would fire on the very same step and
+   * tear the session down before it charges. This one-shot guard absorbs that
+   * first step; from the next step on, E (or movement) unplugs as normal.
+   */
+  private justPlugged = false;
 
   constructor(
     private battery: Battery,
@@ -33,6 +40,7 @@ export class ChargingSystem {
     if (this.session) return;
     this.session = station;
     station.charging = true;
+    this.justPlugged = true;
     this.forceLightOff();
     this.player.movementLocked = true;
     this.onPlugChange?.(true);
@@ -49,8 +57,12 @@ export class ChargingSystem {
   /** Per fixed step. */
   update(dt: number): void {
     if (!this.session) return;
-    // Any movement intent (or E) breaks the session instantly.
-    if (this.input.anyMovementDown() || this.input.justPressed('KeyE')) {
+    // Absorb the plug-in keystroke's lingering edge for one step so the
+    // session survives to actually charge.
+    if (this.justPlugged) {
+      this.justPlugged = false;
+    } else if (this.input.anyMovementDown() || this.input.justPressed('KeyE')) {
+      // Any movement intent (or another E press) breaks the session instantly.
       this.unplug();
       return;
     }

@@ -48,10 +48,13 @@ export class ChargingStation {
     plug.position.set(-0.1, -0.8, 0.06);
     this.group.add(plug);
 
-    // Mount against the nearest wall: offset back along wallDir.
-    const mount = worldPos.clone().add(wallDir.clone().multiplyScalar(0.78));
+    // Mount against the nearest wall: offset back along wallDir. When no wall
+    // is adjacent (open room), wallDir is zero — mount flush at the cell rather
+    // than floating off into empty air on a default axis.
+    const hasWall = wallDir.lengthSq() > 1e-6;
+    const mount = hasWall ? worldPos.clone().add(wallDir.clone().multiplyScalar(0.78)) : worldPos.clone();
     this.group.position.set(mount.x, worldPos.y + 1.1, mount.z);
-    this.group.lookAt(worldPos.x, worldPos.y + 1.1, worldPos.z);
+    if (hasWall) this.group.lookAt(worldPos.x, worldPos.y + 1.1, worldPos.z);
   }
 
   register(interactions: InteractionSystem): void {

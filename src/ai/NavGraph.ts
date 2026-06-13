@@ -159,8 +159,9 @@ export class NavGraph {
     return out;
   }
 
-  randomNodeOnFloor(floor: number, rng: { next(): number }): NavNodeId {
+  randomNodeOnFloor(floor: number, rng: { next(): number }): NavNodeId | null {
     const onFloor = [...this.cells.values()].filter((c) => c.floor === floor);
+    if (onFloor.length === 0) return null;
     return onFloor[Math.floor(rng.next() * onFloor.length)];
   }
 }

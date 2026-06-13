@@ -242,6 +242,23 @@ describe('EnemyBrain transitions', () => {
     expect(brain.state).toBe('patrol');
   });
 
+  it('closes the final gap on a seen player (cornered reach)', () => {
+    const { hiding } = makeHiding();
+    const body = stubBody(15, 3.5, 19); // foyer, facing +Z
+    const brain = brainWith(body, hiding, new Rng(1));
+    // Player just ahead and slightly off cell-center — the kind of spot where
+    // a path that stops at the cell center would leave a gap.
+    const player = snapshot({ position: new THREE.Vector3(15.7, 3.5, 21.2), lightOn: true });
+    brain.update(DT, player);
+    expect(brain.state).toBe('chase');
+    for (let i = 0; i < 2 / DT; i++) brain.update(DT, player);
+    const gap = Math.hypot(
+      player.position.x - body.position.x,
+      player.position.z - body.position.z
+    );
+    expect(gap).toBeLessThan(config.enemy.contactRadius + 0.35); // within catch range
+  });
+
   it('passive (grace/mercy) brains neither see nor hear', () => {
     const { hiding } = makeHiding();
     const body = stubBody(15, 3.5, 19);

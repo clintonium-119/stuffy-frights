@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { EnemyBase, Mood, fabricTexture } from './EnemyBase';
 
 /**
- * Charles — the Gorilla Tag plush. Mint-teal fuzzy body, grey face and
+ * Charles (displayed in-game as "Little Timmy") — the Gorilla Tag plush. Mint-teal fuzzy body, grey face and
  * chest patch, bold white-rimmed eyes, rainbow cone party hat. Walks on
  * his hands: long planted arms vault the body forward, stubby legs trail.
  */

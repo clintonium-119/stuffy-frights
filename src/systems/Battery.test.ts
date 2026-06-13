@@ -112,6 +112,23 @@ describe('ChargingSystem', () => {
     expect(s.battery.level).toBeGreaterThan(before);
   });
 
+  it('survives the plug-in keystroke and charges (same-step E race)', () => {
+    const s = setup(0.2);
+    // Reproduce the real flow: E is "just pressed" this step, the interaction
+    // plugs in, then the charging update runs in the SAME step with E still on.
+    (s.input as unknown as { pressedThisStep: Set<string> })['pressedThisStep'].add('KeyE');
+    s.charging.plugIn(s.station);
+    const before = s.battery.level;
+    s.charging.update(DT); // same step, E still pressed
+    expect(s.charging.isCharging).toBe(true);
+    expect(s.battery.level).toBeGreaterThan(before);
+    // A genuine E press on a LATER step unplugs.
+    s.charging.update(DT); // E edge cleared in real code by endStep; here re-add to assert
+    (s.input as unknown as { pressedThisStep: Set<string> })['pressedThisStep'].add('KeyE');
+    s.charging.update(DT);
+    expect(s.charging.isCharging).toBe(false);
+  });
+
   it('movement input unplugs instantly, retaining charge', () => {
     const s = setup();
     s.charging.plugIn(s.station);
