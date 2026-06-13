@@ -26,7 +26,7 @@ export interface CellPos {
   z: number; // row
 }
 
-export type HidingKind = 'wardrobe' | 'underBed' | 'cabinet' | 'boxFort';
+export type HidingKind = 'wardrobe' | 'underBed' | 'cabinet' | 'boxFort' | 'closet';
 
 export type ExitId = 'A' | 'B' | 'C';
 

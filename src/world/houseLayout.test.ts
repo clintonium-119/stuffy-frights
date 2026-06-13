@@ -157,6 +157,28 @@ describe('house layout integrity', () => {
     }
   });
 
+  it('has multi-cell vent tunnels (maze crawl runs)', () => {
+    const multiCell = house.vents.filter((v) => v.cells.length >= 2);
+    expect(multiCell.length).toBeGreaterThanOrEqual(3);
+    // Every vent cell is marked 'v' in its grid (parse-time invariant, asserted here too).
+    for (const v of house.vents) {
+      for (const c of v.cells) expect(house.grids[v.floor][c.z][c.x]).toBe('vent');
+    }
+    // Cells within a run are contiguous (4-neighbour chain).
+    for (const v of house.vents) {
+      for (let i = 1; i < v.cells.length; i++) {
+        const a = v.cells[i - 1];
+        const b = v.cells[i];
+        expect(Math.abs(a.x - b.x) + Math.abs(a.z - b.z)).toBe(1);
+      }
+    }
+  });
+
+  it('has hallway closets among the hiding spots', () => {
+    const closets = house.hidingSpots.filter((h) => h.kind === 'closet');
+    expect(closets.length).toBeGreaterThanOrEqual(2);
+  });
+
   it('a walled-off exit would fail reachability (guard self-check)', () => {
     // Sanity that the BFS actually depends on the grid: a fake start in a
     // wall reaches nothing.

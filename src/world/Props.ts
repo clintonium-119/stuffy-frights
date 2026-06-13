@@ -15,7 +15,8 @@ export type PropKind =
   | 'shelf'
   | 'toyChest'
   | 'dollhouse'
-  | 'coatRack';
+  | 'coatRack'
+  | 'closet';
 
 export interface PropPlacement {
   pos: CellPos;
@@ -29,6 +30,8 @@ export interface BuiltProp {
   colliders: Aabb[];
   /** True when the prop fills its cell for navigation purposes. */
   solid: boolean;
+  /** Hinged door pivot (closets only) — the world animates it open on a search. */
+  door?: THREE.Object3D;
 }
 
 const woodDark = new THREE.MeshStandardMaterial({ color: 0x4a3526, roughness: 0.85 });
@@ -58,7 +61,10 @@ function box(
 }
 
 /** Builders create the prop centered at origin, on floor level y=0. */
-const builders: Record<PropKind, (g: THREE.Group) => { half: [number, number]; height: number; solid: boolean }> = {
+const builders: Record<
+  PropKind,
+  (g: THREE.Group) => { half: [number, number]; height: number; solid: boolean; door?: THREE.Object3D }
+> = {
   wardrobe(g) {
     box(g, woodDark, 1.5, 2.2, 0.8, 0, 0, 0);
     box(g, woodMid, 0.66, 2.0, 0.05, -0.36, 0.1, 0.42); // doors
@@ -174,6 +180,19 @@ const builders: Record<PropKind, (g: THREE.Group) => { half: [number, number]; h
     box(g, fabric, 0.35, 0.8, 0.18, 0.15, 0.85, 0); // hanging coat
     return { half: [0.3, 0.3], height: 1.85, solid: false };
   },
+  closet(g) {
+    // Shallow recessed cabinet with a single hinged door facing +Z. The door
+    // hangs on a pivot at its left edge so it can swing open when searched.
+    box(g, woodDark, 1.1, 2.2, 0.7, 0, 0, -0.12); // carcass (open front at +z)
+    box(g, woodMid, 1.0, 2.05, 0.5, 0, 0.05, -0.14); // dark interior recess
+    const pivot = new THREE.Group();
+    pivot.position.set(-0.5, 0, 0.22); // hinge at the left front edge
+    const door = box(pivot, woodMid, 0.96, 2.0, 0.06, 0.48, 0.1, 0); // door centered right of hinge
+    door.castShadow = true;
+    box(pivot, woodLight, 0.05, 0.28, 0.05, 0.9, 1.0, 0.05); // handle
+    g.add(pivot);
+    return { half: [0.56, 0.42], height: 2.2, solid: true, door: pivot };
+  },
 };
 
 export function buildProp(placement: PropPlacement): BuiltProp {
@@ -194,11 +213,13 @@ export function buildProp(placement: PropPlacement): BuiltProp {
     ? [aabb(x - hx, y, z - hz, x + hx, y + spec.height, z + hz)]
     : [];
 
-  return { group, colliders, solid: spec.solid };
+  return { group, colliders, solid: spec.solid, door: spec.door };
 }
 
 /** Hiding markers host their own furniture. */
-export function hidingHostKind(kind: 'wardrobe' | 'underBed' | 'cabinet' | 'boxFort'): PropKind {
+export function hidingHostKind(
+  kind: 'wardrobe' | 'underBed' | 'cabinet' | 'boxFort' | 'closet'
+): PropKind {
   switch (kind) {
     case 'wardrobe':
       return 'wardrobe';
@@ -208,6 +229,8 @@ export function hidingHostKind(kind: 'wardrobe' | 'underBed' | 'cabinet' | 'boxF
       return 'cabinet';
     case 'boxFort':
       return 'crates';
+    case 'closet':
+      return 'closet';
   }
 }
 

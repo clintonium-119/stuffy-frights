@@ -87,7 +87,7 @@ export class HidingSystem {
   }
 }
 
-function labelFor(kind: HidingKind): string {
+export function labelFor(kind: HidingKind): string {
   switch (kind) {
     case 'wardrobe':
       return 'Hide in the wardrobe';
@@ -97,5 +97,7 @@ function labelFor(kind: HidingKind): string {
       return 'Hide in the cabinet';
     case 'boxFort':
       return 'Hide between the boxes';
+    case 'closet':
+      return 'Hide in the closet';
   }
 }

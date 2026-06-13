@@ -81,6 +81,11 @@ const director = new Director(
   {
     hiding,
     onFoundHidden: (spot, enemy) => {
+      // A closet is flung open as the stuffy finds you inside (a miss leaves it shut).
+      if (spot.kind === 'closet') {
+        const c = worldToCell(spot.position.x, spot.position.z);
+        world.openCloset({ floor: world.floorIndexOfY(spot.position.y), x: c.x, z: c.z });
+      }
       hiding.exit();
       noiseBus.emit({ position: spot.position, floor: player.floorIndex, radius: 8 });
       (enemy as { catchEnabled?: boolean }).catchEnabled = true;

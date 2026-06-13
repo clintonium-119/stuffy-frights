@@ -18,7 +18,7 @@ const BASEMENT = [
   '###############',
   '#..H.#...#..C.#',
   '#....v...+....#',
-  '#....#...#....#',
+  '#....v...#....#',
   '##+####+####+##',
   '#....#...#....#',
   '#.E..#SSS+...K#',
@@ -39,7 +39,7 @@ const MAIN = [
   '#....#...#.E..#',
   '##+####+####+##',
   '#C...v...#...D#',
-  '#....#SSS+....#',
+  '#....vSSS+....#',
   '#....#...#V...#',
   '##+####+####+##',
   '#...H#...#H...#',
@@ -55,7 +55,7 @@ const UPSTAIRS = [
   '#H...#...#...H#',
   '#....+...+..K.#',
   '#..E.#...#....#',
-  '##v####.####v##',
+  '##v####.###vv##',
   '#....#...#....#',
   '#C...+...+...H#',
   '#....#...#..K.#',
@@ -72,7 +72,7 @@ const ATTIC = [
   '###############',
   '#.............#',
   '#..V......K...#',
-  '#.....##......#',
+  '#.....vv......#',
   '#..#......#...#',
   '#..#..E...#.H.#',
   '#.............#',
@@ -94,11 +94,11 @@ const HIDING_KINDS: Record<string, HidingKind> = {
   '0:6,9': 'cabinet', // basement under-shelf
   '0:12,12': 'boxFort', // basement storage crates
   '1:1,1': 'cabinet', // kitchen cabinet
-  '1:4,9': 'wardrobe', // living room wardrobe
-  '1:10,9': 'cabinet', // study cabinet
+  '1:4,9': 'closet', // living-room hallway closet
+  '1:10,9': 'closet', // study hallway closet
   '2:1,1': 'wardrobe', // kid bedroom wardrobe
   '2:13,1': 'wardrobe', // master wardrobe
-  '2:13,6': 'wardrobe', // bedroom2 closet
+  '2:13,6': 'closet', // bedroom2 hallway closet
   '2:2,10': 'underBed', // bedroom3 under-bed
   '2:12,10': 'boxFort', // playroom toy chest
   '3:12,5': 'boxFort', // attic box fort
@@ -150,10 +150,12 @@ export function parseLayout(): House {
       { lower: 2, upper: 3, cells: [{ x: 12, z: 11 }, { x: 12, z: 12 }, { x: 12, z: 13 }] },
     ],
     vents: [
-      { floor: 0, cells: [{ x: 5, z: 2 }] },
-      { floor: 1, cells: [{ x: 5, z: 5 }] },
+      // Multi-cell crawl tunnels bored through the wall lattice between rooms.
+      { floor: 0, cells: [{ x: 5, z: 2 }, { x: 5, z: 3 }] },
+      { floor: 1, cells: [{ x: 5, z: 5 }, { x: 5, z: 6 }] },
       { floor: 2, cells: [{ x: 2, z: 4 }] },
-      { floor: 2, cells: [{ x: 12, z: 4 }] },
+      { floor: 2, cells: [{ x: 12, z: 4 }, { x: 11, z: 4 }] }, // L-shaped maze bore
+      { floor: 3, cells: [{ x: 6, z: 3 }, { x: 7, z: 3 }] }, // attic crawl
     ],
     chutes: [
       { from: { floor: 1, x: 10, z: 7 }, to: { floor: 0, x: 10, z: 7 } },

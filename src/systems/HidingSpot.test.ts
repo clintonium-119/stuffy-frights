@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import * as THREE from 'three';
-import { HidingSystem } from './HidingSpot';
+import { HidingSystem, labelFor } from './HidingSpot';
 import { InteractionSystem } from '../player/Interaction';
 import { PlayerController } from '../player/PlayerController';
 import { Input } from '../core/Input';
@@ -83,5 +83,22 @@ describe('HidingSystem', () => {
   it('exit with nothing active returns false', () => {
     const { hiding } = setup();
     expect(hiding.exit()).toBe(false);
+  });
+
+  it('a closet has its own label and is an upright (non-crouch) hide', () => {
+    expect(labelFor('closet')).toBe('Hide in the closet');
+    const camera = new THREE.PerspectiveCamera();
+    const input = new Input();
+    const player = new PlayerController(camera, input, new ColliderSet());
+    const interactions = new InteractionSystem();
+    const def: HidingSpotDef = { pos: { floor: 1, x: 10, z: 9 }, kind: 'closet' };
+    const hiding = new HidingSystem(player, interactions, [
+      { def, worldPos: new THREE.Vector3(21, 3.5, 19) },
+    ]);
+    player.teleport(20, 3.5, 19);
+    interactions.update(player.position, { x: 1, y: 0, z: 0 });
+    interactions.interact();
+    expect(hiding.active!.kind).toBe('closet');
+    expect(player.forceCrouch).toBe(false); // upright, unlike cabinet/under-bed
   });
 });

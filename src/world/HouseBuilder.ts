@@ -140,10 +140,12 @@ export interface BuiltWorld {
   /** "floor:x,z" cells filled by solid props — excluded from enemy navigation. */
   solidCells: Set<string>;
   windowPanes: THREE.Mesh[];
-  /** Flickering fixture bulbs: call per frame for the flicker. */
+  /** Flickering fixture bulbs + closet-door swings: call per frame. */
   updateFixtures(dt: number): void;
   markerWorld(pos: { floor: number; x: number; z: number }, height?: number): THREE.Vector3;
   floorIndexOfY(y: number): number;
+  /** Swing a closet door open (a hunting enemy checking the closet). */
+  openCloset(pos: { floor: number; x: number; z: number }): void;
 }
 
 export class HouseBuilder {
@@ -414,6 +416,7 @@ export class HouseBuilder {
 
     // ---- Props: landmark placements + hiding-host furniture from markers.
     const solidCells = new Set<string>();
+    const closetDoors = new Map<string, { pivot: THREE.Object3D; angle: number; target: number }>();
     const placements = [
       ...PROP_PLACEMENTS,
       ...house.hidingSpots.map((h) => ({ pos: h.pos, kind: hidingHostKind(h.kind), rot: 0 })),
@@ -424,6 +427,13 @@ export class HouseBuilder {
       colliders.addAll(built.colliders);
       if (built.solid) {
         solidCells.add(`${placement.pos.floor}:${placement.pos.x},${placement.pos.z}`);
+      }
+      if (built.door) {
+        closetDoors.set(`${placement.pos.floor}:${placement.pos.x},${placement.pos.z}`, {
+          pivot: built.door,
+          angle: 0,
+          target: 0,
+        });
       }
     }
 
@@ -508,6 +518,12 @@ export class HouseBuilder {
           fx.light.intensity = 4.5 * fx.drop;
           (fx.bulb.material as THREE.MeshStandardMaterial).emissiveIntensity = 1.4 * fx.drop;
         }
+        // Closet doors ease toward their target swing angle.
+        for (const d of closetDoors.values()) {
+          if (Math.abs(d.target - d.angle) < 0.001) continue;
+          d.angle += (d.target - d.angle) * Math.min(1, 10 * dt);
+          d.pivot.rotation.y = d.angle;
+        }
       },
       markerWorld(pos, height = 0) {
         const { x, z } = cellToWorld(pos.x, pos.z);
@@ -515,6 +531,10 @@ export class HouseBuilder {
       },
       floorIndexOfY(y: number) {
         return Math.max(0, Math.min(3, Math.round(y / FLOOR_SPACING)));
+      },
+      openCloset(pos) {
+        const d = closetDoors.get(`${pos.floor}:${pos.x},${pos.z}`);
+        if (d) d.target = Math.PI * 0.62; // swing wide open
       },
     };
   }

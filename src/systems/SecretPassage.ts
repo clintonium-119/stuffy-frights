@@ -49,10 +49,9 @@ export class PassageSystem {
   onOpen: ((passage: PassageState) => void) | null = null;
 
   private playerWasInside = new Set<string>();
-  private sides = new Map<string, number>();
 
   constructor(
-    private house: House,
+    house: House,
     private colliders: ColliderSet,
     private player: PlayerController,
     interactions: InteractionSystem,
@@ -66,29 +65,32 @@ export class PassageSystem {
 
     house.vents.forEach((vent, i) => {
       const id = `vent-${i}`;
-      const cell = vent.cells[0];
-      const { x, z } = cellToWorld(cell.x, cell.z);
       const y0 = floorY(vent.floor);
       const grid = house.grids[vent.floor];
-      const alongX = grid[cell.z][cell.x - 1] === 'wall' || grid[cell.z][cell.x + 1] === 'wall';
-      // Sealed grate: thin blocker across the bore until opened.
-      const blocker = alongX
-        ? aabb(x - CELL_SIZE / 2, y0, z - 0.06, x + CELL_SIZE / 2, y0 + 1.1, z + 0.06)
-        : aabb(x - 0.06, y0, z - CELL_SIZE / 2, x + 0.06, y0 + 1.1, z + CELL_SIZE / 2);
-      this.colliders.add(blocker);
-
-      // Hinged cover meshes on both faces.
+      const blockers: Aabb[] = [];
       const meshes: THREE.Object3D[] = [];
-      for (const side of [-1, 1]) {
-        const cover = new THREE.Mesh(new THREE.BoxGeometry(0.95, 1.0, 0.05), lidMat);
-        if (alongX) cover.position.set(x, y0 + 0.55, z + side * 0.1);
-        else {
-          cover.rotation.y = Math.PI / 2;
-          cover.position.set(x + side * 0.1, y0 + 0.55, z);
+      // Seal every cell of the (possibly multi-cell) bore until pried. While
+      // sealed nobody is inside, so interior blocking is harmless; prying
+      // removes all blockers and the whole tunnel becomes crawlable.
+      for (const cell of vent.cells) {
+        const { x, z } = cellToWorld(cell.x, cell.z);
+        const alongX = grid[cell.z][cell.x - 1] === 'wall' || grid[cell.z][cell.x + 1] === 'wall';
+        const blocker = alongX
+          ? aabb(x - CELL_SIZE / 2, y0, z - 0.06, x + CELL_SIZE / 2, y0 + 1.1, z + 0.06)
+          : aabb(x - 0.06, y0, z - CELL_SIZE / 2, x + 0.06, y0 + 1.1, z + CELL_SIZE / 2);
+        this.colliders.add(blocker);
+        blockers.push(blocker);
+        for (const side of [-1, 1]) {
+          const cover = new THREE.Mesh(new THREE.BoxGeometry(0.95, 1.0, 0.05), lidMat);
+          if (alongX) cover.position.set(x, y0 + 0.55, z + side * 0.1);
+          else {
+            cover.rotation.y = Math.PI / 2;
+            cover.position.set(x + side * 0.1, y0 + 0.55, z);
+          }
+          cover.castShadow = true;
+          sceneGroup.add(cover);
+          meshes.push(cover);
         }
-        cover.castShadow = true;
-        sceneGroup.add(cover);
-        meshes.push(cover);
       }
 
       const tracked: TrackedVent = {
@@ -97,13 +99,14 @@ export class PassageSystem {
         opened: false,
         discovered: false,
         enteredWithLightOff: true,
-        blockers: [blocker],
+        blockers,
         grateMeshes: meshes,
       };
       this.vents.push(tracked);
 
+      const mouth = cellToWorld(vent.cells[0].x, vent.cells[0].z);
       interactions.add({
-        position: new THREE.Vector3(x, y0 + 0.6, z),
+        position: new THREE.Vector3(mouth.x, y0 + 0.6, mouth.z),
         radius: 1.8,
         label: () => (tracked.opened ? '' : 'Pry the vent open'),
         enabled: () => !tracked.opened,
@@ -180,26 +183,16 @@ export class PassageSystem {
     const cell = worldToCell(p.position.x, p.position.z);
 
     for (const v of this.vents) {
-      const c = v.vent.cells[0];
-      const inside =
-        p.floorIndex === v.vent.floor && cell.x === c.x && cell.z === c.z && v.opened;
+      const inCell = v.vent.cells.some((c) => cell.x === c.x && cell.z === c.z);
+      const inside = p.floorIndex === v.vent.floor && inCell && v.opened;
       const wasInside = this.playerWasInside.has(v.id);
       if (inside && !wasInside) {
         v.enteredWithLightOff = !this.isLightOn();
-        // Which side did we come from? (sign along the bore's open axis)
-        const grid = this.house.grids[v.vent.floor];
-        const alongX = grid[c.z][c.x - 1] === 'wall' || grid[c.z][c.x + 1] === 'wall';
-        const world = cellToWorld(c.x, c.z);
-        this.sides.set(v.id, Math.sign(alongX ? p.position.z - world.z : p.position.x - world.x));
         this.playerWasInside.add(v.id);
         this.onPlayerEnter?.(v);
       } else if (!inside && wasInside) {
-        // Exited: discovered when leaving on the far side.
-        const grid = this.house.grids[v.vent.floor];
-        const alongX = grid[c.z][c.x - 1] === 'wall' || grid[c.z][c.x + 1] === 'wall';
-        const world = cellToWorld(c.x, c.z);
-        const exitSide = Math.sign(alongX ? p.position.z - world.z : p.position.x - world.x);
-        if (exitSide !== 0 && exitSide !== this.sides.get(v.id)) v.discovered = true;
+        // Left the tunnel (any cell) — counts as traversed/discovered.
+        v.discovered = true;
         this.playerWasInside.delete(v.id);
       }
     }
