@@ -61,8 +61,11 @@ export class Menus {
   constructor(ui: HTMLElement) {
     this.root = document.createElement('div');
     this.root.className = 'clickable';
+    // Scroll container: a block root that scrolls, holding a min-height flex box
+    // that centers content when it fits and grows scrollable when it doesn't —
+    // so nothing is clipped out of view on short (landscape phone) screens.
     this.root.style.cssText =
-      'position:absolute;inset:0;display:none;align-items:center;justify-content:center;' +
+      'position:absolute;inset:0;display:none;overflow-y:auto;-webkit-overflow-scrolling:touch;' +
       'text-align:center;background:rgba(2,2,5,0.88);color:#e8dcc0;' +
       "font-family:'Trebuchet MS',Verdana,sans-serif";
     ui.appendChild(this.root);
@@ -79,8 +82,10 @@ export class Menus {
   }
 
   private screen(html: string): void {
-    this.root.innerHTML = `<div>${html}</div>`;
-    this.root.style.display = 'flex';
+    this.root.innerHTML =
+      '<div style="min-height:100%;box-sizing:border-box;display:flex;flex-direction:column;' +
+      `align-items:center;justify-content:center;padding:28px 16px">${html}</div>`;
+    this.root.style.display = 'block';
   }
 
   private button(label: string, id: string): string {

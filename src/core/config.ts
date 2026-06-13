@@ -248,9 +248,9 @@ export const config: GameConfig = {
   },
 
   touch: {
-    // Roughly matches mouse feel: a full screen-width drag (~hundreds of px)
-    // sweeps the view through a comfortable arc.
-    lookSensitivity: 0.004,
+    // Radians of view rotation per pixel of look-drag. Tuned high so a short
+    // thumb-swipe turns you most of the way around (mobile FPS feel).
+    lookSensitivity: 0.012,
     joystickRadius: 70,
     joystickDeadZone: 0.15,
   },

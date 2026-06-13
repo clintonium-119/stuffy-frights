@@ -44,6 +44,17 @@ export class XRSession {
     // Crouch sinks the whole rig so the world rises around the player.
     if (this.player.isCrouched) this.rig.position.y -= this.crouchDrop;
 
+    // Cancel the headset's physical horizontal offset within the play space so
+    // the view sits directly over the collision body. Without this, room-scale
+    // drift makes the camera and the body diverge — you'd have to walk the body
+    // sideways through a wall to line your view up with a doorway. (Locomotion
+    // is stick-driven, so physical translation is intentionally ignored;
+    // head rotation is unaffected.) camera.position is the headset pose within
+    // the rig, updated by the renderer the previous frame.
+    const cam = this.engine.camera;
+    this.rig.position.x -= cam.position.x;
+    this.rig.position.z -= cam.position.z;
+
     const headQuat = this.engine.renderer.xr.getCamera().getWorldQuaternion(this.tmpQuat);
     this.player.yaw = yawFromQuaternion(headQuat);
   }
