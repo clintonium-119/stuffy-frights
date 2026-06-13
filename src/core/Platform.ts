@@ -23,6 +23,18 @@ export function isMobile(): boolean {
   return uaMatch || (touch && coarse);
 }
 
+const XR_BROWSER_UA = /OculusBrowser|Quest|Pico|Wolvic|VR/i;
+
+/**
+ * True for a dedicated headset browser (Meta Quest, Pico, Wolvic, …). Used to
+ * keep the Enter-VR button off ordinary phones — which may report immersive-vr
+ * "supported" yet have no headset — while still showing it on real HMDs.
+ */
+export function isXRBrowser(): boolean {
+  if (typeof navigator === 'undefined') return false;
+  return XR_BROWSER_UA.test(navigator.userAgent);
+}
+
 /**
  * Resolves true when the device can present an immersive-vr WebXR session.
  * Resolves false (never rejects) when WebXR is absent or the query throws.

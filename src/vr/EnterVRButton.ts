@@ -5,7 +5,17 @@
  * (wired in main). Procedural styling to match the menu — no asset.
  */
 import * as THREE from 'three';
-import { isVRCapable } from '../core/Platform';
+import { isVRCapable, isMobile, isXRBrowser } from '../core/Platform';
+
+/**
+ * Show Enter-VR only where a headset actually exists: a dedicated XR browser
+ * (Quest/Pico/…) or desktop with a tethered HMD. Ordinary phones can report
+ * immersive-vr "supported" with no headset, so they're excluded.
+ */
+async function shouldOfferVR(): Promise<boolean> {
+  if (isMobile() && !isXRBrowser()) return false;
+  return isVRCapable();
+}
 
 export class EnterVRButton {
   private button: HTMLButtonElement;
@@ -22,13 +32,13 @@ export class EnterVRButton {
 
     this.button.addEventListener('click', () => this.enterVR());
 
-    void isVRCapable().then((ok) => {
+    void shouldOfferVR().then((ok) => {
       if (ok) this.button.style.display = 'block';
     });
   }
 
   show(): void {
-    void isVRCapable().then((ok) => {
+    void shouldOfferVR().then((ok) => {
       if (ok) this.button.style.display = 'block';
     });
   }

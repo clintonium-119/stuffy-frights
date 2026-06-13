@@ -28,6 +28,33 @@ export function joystickVector(
   return { moveX: (dx / len) * mag, moveY: -(dy / len) * mag };
 }
 
+/** Monochrome 24×24 glyphs (fill: currentColor → tinted the menu cream). */
+const svg = (paths: string): string =>
+  `<svg viewBox="0 0 24 24" width="26" height="26" fill="currentColor" aria-hidden="true">${paths}</svg>`;
+
+const ICONS = {
+  pause: svg('<path d="M6 5h4v14H6zM14 5h4v14h-4z"/>'),
+  map: svg(
+    '<path d="M20.5 3l-.16.03L15 5.1 9 3 3.36 4.9c-.21.07-.36.25-.36.48V20.5c0 .28.22.5.5.5l.16-.03L9 18.9l6 2.1 5.64-1.9c.21-.07.36-.25.36-.48V3.5c0-.28-.22-.5-.5-.5zM15 19l-6-2.11V5l6 2.11V19z"/>'
+  ),
+  // Running figure (sprint).
+  run: svg(
+    '<path d="M13.49 5.48c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm-3.6 13.9l1-4.4 2.1 2v6h2v-7.5l-2.1-2 .6-3c1.3 1.5 3.3 2.5 5.5 2.5v-2c-1.9 0-3.5-1-4.3-2.4l-1-1.6c-.4-.6-1-1-1.7-1-.3 0-.5.1-.8.1l-5.2 2.2v4.7h2v-3.4l1.8-.7-1.6 8.1-4.9-1-.4 2 7 1.4z"/>'
+  ),
+  // Double down-chevron (crouch / go low).
+  crouch: svg(
+    '<path d="M16.59 5.59L12 10.17 7.41 5.59 6 7l6 6 6-6zM16.59 11.59L12 16.17 7.41 11.59 6 13l6 6 6-6z"/>'
+  ),
+  // Torch with bulb.
+  flashlight: svg(
+    '<path d="M6 2v4h12V2H6zm0 6v3l3 3v8h6v-8l3-3V8H6zm6 5c-.83 0-1.5-.67-1.5-1.5S11.17 10 12 10s1.5.67 1.5 1.5S12.83 13 12 13z"/>'
+  ),
+  // Open hand (interact).
+  interact: svg(
+    '<path d="M23 5.5V20c0 2.2-1.8 4-4 4h-7.3c-1.08 0-2.1-.43-2.85-1.19L1 14.83c0-.01 1.26-1.24 1.3-1.25.21-.19.49-.29.79-.29.22 0 .42.06.6.16L7 15V4c0-.83.67-1.5 1.5-1.5S10 3.17 10 4v7h1V1.5c0-.83.67-1.5 1.5-1.5S14 .67 14 1.5V11h1V2.5c0-.83.67-1.5 1.5-1.5s1.5.67 1.5 1.5V11h1V5.5c0-.83.67-1.5 1.5-1.5s1.5.67 1.5 1.5z"/>'
+  ),
+} as const;
+
 export class TouchControls implements ControlSource {
   private root: HTMLDivElement;
   private knob: HTMLDivElement;
@@ -80,45 +107,48 @@ export class TouchControls implements ControlSource {
   }
 
   /**
-   * Six finger-sized buttons. Left (look) side: flashlight + interact, near
-   * that thumb. Right (move) side: run + crouch toggles, clear of the joystick
-   * zone. Top corners: map + pause. Each captures its own touch so the zone
-   * underneath doesn't also react.
+   * Round, semi-transparent, icon-only buttons (icons tinted the same cream as
+   * the menu text). Layout matches the control sides: LEFT half = movement, so
+   * run + crouch toggles live on the left edge; RIGHT half = look, so flashlight
+   * + interact live on the right edge. Pause + map sit in the top corners. The
+   * action buttons stay clear of the bottom-left HUD bars. Each button captures
+   * its own touch so the zone underneath doesn't also react.
    */
   private buildButtons(): void {
-    // Left side (above the look thumb).
-    this.makeButton('🔦', 'left:18px;bottom:104px', () => {
-      this._flashlightToggle = true;
+    // Top corners (occasional) — smaller.
+    this.makeButton(ICONS.pause, 'left:16px;top:16px', 46, () => {
+      this._pause = true;
     });
-    this.makeButton('✋', 'left:104px;bottom:36px', () => {
-      this._interact = true;
+    this.makeButton(ICONS.map, 'right:16px;top:16px', 46, () => {
+      this._mapToggle = true;
     });
-    // Right side (above/left of the joystick thumb, clear of its travel).
-    this.runBtn = this.makeButton('RUN', 'right:18px;bottom:200px', () => {
+    // Left edge (movement side) — run + crouch toggles, mid-height, above the HUD.
+    this.runBtn = this.makeButton(ICONS.run, 'left:16px;bottom:190px', 60, () => {
       this._sprintHeld = !this._sprintHeld;
       this.paintToggle(this.runBtn, this._sprintHeld);
     });
-    this.crouchBtn = this.makeButton('CROUCH', 'right:18px;bottom:140px', () => {
+    this.crouchBtn = this.makeButton(ICONS.crouch, 'left:16px;bottom:118px', 60, () => {
       this._crouchToggle = true;
       this._crouchOn = !this._crouchOn;
       this.paintToggle(this.crouchBtn, this._crouchOn);
     });
-    // Top corners.
-    this.makeButton('MAP', 'right:18px;top:18px', () => {
-      this._mapToggle = true;
+    // Right edge (look side) — flashlight + interact.
+    this.makeButton(ICONS.flashlight, 'right:16px;bottom:190px', 60, () => {
+      this._flashlightToggle = true;
     });
-    this.makeButton('❚❚', 'left:18px;top:18px', () => {
-      this._pause = true;
+    this.makeButton(ICONS.interact, 'right:16px;bottom:118px', 60, () => {
+      this._interact = true;
     });
   }
 
-  private makeButton(label: string, posCss: string, onPress: () => void): HTMLButtonElement {
+  private makeButton(iconSvg: string, posCss: string, size: number, onPress: () => void): HTMLButtonElement {
     const b = document.createElement('button');
-    b.textContent = label;
+    b.innerHTML = iconSvg;
     b.style.cssText =
-      `position:absolute;${posCss};min-width:56px;height:56px;padding:0 12px;` +
-      `font:700 15px 'Trebuchet MS';color:#e8dcc0;background:rgba(58,47,34,0.78);` +
-      `border:2px solid #6b6149;border-radius:10px;pointer-events:auto;touch-action:none`;
+      `position:absolute;${posCss};width:${size}px;height:${size}px;padding:0;` +
+      `display:flex;align-items:center;justify-content:center;color:#e8dcc0;` +
+      `background:rgba(12,10,6,0.42);border:1.5px solid rgba(232,220,192,0.45);` +
+      `border-radius:50%;pointer-events:auto;touch-action:none;-webkit-tap-highlight-color:transparent`;
     const press = (e: Event) => {
       e.preventDefault();
       e.stopPropagation();
@@ -130,8 +160,10 @@ export class TouchControls implements ControlSource {
   }
 
   private paintToggle(b: HTMLButtonElement, on: boolean): void {
-    b.style.background = on ? 'rgba(181,159,106,0.85)' : 'rgba(58,47,34,0.78)';
-    b.style.color = on ? '#1a140c' : '#e8dcc0';
+    // The SVG icon uses currentColor, so flipping color recolors the glyph too.
+    b.style.background = on ? 'rgba(216,201,160,0.9)' : 'rgba(12,10,6,0.42)';
+    b.style.color = on ? '#15110a' : '#e8dcc0';
+    b.style.borderColor = on ? 'rgba(216,201,160,0.95)' : 'rgba(232,220,192,0.45)';
   }
 
   /** Root element so later steps (buttons) can append into the same overlay. */
@@ -167,16 +199,16 @@ export class TouchControls implements ControlSource {
     e.preventDefault();
     const mid = window.innerWidth / 2;
     for (const t of Array.from(e.changedTouches)) {
-      if (t.clientX >= mid && this.moveTouchId === null) {
-        // Right half — movement joystick.
+      if (t.clientX < mid && this.moveTouchId === null) {
+        // Left half — movement joystick.
         this.moveTouchId = t.identifier;
         this.moveOriginX = t.clientX;
         this.moveOriginY = t.clientY;
         this.knob.style.left = `${t.clientX}px`;
         this.knob.style.top = `${t.clientY}px`;
         this.knob.style.display = 'block';
-      } else if (t.clientX < mid && this.lookTouchId === null) {
-        // Left half — look drag.
+      } else if (t.clientX >= mid && this.lookTouchId === null) {
+        // Right half — look drag.
         this.lookTouchId = t.identifier;
         this.lookLastX = t.clientX;
         this.lookLastY = t.clientY;

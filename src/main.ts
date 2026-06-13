@@ -463,8 +463,36 @@ function startRun(): void {
     ironmanOnBoot ? `Ironman ${settings.ironmanRung()}/${DIFFICULTY_ORDER.length}` : null
   );
   enterVR.hide();
-  if (mobile) touch?.show();
-  else if (!engine.renderer.xr.isPresenting) input.requestPointerLock();
+  if (mobile) {
+    goFullscreenMobile();
+    touch?.show();
+  } else if (!engine.renderer.xr.isPresenting) {
+    input.requestPointerLock();
+  }
+}
+
+/**
+ * On a phone, take over the screen so the browser address bar + system bars get
+ * out of the way, and pin to landscape. Both are best-effort (must run inside a
+ * user gesture; orientation lock needs fullscreen first) — failures are benign.
+ */
+function goFullscreenMobile(): void {
+  const el = document.documentElement as HTMLElement & {
+    webkitRequestFullscreen?: () => Promise<void>;
+  };
+  if (document.fullscreenElement) return;
+  const req = el.requestFullscreen?.bind(el) ?? el.webkitRequestFullscreen?.bind(el);
+  if (!req) return;
+  Promise.resolve(req())
+    .then(() => {
+      const orientation = screen.orientation as ScreenOrientation & {
+        lock?: (o: string) => Promise<void>;
+      };
+      return orientation.lock?.('landscape');
+    })
+    .catch(() => {
+      /* declined / unsupported — the manifest covers the installed-PWA case */
+    });
 }
 
 menus.setCurrentDifficulty(bootDifficulty);
