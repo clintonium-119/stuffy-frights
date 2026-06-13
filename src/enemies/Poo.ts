@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { EnemyBase, Mood, fabricTexture } from './EnemyBase';
+import { plushMaterial } from '../world/materialLibrary';
 
 /**
  * Poo (displayed in-game as "Pou") — the tan blob alien plush. Smooth pear body, two big glossy black
@@ -19,9 +20,12 @@ export class Poo extends EnemyBase {
   }
 
   protected buildBody(): THREE.Mesh {
-    const tan = new THREE.MeshStandardMaterial({
+    const tan = plushMaterial({
       map: fabricTexture('#d9b286', '#cba271', '#ecc89e', 0.5),
+      sheenColor: 0xecc89e,
+      sheenRoughness: 0.75,
       roughness: 0.95,
+      fuzz: 0.2, // smooth, lightly-napped blob
     });
 
     // Pear silhouette via lathe.

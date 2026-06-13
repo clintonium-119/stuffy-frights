@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { EnemyBase, Mood, fabricTexture } from './EnemyBase';
+import { plushMaterial } from '../world/materialLibrary';
 
 /**
  * Fuggie — the fuggler. Lumpy teal shag mottled with purple, pointed
@@ -19,9 +20,12 @@ export class Fuggie extends EnemyBase {
   }
 
   protected buildBody(): THREE.Mesh {
-    const shag = new THREE.MeshStandardMaterial({
+    const shag = plushMaterial({
       map: fabricTexture('#2f9e86', '#7a4f9e', '#4fc4ac', 2.6, 14),
+      sheenColor: 0x4fc4ac,
+      sheenRoughness: 0.5,
       roughness: 1,
+      fuzz: 0.55, // coarse, matted shag
     });
 
     // Lumpy ovoid: displaced sphere.

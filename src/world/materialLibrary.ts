@@ -128,6 +128,74 @@ export function roleUsesAo(role: MaterialRole): boolean {
   return ROLES_WITH_AO.has(role);
 }
 
+let fuzzNormal: THREE.Texture | null = null;
+
+/** A shared tiling fuzz/fiber normal map (procedural). Headless-safe. */
+function fuzzNormalMap(): THREE.Texture {
+  if (fuzzNormal) return fuzzNormal;
+  if (typeof document === 'undefined') {
+    fuzzNormal = new THREE.Texture();
+    return fuzzNormal;
+  }
+  const size = 256;
+  const c = document.createElement('canvas');
+  c.width = c.height = size;
+  const ctx = c.getContext('2d')!;
+  ctx.fillStyle = '#8080ff'; // flat tangent-space normal
+  ctx.fillRect(0, 0, size, size);
+  // Thousands of tiny fibre flecks perturbing the X/Y of the normal.
+  for (let i = 0; i < 9000; i++) {
+    const r = (128 + (Math.random() * 2 - 1) * 75) | 0;
+    const g = (128 + (Math.random() * 2 - 1) * 75) | 0;
+    ctx.fillStyle = `rgb(${r},${g},255)`;
+    ctx.globalAlpha = 0.5;
+    ctx.fillRect(Math.random() * size, Math.random() * size, 1, 1.6);
+  }
+  ctx.globalAlpha = 1;
+  const t = new THREE.CanvasTexture(c);
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  t.repeat.set(3, 3);
+  t.colorSpace = THREE.NoColorSpace;
+  fuzzNormal = t;
+  return t;
+}
+
+export interface PlushOpts {
+  /** Per-enemy coloured fabric albedo (e.g. EnemyBase.fabricTexture output). */
+  map?: THREE.Texture | null;
+  /** Albedo tint when no map is given. */
+  color?: number;
+  /** Sheen tint — the soft retroreflective fuzz halo (usually a lighter fabric tone). */
+  sheenColor?: number;
+  /** Sheen roughness 0..1. Default 0.65. */
+  sheenRoughness?: number;
+  /** Base roughness. Default 0.92 (matte plush). */
+  roughness?: number;
+  /** Fuzz normal strength. Default 0.35. */
+  fuzz?: number;
+}
+
+/**
+ * A fuzzy plush-fabric material: MeshPhysicalMaterial with a sheen layer (the
+ * tell-tale soft fabric halo) plus a shared procedural fibre normal map. Used
+ * for the stuffies' bodies; each enemy passes its own albedo + sheen tint.
+ */
+export function plushMaterial(opts: PlushOpts = {}): THREE.MeshPhysicalMaterial {
+  const mat = new THREE.MeshPhysicalMaterial({
+    map: opts.map ?? null,
+    color: new THREE.Color(opts.color ?? 0xffffff),
+    roughness: opts.roughness ?? 0.92,
+    metalness: 0,
+    sheen: 1,
+    sheenColor: new THREE.Color(opts.sheenColor ?? 0xffffff),
+    sheenRoughness: opts.sheenRoughness ?? 0.65,
+    normalMap: fuzzNormalMap(),
+  });
+  const f = opts.fuzz ?? 0.35;
+  mat.normalScale.set(f, f);
+  return mat;
+}
+
 /** Test/teardown helper: drop cached materials. */
 export function clearMaterialCache(): void {
   cache.clear();

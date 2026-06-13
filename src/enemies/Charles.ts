@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { EnemyBase, Mood, fabricTexture } from './EnemyBase';
+import { plushMaterial } from '../world/materialLibrary';
 
 /**
  * Charles (displayed in-game as "Little Timmy") — the Gorilla Tag plush. Mint-teal fuzzy body, grey face and
@@ -17,12 +18,15 @@ export class Charles extends EnemyBase {
   }
 
   protected buildBody(): THREE.Mesh {
-    const mint = new THREE.MeshStandardMaterial({
+    const mint = plushMaterial({
       map: fabricTexture('#7ed9c4', '#6cc4b0', '#9aeeda', 1.2),
+      sheenColor: 0x9aeeda,
       roughness: 0.95,
     });
-    const grey = new THREE.MeshStandardMaterial({
+    const grey = plushMaterial({
       map: fabricTexture('#9aa0a8', '#8a9098', '#b5bcc4', 0.7),
+      sheenColor: 0xc2c8d0,
+      sheenRoughness: 0.8,
       roughness: 0.9,
     });
 

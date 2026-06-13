@@ -4,6 +4,7 @@ import {
   ALL_ROLES,
   clearMaterialCache,
   pbrMaterial,
+  plushMaterial,
   roleUsesAo,
   setTextureFactory,
 } from './materialLibrary';
@@ -47,6 +48,20 @@ describe('materialLibrary', () => {
     expect(roleUsesAo('metal')).toBe(false);
     expect(pbrMaterial('woodfloor', { repeat: [4, 4] }).aoMap).toBeTruthy();
     expect(pbrMaterial('metal', { repeat: [1, 1] }).aoMap).toBeNull();
+  });
+
+  it('builds a fuzzy plush physical material with a sheen layer + fuzz normal', () => {
+    const m = plushMaterial({ color: 0x7ed9c4, sheenColor: 0x9aeeda });
+    expect(m).toBeInstanceOf(THREE.MeshPhysicalMaterial);
+    expect(m.sheen).toBeGreaterThan(0);
+    expect(m.normalMap).toBeTruthy();
+  });
+
+  it('gives distinct stuffies distinct plush colour + sheen', () => {
+    const charles = plushMaterial({ color: 0x7ed9c4, sheenColor: 0x9aeeda });
+    const poo = plushMaterial({ color: 0xd9b286, sheenColor: 0xecc89e });
+    expect(charles.color.getHex()).not.toBe(poo.color.getHex());
+    expect(charles.sheenColor.getHex()).not.toBe(poo.sheenColor.getHex());
   });
 
   it('shares one cached material per role+tiling and distinct ones otherwise', () => {

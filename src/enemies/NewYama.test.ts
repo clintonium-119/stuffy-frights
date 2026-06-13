@@ -50,5 +50,14 @@ describe('NewYama orientation', () => {
     // Face sits ahead of the torso center on +Z, and centered on X.
     expect(facePos.z).toBeGreaterThan(0.3);
     expect(Math.abs(facePos.x)).toBeLessThan(0.05);
+
+    // Fleece reads as fuzzy plush: a physical material with a sheen layer.
+    let plush = false;
+    yama.group.traverse((o) => {
+      if (o instanceof THREE.Mesh && o.material instanceof THREE.MeshPhysicalMaterial && o.material.sheen > 0) {
+        plush = true;
+      }
+    });
+    expect(plush).toBe(true);
   });
 });

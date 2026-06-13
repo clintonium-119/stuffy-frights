@@ -39,6 +39,15 @@ describe('Little Timmy (Charles) — legless Gorilla Tag look', () => {
     face!.getWorldPosition(fp);
     expect(fp.z).toBeGreaterThan(0.1);
 
+    // Body reads as fuzzy plush: a physical material carrying a sheen layer.
+    let plush = false;
+    timmy.group.traverse((o) => {
+      if (o instanceof THREE.Mesh && o.material instanceof THREE.MeshPhysicalMaterial && o.material.sheen > 0) {
+        plush = true;
+      }
+    });
+    expect(plush).toBe(true);
+
     // Still animates (knuckle hand-walk) without error.
     expect(() => timmy.update(1 / 60, new THREE.Vector3(0, 0, 5), false)).not.toThrow();
   });

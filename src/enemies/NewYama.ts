@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { EnemyBase, Mood, fabricTexture } from './EnemyBase';
+import { plushMaterial } from '../world/materialLibrary';
 
 /**
  * New Yama — the big fluffy llama. Golden-brown curly fleece, tall upright
@@ -19,12 +20,16 @@ export class NewYama extends EnemyBase {
   }
 
   protected buildBody(): THREE.Mesh {
-    const fleece = new THREE.MeshStandardMaterial({
+    const fleece = plushMaterial({
       map: fabricTexture('#c69a55', '#b4884a', '#e0b97a', 2.2),
+      sheenColor: 0xe0b97a,
+      sheenRoughness: 0.55,
       roughness: 1,
+      fuzz: 0.5, // curly fleece
     });
-    const pale = new THREE.MeshStandardMaterial({
+    const pale = plushMaterial({
       map: fabricTexture('#efe8d8', '#e0d6c0', '#fffdf2', 0.8),
+      sheenColor: 0xfffdf2,
       roughness: 0.95,
     });
 
