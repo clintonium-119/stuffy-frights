@@ -164,6 +164,29 @@ export class NavGraph {
     if (onFloor.length === 0) return null;
     return onFloor[Math.floor(rng.next() * onFloor.length)];
   }
+
+  /**
+   * The walkable node on `floor` farthest (world distance) from `from`, skipping
+   * any cell whose "x,z" key is in `exclude` (e.g. the player's room). Used to
+   * relocate a spawn well away from the player.
+   */
+  farthestNodeOnFloor(floor: number, from: THREE.Vector3, exclude?: Set<string>): NavNodeId | null {
+    let best: NavNodeId | null = null;
+    let bestD = -1;
+    for (const c of this.cells.values()) {
+      if (c.floor !== floor) continue;
+      if (exclude && exclude.has(`${c.x},${c.z}`)) continue;
+      const w = cellToWorld(c.x, c.z);
+      const dx = w.x - from.x;
+      const dz = w.z - from.z;
+      const d = dx * dx + dz * dz;
+      if (d > bestD) {
+        bestD = d;
+        best = c;
+      }
+    }
+    return best;
+  }
 }
 
 /** Drives an enemy along waypoints; repaths are the brain's job. */

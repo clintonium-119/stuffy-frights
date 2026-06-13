@@ -83,6 +83,9 @@ export interface GameConfig {
     lungeSpeed: number;
     lungeDuration: number;
     lungeCooldown: number;
+    /** At run start, a same-floor enemy this close to the player (m) — or in the
+     *  player's room — is relocated away and aimed away. */
+    safeSpawnDistance: number;
   };
 
   enemy: {
@@ -248,6 +251,7 @@ export const config: GameConfig = {
     lungeSpeed: 6.6,
     lungeDuration: 0.5,
     lungeCooldown: 2.2,
+    safeSpawnDistance: 8,
   },
 
   enemy: {

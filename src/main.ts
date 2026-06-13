@@ -213,6 +213,8 @@ const objectives = new Objectives(house, seed);
 // Re-spawn the player at this run's seeded main-floor spawn point.
 const spawnWorld = world.markerWorld(objectives.setup.playerSpawn);
 player.teleport(spawnWorld.x, spawnWorld.y, spawnWorld.z, Math.PI);
+// Fair start: no enemy in the player's room or walking toward them.
+director.seedSafeSpawns(spawnWorld, objectives.setup.playerSpawn, objectives.setup.playerSpawn.floor);
 const keyProp = new KeyProp();
 engine.scene.add(keyProp.group);
 const keyWorld = world.markerWorld(objectives.setup.keyLocation);

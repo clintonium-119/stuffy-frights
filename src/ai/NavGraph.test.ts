@@ -29,6 +29,19 @@ describe('NavGraph on the real house', () => {
     }
   });
 
+  it('farthestNodeOnFloor returns the most distant node and honours the exclude set', () => {
+    const from = new THREE.Vector3(0, 3.5, 0); // a main-floor corner
+    const far = nav.farthestNodeOnFloor(1, from);
+    expect(far).not.toBeNull();
+    expect(far!.floor).toBe(1);
+    const d2 = (n: { x: number; z: number }) => (n.x * 2) ** 2 + (n.z * 2) ** 2;
+    // Excluding the farthest cell yields a different, no-farther node.
+    const next = nav.farthestNodeOnFloor(1, from, new Set([`${far!.x},${far!.z}`]));
+    expect(next).not.toBeNull();
+    expect(`${next!.x},${next!.z}`).not.toBe(`${far!.x},${far!.z}`);
+    expect(d2(next!)).toBeLessThanOrEqual(d2(far!));
+  });
+
   it('cross-floor paths traverse stairs through every floor', () => {
     const p = nav.findPath({ floor: 3, x: 6, z: 5 }, { floor: 0, x: 13, z: 6 });
     expect(p).not.toBeNull();
