@@ -9,6 +9,7 @@ import { OrientationGate } from './ui/OrientationGate';
 import { EnterVRButton } from './vr/EnterVRButton';
 import { XRSession } from './vr/XRSession';
 import { XRControllerSource } from './vr/XRControllerSource';
+import { VRMessage } from './vr/VRMessage';
 import { PlayerController } from './player/PlayerController';
 import { InteractionSystem } from './player/Interaction';
 import { Flashlight } from './player/Flashlight';
@@ -33,7 +34,7 @@ import { GameState } from './core/GameState';
 import { Objectives } from './systems/Objectives';
 import { MapOverlay } from './ui/MapOverlay';
 import { HUD } from './ui/HUD';
-import { Menus } from './ui/Menus';
+import { Menus, ENEMY_NAMES } from './ui/Menus';
 import { AudioEngine } from './audio/AudioEngine';
 import { SettingsStore } from './core/Settings';
 import { applyDifficulty, DIFFICULTY_META, DIFFICULTY_ORDER } from './core/difficulty';
@@ -82,6 +83,7 @@ if (mobile) new OrientationGate(ui);
 const enterVR = new EnterVRButton(ui, engine.renderer);
 let xrSession: XRSession | null = null;
 let xrControls: XRControllerSource | null = null;
+const vrMessage = new VRMessage(engine.scene);
 engine.renderer.xr.addEventListener('sessionstart', () => {
   // Headset owns the camera + look; the body still moves from the left stick.
   player.lookLocked = true;
@@ -395,6 +397,10 @@ jumpscare.onGameOver = (enemyId) => {
   if (ironmanOnBoot) settings.failIronman();
   menus.showGameOver(enemyId, ironmanOnBoot);
   touch?.hide();
+  if (xrSession) {
+    const name = ENEMY_NAMES[enemyId] ?? 'SOMETHING SOFT';
+    vrMessage.show(`${name} GOT YOU`, 'Squeezed in a very firm hug\nuntil everything went dark.', '#c0392b');
+  }
   input.exitPointerLock();
 };
 for (const enemy of enemies) {
@@ -431,6 +437,11 @@ objectives.onWin = () => {
   window.setTimeout(() => {
     menus.showWin({ seconds: runSeconds, exitsTried: objectives.triedExits.size }, ironman);
     touch?.hide();
+    if (xrSession) {
+      const mins = Math.floor(runSeconds / 60);
+      const secs = Math.round(runSeconds % 60);
+      vrMessage.show('YOU ESCAPED!', `Out the front door, keys jingling.\nTime: ${mins}m ${secs}s`, '#7fbf6a');
+    }
     input.exitPointerLock();
   }, 1400);
 };
@@ -671,6 +682,16 @@ engine.onFrame = (dt) => {
   if (xrSession) {
     xrSession.sync();
     flashlight.update(dt, engine.camera, xrControls?.rightControllerPose() ?? undefined);
+    // In-headset game-over / win panel: billboard it and let the right trigger
+    // retry. The sim is paused on these screens, so we poll the controller here
+    // (onFrame always runs) rather than through the fixed-step input path.
+    if (vrMessage.visible) {
+      vrMessage.update(engine.renderer.xr.getCamera());
+      xrControls?.sample();
+      // Reload to the title (a page reload ends the XR session anyway), where
+      // the headset browser can re-enter VR with one tap.
+      if (xrControls?.intent.interact) window.location.reload();
+    }
   } else {
     flashlight.update(dt, engine.camera);
   }

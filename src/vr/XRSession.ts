@@ -28,6 +28,11 @@ export class XRSession {
   ) {
     this.rig = new THREE.Group();
     this.rig.add(engine.camera);
+    // Parent both controllers to the rig so the renderer keeps their world
+    // poses current — without this, getController().getWorldPosition() stays at
+    // the origin and the controller-aimed flashlight points nowhere.
+    this.rig.add(engine.renderer.xr.getController(0));
+    this.rig.add(engine.renderer.xr.getController(1));
     engine.scene.add(this.rig);
     engine.renderer.xr.setReferenceSpaceType('local-floor');
   }

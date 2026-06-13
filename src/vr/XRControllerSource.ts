@@ -114,11 +114,16 @@ export class XRControllerSource implements ControlSource {
     this._crouchToggle = false;
   }
 
-  /** Right controller world pose for aiming the flashlight, or null if absent. */
+  /**
+   * Right controller world pose for aiming the flashlight, or null when the
+   * controller isn't tracked yet (pose still at the origin) — null makes the
+   * flashlight fall back to following the head so it stays visible.
+   */
   rightControllerPose(): { position: THREE.Vector3; forward: THREE.Vector3 } | null {
     if (this.rightIndex < 0) return null;
     const ctrl = this.renderer.xr.getController(this.rightIndex);
     const position = ctrl.getWorldPosition(this.tmpPos).clone();
+    if (position.lengthSq() < 1e-4) return null; // untracked → head-follow
     const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(
       ctrl.getWorldQuaternion(this.tmpQuat)
     );
