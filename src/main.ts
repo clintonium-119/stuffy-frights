@@ -7,6 +7,7 @@ import { Flashlight } from './player/Flashlight';
 import { config } from './core/config';
 import { house } from './world/houseLayout';
 import { HouseBuilder } from './world/HouseBuilder';
+import { initMaterials } from './world/materialLibrary';
 import { worldToCell } from './world/layoutTypes';
 import { HidingSystem } from './systems/HidingSpot';
 import { PassageSystem } from './systems/SecretPassage';
@@ -39,6 +40,9 @@ engine.scene.fog = new THREE.FogExp2(
   config.visibility.fogDensityByFloor[1]
 );
 engine.renderer.toneMappingExposure = config.visibility.toneExposure;
+
+// Wire renderer anisotropy into the PBR material library before any material builds.
+initMaterials(engine.renderer);
 
 const world = HouseBuilder.build(house);
 engine.scene.add(world.group);

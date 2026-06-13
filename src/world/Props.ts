@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { Aabb, aabb } from '../core/Collision';
 import { CellPos, cellToWorld, floorY } from './layoutTypes';
+import { pbrMaterial } from './materialLibrary';
 
 export type PropKind =
   | 'wardrobe'
@@ -34,13 +35,16 @@ export interface BuiltProp {
   door?: THREE.Object3D;
 }
 
-const woodDark = new THREE.MeshStandardMaterial({ color: 0x4a3526, roughness: 0.85 });
-const woodMid = new THREE.MeshStandardMaterial({ color: 0x6b5138, roughness: 0.9 });
-const woodLight = new THREE.MeshStandardMaterial({ color: 0x8a6d4a, roughness: 0.9 });
-const fabric = new THREE.MeshStandardMaterial({ color: 0x5b4a52, roughness: 1 });
+// Furniture surfaces draw from the bundled CC0 PBR library (wood planks, fabric,
+// metal), tinted to keep the old colour relationships. Mattress/plastic stay
+// flat-shaded (no fitting texture). The albedo tint multiplies the photo texture.
+const woodDark = pbrMaterial('woodprop', { color: 0x7a6048, roughness: 0.85 });
+const woodMid = pbrMaterial('woodprop', { color: 0xc8b090 });
+const woodLight = pbrMaterial('woodprop', { color: 0xe6d2b4 });
+const fabric = pbrMaterial('fabric', { color: 0x9a8894 });
 const mattress = new THREE.MeshStandardMaterial({ color: 0x9a8f7a, roughness: 1 });
-const metal = new THREE.MeshStandardMaterial({ color: 0x7a7d80, roughness: 0.5, metalness: 0.6 });
-const metalDark = new THREE.MeshStandardMaterial({ color: 0x4d5052, roughness: 0.6, metalness: 0.5 });
+const metal = pbrMaterial('metal', { color: 0xb7bcc0, metalness: 0.6, roughness: 0.5 });
+const metalDark = pbrMaterial('metal', { color: 0x7d8488, metalness: 0.5, roughness: 0.6 });
 const plastic = new THREE.MeshStandardMaterial({ color: 0x8a4a4a, roughness: 0.7 });
 
 function box(

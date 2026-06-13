@@ -10,11 +10,28 @@ import {
   worldToCell,
 } from './layoutTypes';
 import { PROP_PLACEMENTS, buildProp, hidingHostKind } from './Props';
+import { pbrMaterial } from './materialLibrary';
 
 const SLAB_THICKNESS = 0.25;
 const VENT_CLEARANCE = 1.1; // crawl height under a bored wall
 const DOOR_HEADER = 2.2; // lintel underside
 const STEP_RISE = 0.25;
+/** World metres per PBR texture tile. Tiling is baked into per-mesh UVs so one
+ *  shared material tiles correctly across merged runs of any size. */
+const TILE = 2.5;
+
+/**
+ * Scale a box geometry's UVs so its bundled PBR texture tiles at world scale
+ * (su tiles across the seen face's width, sv across its height/depth). All maps —
+ * including AO — share this primary UV set (see materialLibrary aoMap.channel).
+ * Returns the same geometry for chaining.
+ */
+function tileBox(geo: THREE.BoxGeometry, su: number, sv: number): THREE.BoxGeometry {
+  const uv = geo.getAttribute('uv') as THREE.BufferAttribute;
+  for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * su, uv.getY(i) * sv);
+  uv.needsUpdate = true;
+  return geo;
+}
 
 /** Small tileable canvas texture from a painter callback. */
 function canvasTexture(
@@ -32,174 +49,6 @@ function canvasTexture(
   tex.repeat.set(repeatX, repeatY);
   tex.colorSpace = THREE.SRGBColorSpace;
   return tex;
-}
-
-function speckle(ctx: CanvasRenderingContext2D, size: number, color: string, n: number, r = 2) {
-  ctx.fillStyle = color;
-  for (let i = 0; i < n; i++) {
-    const x = Math.random() * size;
-    const y = Math.random() * size;
-    const radius = Math.random() * r + 0.5;
-    ctx.globalAlpha = 0.08 + Math.random() * 0.25;
-    ctx.beginPath();
-    ctx.arc(x, y, radius, 0, Math.PI * 2);
-    ctx.fill();
-  }
-  ctx.globalAlpha = 1;
-}
-
-/** Dark scuff streaks + a few gouges/stains — wear on a wood floor. */
-function scuffs(ctx: CanvasRenderingContext2D, size: number) {
-  ctx.strokeStyle = '#2c2118';
-  for (let i = 0; i < 26; i++) {
-    const x = Math.random() * size;
-    const y = Math.random() * size;
-    const len = 6 + Math.random() * 30;
-    const a = (Math.random() - 0.5) * 0.5; // mostly along the grain
-    ctx.globalAlpha = 0.05 + Math.random() * 0.18;
-    ctx.lineWidth = 0.5 + Math.random() * 1.5;
-    ctx.beginPath();
-    ctx.moveTo(x, y);
-    ctx.lineTo(x + Math.cos(a) * len, y + Math.sin(a) * len);
-    ctx.stroke();
-  }
-  // Occasional dark stain blotches.
-  for (let i = 0; i < 5; i++) {
-    ctx.fillStyle = '#3a2c1d';
-    ctx.globalAlpha = 0.1 + Math.random() * 0.14;
-    ctx.beginPath();
-    ctx.ellipse(
-      Math.random() * size,
-      Math.random() * size,
-      6 + Math.random() * 16,
-      5 + Math.random() * 12,
-      Math.random() * Math.PI,
-      0,
-      Math.PI * 2
-    );
-    ctx.fill();
-  }
-  ctx.globalAlpha = 1;
-}
-
-/** A peeled/torn wallpaper patch revealing a darker layer beneath. */
-function tornPatch(ctx: CanvasRenderingContext2D, size: number, under: string) {
-  for (let i = 0; i < 3; i++) {
-    const x = Math.random() * size;
-    const y = Math.random() * size;
-    const w = 16 + Math.random() * 36;
-    const h = 22 + Math.random() * 48;
-    ctx.fillStyle = under;
-    ctx.globalAlpha = 0.85;
-    ctx.beginPath();
-    // Ragged torn edge: a jittered polygon.
-    const steps = 10;
-    for (let s = 0; s <= steps; s++) {
-      const t = (s / steps) * Math.PI * 2;
-      const rr = 0.5 + Math.random() * 0.5;
-      const px = x + Math.cos(t) * w * 0.5 * rr;
-      const py = y + Math.sin(t) * h * 0.5 * rr;
-      if (s === 0) ctx.moveTo(px, py);
-      else ctx.lineTo(px, py);
-    }
-    ctx.closePath();
-    ctx.fill();
-    // A curled lighter edge along the top of the tear.
-    ctx.strokeStyle = '#9c917c';
-    ctx.globalAlpha = 0.3;
-    ctx.lineWidth = 2;
-    ctx.stroke();
-  }
-  ctx.globalAlpha = 1;
-}
-
-function paintConcrete(ctx: CanvasRenderingContext2D, size: number) {
-  ctx.fillStyle = '#5a5d58';
-  ctx.fillRect(0, 0, size, size);
-  speckle(ctx, size, '#454843', 900, 3);
-  speckle(ctx, size, '#6d706a', 500, 2);
-  speckle(ctx, size, '#3a3e3a', 250, 4);
-  waterDamage(ctx, size);
-}
-
-/** Damp, neglected concrete: dark water blooms, efflorescence rings, drips. */
-function waterDamage(ctx: CanvasRenderingContext2D, size: number) {
-  // Irregular dark blooms with a slightly darker core.
-  for (let i = 0; i < 6; i++) {
-    const x = Math.random() * size;
-    const y = Math.random() * size;
-    const r = 14 + Math.random() * 40;
-    const grd = ctx.createRadialGradient(x, y, 1, x, y, r);
-    grd.addColorStop(0, 'rgba(38,46,44,0.42)');
-    grd.addColorStop(0.6, 'rgba(44,52,50,0.22)');
-    grd.addColorStop(1, 'rgba(58,62,58,0)');
-    ctx.fillStyle = grd;
-    ctx.beginPath();
-    ctx.arc(x, y, r, 0, Math.PI * 2);
-    ctx.fill();
-    // Pale efflorescence ring at the bloom edge.
-    ctx.strokeStyle = 'rgba(150,156,148,0.18)';
-    ctx.lineWidth = 1 + Math.random() * 1.5;
-    ctx.beginPath();
-    ctx.arc(x, y, r * (0.7 + Math.random() * 0.2), 0, Math.PI * 2);
-    ctx.stroke();
-  }
-  // Vertical drip streaks (read as wall runoff).
-  ctx.strokeStyle = 'rgba(34,40,38,0.3)';
-  for (let i = 0; i < 10; i++) {
-    const x = Math.random() * size;
-    const y0 = Math.random() * size * 0.4;
-    ctx.lineWidth = 0.5 + Math.random() * 2;
-    ctx.beginPath();
-    ctx.moveTo(x, y0);
-    ctx.lineTo(x + (Math.random() - 0.5) * 4, y0 + 20 + Math.random() * 60);
-    ctx.stroke();
-  }
-}
-
-function paintMainWallpaper(ctx: CanvasRenderingContext2D, size: number) {
-  ctx.fillStyle = '#7a7160';
-  ctx.fillRect(0, 0, size, size);
-  ctx.fillStyle = '#6b6253';
-  for (let x = 0; x < size; x += 32) ctx.fillRect(x, 0, 14, size);
-  ctx.strokeStyle = '#564e41';
-  ctx.lineWidth = 2;
-  for (let x = 7; x < size; x += 32) {
-    ctx.beginPath();
-    ctx.moveTo(x, 0);
-    ctx.lineTo(x, size);
-    ctx.stroke();
-  }
-  speckle(ctx, size, '#3f3a30', 350, 5); // grime
-  tornPatch(ctx, size, '#544a3b'); // peeled sections revealing the layer beneath
-}
-
-function paintBedroomWallpaper(ctx: CanvasRenderingContext2D, size: number) {
-  ctx.fillStyle = '#8a7d80';
-  ctx.fillRect(0, 0, size, size);
-  ctx.fillStyle = '#796d72';
-  for (let y = 0; y < size; y += 28) {
-    for (let x = (y / 28) % 2 === 0 ? 0 : 14; x < size; x += 28) {
-      ctx.beginPath();
-      ctx.arc(x, y, 4, 0, Math.PI * 2);
-      ctx.fill();
-    }
-  }
-  speckle(ctx, size, '#4d4347', 300, 4);
-  tornPatch(ctx, size, '#5b5054');
-}
-
-function paintPlanks(ctx: CanvasRenderingContext2D, size: number, base: string, gap: string) {
-  ctx.fillStyle = base;
-  ctx.fillRect(0, 0, size, size);
-  ctx.fillStyle = gap;
-  for (let y = 0; y < size; y += 24) ctx.fillRect(0, y, size, 2);
-  for (let y = 0; y < size; y += 24) {
-    const off = Math.random() * size;
-    ctx.fillRect(off, y, 2, 24);
-  }
-  speckle(ctx, size, gap, 400, 2);
-  scuffs(ctx, size); // marks + gouges + stains
 }
 
 /** A radial spider-web (transparent background) for attic cobwebs. */
@@ -238,30 +87,23 @@ interface FloorMaterials {
 }
 
 function makeMaterials(): FloorMaterials[] {
-  const mat = (tex: THREE.CanvasTexture, rough = 0.95) =>
-    new THREE.MeshStandardMaterial({ map: tex, roughness: rough, metalness: 0 });
-
-  const concreteWall = mat(canvasTexture(256, paintConcrete, 2, 1.5));
-  const concreteFloor = mat(canvasTexture(256, paintConcrete, 8, 8));
-  const mainWall = mat(canvasTexture(256, paintMainWallpaper, 2, 1.5));
-  const woodFloor = mat(
-    canvasTexture(256, (c, s) => paintPlanks(c, s, '#6e5840', '#4a3a28'), 8, 8)
-  );
-  const bedWall = mat(canvasTexture(256, paintBedroomWallpaper, 2, 1.5));
-  const woodFloor2 = mat(
-    canvasTexture(256, (c, s) => paintPlanks(c, s, '#75604a', '#503f2d'), 8, 8)
-  );
-  const atticWall = mat(canvasTexture(256, (c, s) => paintPlanks(c, s, '#5c4a36', '#3c2f21'), 2, 1.5));
-  const atticFloor = mat(
-    canvasTexture(256, (c, s) => paintPlanks(c, s, '#544433', '#382c1f'), 8, 8)
-  );
-  const dark = new THREE.MeshStandardMaterial({ color: 0x2b2622, roughness: 1 });
+  // Bundled CC0 PBR materials (see materialLibrary + public/textures/CREDITS.md).
+  // Tiling is baked into per-mesh UVs (see tileBox), so each material uses the
+  // default repeat and is shared across every floor that references it.
+  const plaster = pbrMaterial('plaster');
+  const woodFloor = pbrMaterial('woodfloor');
+  const ceiling = pbrMaterial('ceiling', { roughness: 1 });
+  const concreteWall = pbrMaterial('concretewall');
+  const concreteFloor = pbrMaterial('concretefloor');
+  const atticWood = pbrMaterial('woodprop');
+  // Upstairs reads a touch cooler/lighter than the main floor to keep rooms distinct.
+  const plasterUp = pbrMaterial('plaster', { color: 0xcdd2d6 });
 
   return [
-    { wall: concreteWall, floor: concreteFloor, ceiling: dark },
-    { wall: mainWall, floor: woodFloor, ceiling: dark },
-    { wall: bedWall, floor: woodFloor2, ceiling: dark },
-    { wall: atticWall, floor: atticFloor, ceiling: dark },
+    { wall: concreteWall, floor: concreteFloor, ceiling: concreteWall }, // basement
+    { wall: plaster, floor: woodFloor, ceiling }, // main
+    { wall: plasterUp, floor: woodFloor, ceiling }, // upstairs
+    { wall: atticWood, floor: atticWood, ceiling: atticWood }, // attic (raw timber)
   ];
 }
 
@@ -317,7 +159,7 @@ export class HouseBuilder {
             const z0 = z * CELL_SIZE;
             const z1 = (z + 1) * CELL_SIZE;
             const mesh = new THREE.Mesh(
-              new THREE.BoxGeometry(x1 - x0, SLAB_THICKNESS, z1 - z0),
+              tileBox(new THREE.BoxGeometry(x1 - x0, SLAB_THICKNESS, z1 - z0), (x1 - x0) / TILE, (z1 - z0) / TILE),
               m.floor
             );
             mesh.position.set((x0 + x1) / 2, y0 - SLAB_THICKNESS / 2, (z0 + z1) / 2);
@@ -341,7 +183,7 @@ export class HouseBuilder {
             const x0 = runStart * CELL_SIZE;
             const x1 = x * CELL_SIZE;
             const mesh = new THREE.Mesh(
-              new THREE.BoxGeometry(x1 - x0, 0.1, CELL_SIZE),
+              tileBox(new THREE.BoxGeometry(x1 - x0, 0.1, CELL_SIZE), (x1 - x0) / TILE, CELL_SIZE / TILE),
               m.ceiling
             );
             mesh.position.set((x0 + x1) / 2, y0 + WALL_HEIGHT + 0.05, (z + 0.5) * CELL_SIZE);
@@ -364,7 +206,7 @@ export class HouseBuilder {
             const z0 = z * CELL_SIZE;
             const z1 = (z + 1) * CELL_SIZE;
             const mesh = new THREE.Mesh(
-              new THREE.BoxGeometry(x1 - x0, WALL_HEIGHT, z1 - z0),
+              tileBox(new THREE.BoxGeometry(x1 - x0, WALL_HEIGHT, z1 - z0), (x1 - x0) / TILE, WALL_HEIGHT / TILE),
               m.wall
             );
             mesh.position.set((x0 + x1) / 2, y0 + WALL_HEIGHT / 2, (z0 + z1) / 2);
@@ -383,7 +225,7 @@ export class HouseBuilder {
           const { x: wx, z: wz } = cellToWorld(x, z);
           if (kind === 'door') {
             const lintel = new THREE.Mesh(
-              new THREE.BoxGeometry(CELL_SIZE, WALL_HEIGHT - DOOR_HEADER, CELL_SIZE),
+              tileBox(new THREE.BoxGeometry(CELL_SIZE, WALL_HEIGHT - DOOR_HEADER, CELL_SIZE), CELL_SIZE / TILE, (WALL_HEIGHT - DOOR_HEADER) / TILE),
               m.wall
             );
             lintel.position.set(wx, y0 + DOOR_HEADER + (WALL_HEIGHT - DOOR_HEADER) / 2, wz);
@@ -402,7 +244,7 @@ export class HouseBuilder {
           } else if (kind === 'vent') {
             // Wall above the crawl gap; grate look comes from the prop pass.
             const upper = new THREE.Mesh(
-              new THREE.BoxGeometry(CELL_SIZE, WALL_HEIGHT - VENT_CLEARANCE, CELL_SIZE),
+              tileBox(new THREE.BoxGeometry(CELL_SIZE, WALL_HEIGHT - VENT_CLEARANCE, CELL_SIZE), CELL_SIZE / TILE, (WALL_HEIGHT - VENT_CLEARANCE) / TILE),
               m.wall
             );
             upper.position.set(wx, y0 + VENT_CLEARANCE + (WALL_HEIGHT - VENT_CLEARANCE) / 2, wz);
