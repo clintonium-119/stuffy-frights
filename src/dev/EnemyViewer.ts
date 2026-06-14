@@ -173,8 +173,40 @@ export class EnemyViewer {
     );
   }
 
+  /**
+   * Camera-project the front/back reference photos onto a loaded mesh, so the
+   * real face/colours/patterns map onto the AI shape (front photo on
+   * front-facing tris, back photo on the rest). Proves photo-matched texturing.
+   */
+  private projectPhotos(root: THREE.Object3D, base: string): void {
+    const front = new THREE.TextureLoader().load(`${import.meta.env.BASE_URL}models/${base}_front.png`);
+    front.colorSpace = THREE.SRGBColorSpace;
+    root.updateWorldMatrix(true, true);
+    const box = new THREE.Box3().setFromObject(root);
+    const minX = box.min.x;
+    const minY = box.min.y;
+    const sx = box.max.x - box.min.x || 1;
+    const sy = box.max.y - box.min.y || 1;
+    const wp = new THREE.Vector3();
+    root.traverse((o) => {
+      if (!(o instanceof THREE.Mesh)) return;
+      // Camera-map: bake planar front-projection UVs (world XY → photo UV).
+      const g = o.geometry as THREE.BufferGeometry;
+      const pos = g.attributes.position;
+      const uv = new Float32Array(pos.count * 2);
+      for (let i = 0; i < pos.count; i++) {
+        wp.fromBufferAttribute(pos, i).applyMatrix4(o.matrixWorld);
+        uv[i * 2] = (wp.x - minX) / sx;
+        uv[i * 2 + 1] = (wp.y - minY) / sy;
+      }
+      g.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+      if (!g.attributes.normal) g.computeVertexNormals(); // AI meshes ship without normals
+      o.material = new THREE.MeshStandardMaterial({ map: front, roughness: 0.9, metalness: 0 });
+    });
+  }
+
   /** Dev: load a raw GLB (e.g. an AI-generated mesh) into the studio to inspect it. */
-  loadGlb(file: string): void {
+  loadGlb(file: string, projectBase?: string): void {
     if (this.enemy) {
       this.holder.remove(this.enemy.group);
       this.enemy = null;
@@ -191,6 +223,7 @@ export class EnemyViewer {
         if (o instanceof THREE.Mesh) o.castShadow = true;
       });
       this.holder.add(root);
+      if (projectBase) this.projectPhotos(root, projectBase);
       const b2 = new THREE.Box3().setFromObject(root);
       const c2 = b2.getCenter(new THREE.Vector3());
       this.target.set(0, c2.y, 0);

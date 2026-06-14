@@ -12,8 +12,9 @@ const viewer = new EnemyViewer(canvas, route?.enemy ?? 'newyama');
 (window as unknown as { __viewer: EnemyViewer }).__viewer = viewer;
 
 // ?glb=<file> loads a raw GLB from public/models/ to inspect AI-generated meshes.
-const glb = new URLSearchParams(location.search).get('glb');
-if (glb) viewer.loadGlb(glb.endsWith('.glb') ? glb : `${glb}.glb`);
+const params = new URLSearchParams(location.search);
+const glb = params.get('glb');
+if (glb) viewer.loadGlb(glb.endsWith('.glb') ? glb : `${glb}.glb`, params.get('tex') ?? undefined);
 
 // Re-pick on hash change without a reload.
 window.addEventListener('hashchange', () => {
