@@ -1,14 +1,15 @@
 import * as THREE from 'three';
 import { loadGLB, modelUrl } from '../world/ModelLoader';
-import { projectionMaterial } from './projectionMaterial';
-import { PROJECTION, ENEMY_MODEL } from './projectionConfig';
+import { ENEMY_MODEL } from './projectionConfig';
 import { rigMesh } from './Skinning';
 import { RIG_SPECS } from './rigSpecs';
 
 /**
- * Builds a textured AI-mesh body for an enemy: loads the generated GLB, applies
- * the object-space camera-projection material (with a menacing-texture swap),
- * computes normals, and sizes it to a target height with feet on the ground.
+ * Builds a textured AI-mesh body for an enemy from a Meshy-generated GLB: keeps
+ * the GLB's own baked PBR material, orients the mesh so its face leads the
+ * enemy's forward (+Z), rigs it so the articulation (gaze / legs / stairs) can
+ * drive it, and sizes it to a target height with feet on the ground. The baked
+ * face can't change expression, so the menacing mood flushes the body red.
  * Browser-only (loads a GLB); call behind a flag, never in headless tests.
  */
 export interface MeshBody {
@@ -18,35 +19,41 @@ export interface MeshBody {
   bones: Record<string, THREE.Bone>;
 }
 
+// Yaw (radians) to face each Meshy mesh forward (+Z, the enemy's lead
+// direction). As exported they already face +Z, so this is 0; baked into a
+// per-instance geometry clone so the rig's +Z-front weights line up. Tune per
+// model if one comes in rotated.
+const FACE_YAW: Record<string, number> = {
+  pou: 0,
+  fuggler: 0,
+  gorilla: 0,
+  llama: 0,
+};
+
 export async function buildMeshBody(enemyId: string, targetHeight: number): Promise<MeshBody | null> {
   const model = ENEMY_MODEL[enemyId];
   if (!model) return null;
-  const cfg = PROJECTION[model];
-  if (!cfg) return null;
   const scene = await loadGLB(modelUrl(model));
-  const base = `${(import.meta.env?.BASE_URL ?? '/') as string}models/${model}`;
-  const tl = new THREE.TextureLoader();
-  const front = tl.load(`${base}_front.png`);
-  const back = tl.load(`${base}_back.png`);
-  const side = tl.load(`${base}_side.png`);
-  const frontMean = tl.load(`${base}_front_mean.png`);
-  const sideMean = tl.load(`${base}_side_mean.png`);
+  const yaw = FACE_YAW[model] ?? 0;
 
+  // Per-instance geometry/material clones — loadGLB shares them across clones,
+  // so mutating in place would compound the rotation / leak the menacing tint.
   const mats: THREE.MeshStandardMaterial[] = [];
   scene.traverse((o) => {
     if (!(o instanceof THREE.Mesh)) return;
-    const g = o.geometry as THREE.BufferGeometry;
+    const g = (o.geometry as THREE.BufferGeometry).clone();
     if (!g.attributes.normal) g.computeVertexNormals();
-    g.computeBoundingBox();
-    const bb = g.boundingBox!;
-    const min = new THREE.Vector3(bb.min.x, bb.min.y, bb.min.z);
-    const size = new THREE.Vector3(bb.max.x - bb.min.x || 1, bb.max.y - bb.min.y || 1, bb.max.z - bb.min.z || 1);
-    o.material = projectionMaterial({ front, back, side }, min, size, cfg);
+    if (yaw) g.rotateY(yaw);
+    o.geometry = g;
+    const mat = (o.material as THREE.MeshStandardMaterial).clone();
+    mat.metalness = 0; // plush, not plastic
+    o.material = mat;
     o.castShadow = true;
-    mats.push(o.material as THREE.MeshStandardMaterial);
+    mats.push(mat);
   });
 
-  // Rig the main mesh (skeleton + skin weights) so the articulation can drive it.
+  // Rig the main mesh (skeleton + skin weights) so the articulation can drive
+  // it. Meshy exports a single mesh, so this rigs the whole body.
   let bones: Record<string, THREE.Bone> = {};
   const spec = RIG_SPECS[model];
   if (spec) {
@@ -73,12 +80,11 @@ export async function buildMeshBody(enemyId: string, targetHeight: number): Prom
   const c = box.getCenter(new THREE.Vector3());
   scene.position.set(-c.x, -box.min.y, -c.z);
 
+  // The baked texture can't swap to a mean face, so flush the body red instead.
   const setMenacing = (on: boolean) => {
     for (const m of mats) {
-      const u = m.userData.proj;
-      if (!u) continue;
-      u.uFront.value = on ? frontMean : front;
-      u.uSide.value = on ? sideMean : side;
+      m.emissive.setHex(on ? 0x8a1410 : 0x000000);
+      m.emissiveIntensity = on ? 0.7 : 0;
     }
   };
   return { group, setMenacing, bones };
