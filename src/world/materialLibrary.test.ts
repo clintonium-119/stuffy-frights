@@ -57,6 +57,16 @@ describe('materialLibrary', () => {
     expect(m.normalMap).toBeTruthy();
   });
 
+  it('uses a supplied per-enemy fur normal instead of the shared fuzz map', () => {
+    const fur = new THREE.Texture();
+    const m = plushMaterial({ color: 0x7ed9c4, normalMap: fur });
+    expect(m.normalMap).toBe(fur);
+    // Omitting it falls back to the shared procedural fuzz normal (not null).
+    const d = plushMaterial({ color: 0x7ed9c4 });
+    expect(d.normalMap).toBeTruthy();
+    expect(d.normalMap).not.toBe(fur);
+  });
+
   it('gives distinct stuffies distinct plush colour + sheen', () => {
     const charles = plushMaterial({ color: 0x7ed9c4, sheenColor: 0x9aeeda });
     const poo = plushMaterial({ color: 0xd9b286, sheenColor: 0xecc89e });

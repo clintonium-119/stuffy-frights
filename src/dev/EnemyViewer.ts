@@ -1,0 +1,288 @@
+import * as THREE from 'three';
+import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+import { RGBELoader } from 'three/examples/jsm/loaders/RGBELoader.js';
+import { EnemyBase } from '../enemies/EnemyBase';
+import { Poo } from '../enemies/Poo';
+import { Fuggie } from '../enemies/Fuggie';
+import { Charles } from '../enemies/Charles';
+import { NewYama } from '../enemies/NewYama';
+import { config } from '../core/config';
+import { initMaterials } from '../world/materialLibrary';
+import { EnemyKey, ENEMY_KEYS } from './enemyViewerRoute';
+
+const FACTORY: Record<EnemyKey, () => EnemyBase> = {
+  poo: () => new Poo(),
+  fuggie: () => new Fuggie(),
+  charles: () => new Charles(),
+  newyama: () => new NewYama(),
+};
+
+const LABEL: Record<EnemyKey, string> = {
+  poo: 'Poo / Pou',
+  fuggie: 'Fuggie / fuggler',
+  charles: 'Charles / gorilla',
+  newyama: 'NewYama / llama',
+};
+
+type Mode = 'idle' | 'walk';
+
+/** Camera angle presets, framed on the model centre. dir is a unit-ish offset. */
+const PRESETS: Record<string, THREE.Vector3> = {
+  front: new THREE.Vector3(0, 0.2, 1),
+  back: new THREE.Vector3(0, 0.2, -1),
+  left: new THREE.Vector3(-1, 0.2, 0),
+  right: new THREE.Vector3(1, 0.2, 0),
+  iso: new THREE.Vector3(1, 0.5, 1),
+  top: new THREE.Vector3(0, 1.4, 0.15),
+};
+
+/**
+ * Standalone studio viewer for dialing in one stuffy's model + animations
+ * against the reference photos. Dev-only (its own Vite entry, viewer.html) —
+ * never imported by the game. Reuses the real enemy classes + materials.
+ */
+export class EnemyViewer {
+  private readonly renderer: THREE.WebGLRenderer;
+  private readonly scene = new THREE.Scene();
+  private readonly camera: THREE.PerspectiveCamera;
+  private readonly controls: OrbitControls;
+  private readonly holder = new THREE.Group(); // turntable
+  private readonly target = new THREE.Vector3(0, 0.7, 0);
+
+  private enemy: EnemyBase | null = null;
+  private frameDist = 2.6;
+  private preset = 'front';
+  private mode: Mode = 'idle';
+  private menacing = false;
+  private turntable = false;
+  private lookAtCamera = false;
+  private crouchTarget = false;
+  private onStairs = false;
+  private last = 0;
+  private readonly walkTarget = new THREE.Vector3();
+  private readonly playerPos = new THREE.Vector3();
+  private readonly stairs = new THREE.Group();
+
+  constructor(canvas: HTMLCanvasElement, initial: EnemyKey) {
+    this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    this.renderer.setSize(window.innerWidth, window.innerHeight);
+    this.renderer.shadowMap.enabled = true;
+    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    this.renderer.toneMappingExposure = 1.05;
+    initMaterials(this.renderer);
+
+    this.scene.background = new THREE.Color(0x202428);
+    this.camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.05, 100);
+    this.controls = new OrbitControls(this.camera, this.renderer.domElement);
+    this.controls.enableDamping = true;
+    this.controls.target.copy(this.target);
+
+    this.buildStudio();
+    this.scene.add(this.holder, this.stairs);
+    this.loadEnvironment();
+    this.setEnemy(initial);
+    this.applyPreset('front');
+    this.buildControlBar();
+
+    window.addEventListener('resize', () => this.onResize());
+    this.renderer.setAnimationLoop((t) => this.frame(t / 1000));
+  }
+
+  private buildStudio(): void {
+    // Neutral studio: soft ambient + hemisphere fill + a warm key with shadow.
+    this.scene.add(new THREE.AmbientLight(0xffffff, 0.55));
+    const hemi = new THREE.HemisphereLight(0xcfe0ff, 0x3a2f28, 0.6);
+    this.scene.add(hemi);
+    const key = new THREE.DirectionalLight(0xfff2e0, 1.6);
+    key.position.set(3, 6, 4);
+    key.castShadow = true;
+    key.shadow.mapSize.set(1024, 1024);
+    key.shadow.camera.near = 0.5;
+    key.shadow.camera.far = 30;
+    this.scene.add(key);
+    const rim = new THREE.DirectionalLight(0x9fb6ff, 0.5);
+    rim.position.set(-4, 3, -5);
+    this.scene.add(rim);
+
+    // Ground disc.
+    const ground = new THREE.Mesh(
+      new THREE.CircleGeometry(6, 48).rotateX(-Math.PI / 2),
+      new THREE.MeshStandardMaterial({ color: 0x4a4f55, roughness: 0.95 })
+    );
+    ground.receiveShadow = true;
+    this.scene.add(ground);
+    const grid = new THREE.GridHelper(12, 24, 0x666666, 0x393d42);
+    (grid.material as THREE.Material).opacity = 0.35;
+    (grid.material as THREE.Material).transparent = true;
+    this.scene.add(grid);
+
+    // A short 3-step stair set off to the side for the stairs animation.
+    const stepMat = new THREE.MeshStandardMaterial({ color: 0x5a5048, roughness: 1 });
+    for (let i = 0; i < 3; i++) {
+      const h = 0.18 * (i + 1);
+      const step = new THREE.Mesh(new THREE.BoxGeometry(1.4, h, 0.4), stepMat);
+      step.position.set(0, h / 2, -0.6 - i * 0.4);
+      step.receiveShadow = true;
+      step.castShadow = true;
+      this.stairs.add(step);
+    }
+    this.stairs.position.set(2.2, 0, 0);
+    this.stairs.visible = false;
+  }
+
+  private loadEnvironment(): void {
+    // Same HDRI the game uses — gives the plush sheen something to reflect.
+    const pmrem = new THREE.PMREMGenerator(this.renderer);
+    new RGBELoader().load(
+      `${import.meta.env.BASE_URL}hdri/abandoned_games_room_01_1k.hdr`,
+      (hdr) => {
+        this.scene.environment = pmrem.fromEquirectangular(hdr).texture;
+        hdr.dispose();
+      }
+    );
+  }
+
+  setEnemy(key: EnemyKey): void {
+    if (this.enemy) this.holder.remove(this.enemy.group);
+    this.enemy = FACTORY[key]();
+    this.holder.add(this.enemy.group);
+    document.title = `Viewer — ${LABEL[key]}`;
+    this.onStairs = false;
+    this.stairs.visible = false;
+    this.holder.rotation.y = 0;
+    this.holder.position.set(0, 0, 0);
+    this.fitToModel();
+    this.applyPreset(this.preset);
+  }
+
+  /** Centre + distance the camera framing on the current model's bounds. */
+  private fitToModel(): void {
+    if (!this.enemy) return;
+    const box = new THREE.Box3().setFromObject(this.enemy.group);
+    if (box.isEmpty()) return;
+    const center = box.getCenter(new THREE.Vector3());
+    const size = box.getSize(new THREE.Vector3());
+    this.target.set(0, center.y, 0);
+    const radius = Math.max(size.x, size.y, size.z) * 0.5;
+    // Fit the largest extent into ~70% of the vertical FOV.
+    const fov = (this.camera.fov * Math.PI) / 180;
+    this.frameDist = (radius / Math.sin(fov / 2)) * 1.5 + 0.4;
+  }
+
+  applyPreset(name: keyof typeof PRESETS | string): void {
+    this.preset = name;
+    const dir = PRESETS[name] ?? PRESETS.front;
+    this.camera.position.copy(this.target).addScaledVector(dir.clone().normalize(), this.frameDist);
+    this.controls.target.copy(this.target);
+    this.controls.update();
+  }
+
+  private frame(time: number): void {
+    if (!this.last) this.last = time;
+    const dt = Math.min(time - this.last, 0.05);
+    this.last = time;
+    const e = this.enemy;
+    if (e) {
+      if (this.mode === 'walk') {
+        // Treadmill: aim ahead, then recentre so it strides in place.
+        this.walkTarget.set(0, e.position.y, 40);
+        e.setMoveTarget(this.walkTarget, this.menacing ? config.ai.chaseSpeed : config.ai.patrolSpeed);
+      } else {
+        e.setMoveTarget(null, 0);
+      }
+      e.isChasing = this.menacing;
+
+      // Look target: camera (eye contact) or a low crouched-player point.
+      if (this.crouchTarget) this.playerPos.set(this.target.x, 0.25, this.target.z + 1.2);
+      else this.playerPos.copy(this.camera.position);
+      // Feed the articulation look-context if the build supports it (PHASE-03).
+      const look = (e as unknown as {
+        setLookContext?: (p: THREE.Vector3, crouch: boolean, intensity: number) => void;
+      }).setLookContext;
+      if (look) look.call(e, this.playerPos, this.crouchTarget, this.lookAtCamera || this.crouchTarget ? 1 : 0);
+
+      e.update(dt, this.playerPos, false);
+      if (this.mode === 'walk') {
+        e.group.position.x = 0;
+        e.group.position.z = 0;
+      }
+      if (this.turntable) this.holder.rotation.y += dt * 0.6;
+    }
+    this.controls.update();
+    this.renderer.render(this.scene, this.camera);
+  }
+
+  private onResize(): void {
+    this.camera.aspect = window.innerWidth / window.innerHeight;
+    this.camera.updateProjectionMatrix();
+    this.renderer.setSize(window.innerWidth, window.innerHeight);
+  }
+
+  private buildControlBar(): void {
+    const bar = document.createElement('div');
+    bar.style.cssText =
+      'position:fixed;left:0;right:0;bottom:0;padding:8px;display:flex;flex-wrap:wrap;gap:6px;' +
+      'background:rgba(10,12,16,0.82);font:12px sans-serif;color:#ddd;z-index:10;align-items:center';
+    const mk = (label: string, on: () => void, group = '') => {
+      const b = document.createElement('button');
+      b.textContent = label;
+      b.dataset.group = group;
+      b.style.cssText =
+        'padding:5px 9px;border:1px solid #555;border-radius:5px;background:#23272e;color:#eee;cursor:pointer';
+      b.onclick = () => on();
+      bar.appendChild(b);
+      return b;
+    };
+    const sep = () => {
+      const s = document.createElement('span');
+      s.style.cssText = 'width:1px;height:20px;background:#444;margin:0 4px';
+      bar.appendChild(s);
+    };
+
+    for (const k of ENEMY_KEYS) mk(LABEL[k].split(' / ')[0], () => this.setEnemy(k));
+    sep();
+    for (const p of Object.keys(PRESETS)) mk(p, () => this.applyPreset(p));
+    sep();
+    const idle = mk('idle', () => {});
+    const walk = mk('walk', () => {});
+    idle.onclick = () => {
+      this.mode = 'idle';
+      idle.style.outline = '2px solid #6cf';
+      walk.style.outline = 'none';
+    };
+    walk.onclick = () => {
+      this.mode = 'walk';
+      walk.style.outline = '2px solid #6cf';
+      idle.style.outline = 'none';
+    };
+    idle.click();
+    sep();
+    const toggle = (label: string, get: () => boolean, set: (v: boolean) => void) => {
+      const b = mk(label, () => {});
+      const sync = () => (b.style.outline = get() ? '2px solid #fc6' : 'none');
+      b.onclick = () => {
+        set(!get());
+        sync();
+      };
+      sync();
+      return b;
+    };
+    toggle('menacing', () => this.menacing, (v) => (this.menacing = v));
+    toggle('turntable', () => this.turntable, (v) => (this.turntable = v));
+    toggle('look@cam', () => this.lookAtCamera, (v) => (this.lookAtCamera = v));
+    toggle('crouch-look', () => this.crouchTarget, (v) => (this.crouchTarget = v));
+    toggle('stairs', () => this.onStairs, (v) => this.setStairs(v));
+    document.body.appendChild(bar);
+  }
+
+  /** Place the enemy at the foot of / on the stair set (foot IK lands in PHASE-03). */
+  private setStairs(on: boolean): void {
+    this.onStairs = on;
+    this.stairs.visible = on;
+    if (this.enemy) {
+      this.holder.position.set(on ? 2.2 : 0, 0, on ? 0.2 : 0);
+    }
+  }
+}

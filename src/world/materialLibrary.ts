@@ -161,7 +161,7 @@ function fuzzNormalMap(): THREE.Texture {
 }
 
 export interface PlushOpts {
-  /** Per-enemy coloured fabric albedo (e.g. EnemyBase.fabricTexture output). */
+  /** Per-enemy coloured fabric albedo (e.g. EnemyBase.fabricTexture / furTexture output). */
   map?: THREE.Texture | null;
   /** Albedo tint when no map is given. */
   color?: number;
@@ -171,8 +171,13 @@ export interface PlushOpts {
   sheenRoughness?: number;
   /** Base roughness. Default 0.92 (matte plush). */
   roughness?: number;
-  /** Fuzz normal strength. Default 0.35. */
+  /** Fuzz/fur normal strength. Default 0.35. */
   fuzz?: number;
+  /**
+   * Per-enemy fur normal map (e.g. furTexture().normal). When omitted, the
+   * shared procedural fuzz normal is used — preserving the original look.
+   */
+  normalMap?: THREE.Texture | null;
 }
 
 /**
@@ -189,7 +194,7 @@ export function plushMaterial(opts: PlushOpts = {}): THREE.MeshPhysicalMaterial 
     sheen: 1,
     sheenColor: new THREE.Color(opts.sheenColor ?? 0xffffff),
     sheenRoughness: opts.sheenRoughness ?? 0.65,
-    normalMap: fuzzNormalMap(),
+    normalMap: opts.normalMap ?? fuzzNormalMap(),
   });
   const f = opts.fuzz ?? 0.35;
   mat.normalScale.set(f, f);
