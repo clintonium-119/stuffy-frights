@@ -244,10 +244,10 @@ const sampleFloorHeight = (x: number, z: number, floorIndex: number): number => 
   return hits.length ? hits[0].point.y : floorY(floorIndex);
 };
 for (const enemy of enemies) enemy.floorHeightAt = sampleFloorHeight;
-// AI-generated textured + rigged bodies are the default; ?aimesh=0 falls back to
-// the procedural bodies (and any enemy whose mesh fails to load keeps its
-// procedural body). Async — procedural shows until the mesh swaps in.
-if (new URLSearchParams(location.search).get('aimesh') !== '0') {
+// Procedural bodies are the default. The AI-generated mesh experiment is kept
+// behind ?aimesh=1 for now (its rigging/articulation is still useful), but the
+// meshes/textures weren't good enough to ship as the default.
+if (new URLSearchParams(location.search).get('aimesh') === '1') {
   for (const enemy of enemies) void enemy.useAiMesh();
 }
 // Telegraph floor migrations with a distant stair-creak so the house's
