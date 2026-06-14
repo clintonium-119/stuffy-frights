@@ -146,6 +146,10 @@ export class Fuggie extends EnemyBase {
     return facePlane;
   }
 
+  protected getHead(): { obj: THREE.Object3D; maxYaw: number; maxPitch: number } {
+    return { obj: this.head, maxYaw: 0.4, maxPitch: 0.45 };
+  }
+
   drawFace(ctx: CanvasRenderingContext2D, size: number, mood: Mood): void {
     ctx.clearRect(0, 0, size, size);
     const c = size / 2;

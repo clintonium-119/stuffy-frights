@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { config } from '../core/config';
+import { solveGaze, solveFootLift } from './articulation';
 
 export type Mood = 'calm' | 'menacing';
 
@@ -123,6 +124,15 @@ export abstract class EnemyBase {
   onGaitBeat: ((kind: string) => void) | null = null;
   /** Suppresses catching during jumpscare/game-over. */
   catchEnabled = true;
+  /**
+   * Injected floor-height sampler (world Y under x,z on a floor). When set,
+   * legged stuffies place their feet on stairs/slopes. AI/world → body only.
+   */
+  floorHeightAt: ((x: number, z: number, floorIndex: number) => number) | null = null;
+
+  private lookTarget: THREE.Vector3 | null = null;
+  private lookIntensity = 0;
+  private static readonly _tmp = new THREE.Vector3();
 
   protected facePlane: THREE.Mesh | null = null;
   private faces: Record<Mood, THREE.CanvasTexture> | null = null;
@@ -159,6 +169,67 @@ export abstract class EnemyBase {
   setMoveTarget(target: THREE.Vector3 | null, speed = 0): void {
     this.moveTarget = target ? target.clone() : null;
     this.speed = speed;
+  }
+
+  /**
+   * AI/player → body push: where the stuffy should look + how strongly (0..1).
+   * Drives the procedural head-turn gaze (incl. looking down at a low/crouched
+   * player). The body never reads AI; the AI calls this.
+   */
+  setLookContext(target: THREE.Vector3 | null, intensity: number): void {
+    this.lookTarget = target ? target.clone() : null;
+    this.lookIntensity = Math.max(0, Math.min(1, intensity));
+  }
+
+  /** Subclasses expose their gaze head group + clamp cones (radians). */
+  protected getHead(): { obj: THREE.Object3D; maxYaw: number; maxPitch: number } | null {
+    return null;
+  }
+
+  /** Subclasses expose hip-pivoted leg groups for stair foot placement. */
+  protected getLegs(): THREE.Object3D[] | null {
+    return null;
+  }
+
+  /** Procedural head-turn gaze + stair foot placement, eased per step. */
+  private updateArticulation(dt: number): void {
+    const k = Math.min(1, 8 * dt);
+    const head = this.getHead();
+    if (head) {
+      let yaw = 0;
+      let pitch = 0;
+      if (this.lookTarget && this.lookIntensity > 0) {
+        const w = head.obj.getWorldPosition(EnemyBase._tmp);
+        const g = solveGaze({
+          headX: w.x,
+          headY: w.y,
+          headZ: w.z,
+          targetX: this.lookTarget.x,
+          targetY: this.lookTarget.y,
+          targetZ: this.lookTarget.z,
+          bodyYaw: this.group.rotation.y,
+          maxYaw: head.maxYaw,
+          maxPitch: head.maxPitch,
+        });
+        yaw = g.yaw * this.lookIntensity;
+        pitch = g.pitch * this.lookIntensity;
+      }
+      head.obj.rotation.y += (yaw - head.obj.rotation.y) * k;
+      head.obj.rotation.x += (pitch - head.obj.rotation.x) * k;
+    }
+
+    const legs = this.getLegs();
+    if (legs && this.floorHeightAt) {
+      const bodyGround = this.floorHeightAt(this.position.x, this.position.z, this.floorIndex);
+      for (const leg of legs) {
+        const w = leg.getWorldPosition(EnemyBase._tmp);
+        const ground = this.floorHeightAt(w.x, w.z, this.floorIndex);
+        const lift = solveFootLift({ groundUnderFoot: ground, groundUnderBody: bodyGround, maxLift: 0.4 });
+        const data = leg.userData as { baseY?: number };
+        if (data.baseY === undefined) data.baseY = leg.position.y;
+        leg.position.y += (data.baseY + lift - leg.position.y) * k;
+      }
+    }
   }
 
   get isMoving(): boolean {
@@ -198,6 +269,7 @@ export abstract class EnemyBase {
     }
 
     this.animateGait(this.gaitT, this.isMoving ? this.speed : 0, dt);
+    this.updateArticulation(dt);
 
     // Mood from distance/chase.
     const distance = this.position.distanceTo(playerPos);

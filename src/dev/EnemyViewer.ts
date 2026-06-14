@@ -118,17 +118,16 @@ export class EnemyViewer {
     (grid.material as THREE.Material).transparent = true;
     this.scene.add(grid);
 
-    // A short 3-step stair set off to the side for the stairs animation.
-    const stepMat = new THREE.MeshStandardMaterial({ color: 0x5a5048, roughness: 1 });
-    for (let i = 0; i < 3; i++) {
-      const h = 0.18 * (i + 1);
-      const step = new THREE.Mesh(new THREE.BoxGeometry(1.4, h, 0.4), stepMat);
-      step.position.set(0, h / 2, -0.6 - i * 0.4);
-      step.receiveShadow = true;
-      step.castShadow = true;
-      this.stairs.add(step);
-    }
-    this.stairs.position.set(2.2, 0, 0);
+    // A ramp under the enemy (toggled) to dial in stair foot-placement: the
+    // surface rises toward +Z (front), so the leading feet step up.
+    const rampMat = new THREE.MeshStandardMaterial({ color: 0x5a5048, roughness: 1 });
+    const ramp = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.1, 1.4), rampMat);
+    // Tilt so the top face slopes; front (+Z) end is higher.
+    const slope = Math.atan2(EnemyViewer.RAMP_RISE, 1.2);
+    ramp.rotation.x = -slope;
+    ramp.position.set(0, EnemyViewer.RAMP_RISE / 2, 0);
+    ramp.receiveShadow = true;
+    this.stairs.add(ramp);
     this.stairs.visible = false;
   }
 
@@ -282,12 +281,21 @@ export class EnemyViewer {
     document.body.appendChild(bar);
   }
 
-  /** Place the enemy at the foot of / on the stair set (foot IK lands in PHASE-03). */
+  private static readonly RAMP_RISE = 0.44;
+
+  /** Top-surface height of the toggled ramp at world z (rises toward +Z). */
+  private rampHeight(z: number): number {
+    const h = ((z + 0.6) / 1.2) * EnemyViewer.RAMP_RISE;
+    return Math.max(0, Math.min(EnemyViewer.RAMP_RISE, h));
+  }
+
+  /** Toggle the ramp: stand the enemy on it + feed the floor-height sampler. */
   private setStairs(on: boolean): void {
     this.onStairs = on;
     this.stairs.visible = on;
     if (this.enemy) {
-      this.holder.position.set(on ? 2.2 : 0, 0, on ? 0.2 : 0);
+      this.holder.position.set(0, on ? this.rampHeight(0) : 0, 0);
+      this.enemy.floorHeightAt = on ? (_x, z) => this.rampHeight(z) : null;
     }
   }
 }

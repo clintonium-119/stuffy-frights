@@ -21,7 +21,7 @@ import { config } from './core/config';
 import { house } from './world/houseLayout';
 import { HouseBuilder } from './world/HouseBuilder';
 import { initMaterials } from './world/materialLibrary';
-import { worldToCell, CELL_SIZE } from './world/layoutTypes';
+import { worldToCell, CELL_SIZE, floorY } from './world/layoutTypes';
 import { HidingSystem } from './systems/HidingSpot';
 import { PassageSystem } from './systems/SecretPassage';
 import { WeatherSystem } from './systems/Weather';
@@ -230,6 +230,20 @@ const director = new Director(
   (pos) => world.markerWorld(pos)
 );
 const enemies = director.residents.map((r) => r.enemy);
+// Stair foot-placement sampler: a downward ray against the house finds the
+// walking surface under each foot (floor or stair tread). Only legged stuffies
+// (NewYama) query this, so the cost is a handful of rays per frame.
+const _footRay = new THREE.Raycaster();
+_footRay.far = 3.2;
+const _footDown = new THREE.Vector3(0, -1, 0);
+const _footOrigin = new THREE.Vector3();
+const sampleFloorHeight = (x: number, z: number, floorIndex: number): number => {
+  _footOrigin.set(x, floorY(floorIndex) + 1.4, z);
+  _footRay.set(_footOrigin, _footDown);
+  const hits = _footRay.intersectObject(world.group, true);
+  return hits.length ? hits[0].point.y : floorY(floorIndex);
+};
+for (const enemy of enemies) enemy.floorHeightAt = sampleFloorHeight;
 // Telegraph floor migrations with a distant stair-creak so the house's
 // unpredictability reads as dread, not a glitch.
 director.onMigrate = (r) => audio.migrationCue(r.enemy.position.clone());
@@ -818,6 +832,11 @@ engine.addUpdatable({
     let anyChasing = false;
     for (const r of director.residents) {
       r.brain.update(dt, snapshot);
+      // Procedural gaze: aware stuffies turn their head to track the player
+      // (and look down when the player is crouched/hidden low). Unaware =
+      // neutral, so a patrolling stuffy doesn't creepily stare.
+      const gaze = r.brain.state === 'chase' ? 1 : r.brain.state === 'investigate' ? 0.6 : 0;
+      r.enemy.setLookContext(gaze > 0 ? player.position : null, gaze);
       r.enemy.update(dt, player.position, catchable);
       if (r.enemy.floorIndex === player.floorIndex) {
         nearest = Math.min(nearest, r.enemy.position.distanceTo(player.position));
