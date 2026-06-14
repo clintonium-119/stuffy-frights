@@ -244,6 +244,12 @@ const sampleFloorHeight = (x: number, z: number, floorIndex: number): number => 
   return hits.length ? hits[0].point.y : floorY(floorIndex);
 };
 for (const enemy of enemies) enemy.floorHeightAt = sampleFloorHeight;
+// AI-generated textured + rigged bodies are the default; ?aimesh=0 falls back to
+// the procedural bodies (and any enemy whose mesh fails to load keeps its
+// procedural body). Async — procedural shows until the mesh swaps in.
+if (new URLSearchParams(location.search).get('aimesh') !== '0') {
+  for (const enemy of enemies) void enemy.useAiMesh();
+}
 // Telegraph floor migrations with a distant stair-creak so the house's
 // unpredictability reads as dread, not a glitch.
 director.onMigrate = (r) => audio.migrationCue(r.enemy.position.clone());
@@ -929,13 +935,9 @@ engine.start();
 // ----------------------------------------------------------- dev harness
 if (import.meta.env.DEV) {
   const params = new URLSearchParams(location.search);
-  const anyDev = ['pose', 'warp', 'scare', 'report', 'showcase', 'scenario', 'aimesh'].some((k) =>
+  const anyDev = ['pose', 'warp', 'scare', 'report', 'showcase', 'scenario'].some((k) =>
     params.has(k)
   );
-  // Opt-in: swap the procedural enemy bodies for the AI-generated textured meshes.
-  if (params.get('aimesh') === '1') {
-    for (const enemy of enemies) void enemy.useAiMesh();
-  }
   if (anyDev && gs.state === 'menu') {
     gs.transition('start');
     menus.hide();
