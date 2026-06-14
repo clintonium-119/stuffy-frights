@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { EnemyBase, Mood } from './EnemyBase';
 import { plushMaterial } from '../world/materialLibrary';
 import { furTexture } from '../world/furTexture';
+import { faceDecal } from './faceDecal';
 
 /**
  * Charles (displayed in-game as "Little Timmy") — the Gorilla-Tag plush.
@@ -52,7 +53,7 @@ export class Charles extends EnemyBase {
 
     // Gorilla-Tag silhouette: a rounded legless body mass, broad up top and
     // tapering to a rounded seat, resting on its long planted arms.
-    const body = new THREE.Mesh(new THREE.SphereGeometry(0.42, 20, 18), mint);
+    const body = new THREE.Mesh(new THREE.SphereGeometry(0.42, 32, 26), mint);
     body.scale.set(1.1, 1.08, 0.95);
     body.position.y = 0.6;
     this.torso.add(body);
@@ -68,8 +69,8 @@ export class Charles extends EnemyBase {
     this.head.position.set(0, 1.04, 0);
     this.torso.add(this.head);
 
-    const headMesh = new THREE.Mesh(new THREE.SphereGeometry(0.3, 20, 16), mint);
-    headMesh.scale.set(1.04, 0.96, 0.86); // flatter front so the face decal sits proud
+    const headMesh = new THREE.Mesh(new THREE.SphereGeometry(0.3, 30, 24), mint);
+    headMesh.scale.set(1.04, 0.96, 0.9);
     headMesh.position.set(0, 0.16, -0.02);
     this.head.add(headMesh);
 
@@ -84,10 +85,10 @@ export class Charles extends EnemyBase {
 
     // Grey embroidered gorilla face on a transparent decal plane.
     const facePlane = new THREE.Mesh(
-      new THREE.CircleGeometry(0.23, 24),
+      faceDecal(0.23, 0.33, 44),
       new THREE.MeshStandardMaterial({ roughness: 0.85, transparent: true })
     );
-    facePlane.position.set(0, 0.14, 0.252);
+    facePlane.position.set(0, 0.14, 0.262);
     this.head.add(facePlane);
 
     // Rainbow cone hat — horizontal rainbow rings, red at the tip.
@@ -113,14 +114,18 @@ export class Charles extends EnemyBase {
     // rests on these (the Gorilla-Tag hand-walk).
     const makeArm = (side: number) => {
       const arm = new THREE.Group();
-      const upper = new THREE.Mesh(new THREE.CapsuleGeometry(0.13, 0.86, 6, 12), mint);
+      // Shoulder blob that embeds into the torso so the arm reads attached.
+      const shoulder = new THREE.Mesh(new THREE.SphereGeometry(0.17, 18, 16), mint);
+      shoulder.position.y = 0.02;
+      arm.add(shoulder);
+      const upper = new THREE.Mesh(new THREE.CapsuleGeometry(0.13, 0.86, 8, 16), mint);
       upper.position.y = -0.47;
       arm.add(upper);
-      const hand = new THREE.Mesh(new THREE.SphereGeometry(0.17, 14, 12), mint);
+      const hand = new THREE.Mesh(new THREE.SphereGeometry(0.17, 18, 16), mint);
       hand.position.y = -0.98;
       hand.scale.set(1.3, 0.7, 1.5);
       arm.add(hand);
-      arm.position.set(side * 0.46, 0.88, 0.14);
+      arm.position.set(side * 0.42, 0.86, 0.12); // tucked in so the shoulder overlaps the body
       arm.rotation.x = -0.5;
       this.torso.add(arm);
       return arm;
@@ -221,15 +226,25 @@ export class Charles extends EnemyBase {
       ctx.ellipse(c - 13, c + 30, 6, 8, 0, 0, Math.PI * 2);
       ctx.ellipse(c + 13, c + 30, 6, 8, 0, 0, Math.PI * 2);
       ctx.fill();
-      // Open snarl with flat teeth.
-      ctx.fillStyle = '#3a1518';
+      // Open snarl with sharp pointed fangs.
+      ctx.fillStyle = '#2a0f12';
       ctx.beginPath();
-      ctx.ellipse(c, c + 60, 38, 24, 0, 0, Math.PI * 2);
+      ctx.ellipse(c, c + 60, 42, 27, 0, 0, Math.PI * 2);
       ctx.fill();
-      ctx.fillStyle = '#e8e2d2';
-      for (let i = -3; i <= 3; i++) {
-        ctx.fillRect(c + i * 11 - 4, c + 40, 8, 12);
-        ctx.fillRect(c + i * 11 - 4, c + 70, 8, 11);
+      ctx.fillStyle = '#ece6d6';
+      const n = 7;
+      for (let i = 0; i < n; i++) {
+        const x = c - 36 + (i * 72) / (n - 1);
+        ctx.beginPath(); // upper fang
+        ctx.moveTo(x - 6, c + 36);
+        ctx.lineTo(x + 6, c + 36);
+        ctx.lineTo(x, c + 36 + (i % 2 ? 26 : 18));
+        ctx.fill();
+        ctx.beginPath(); // lower fang
+        ctx.moveTo(x - 5, c + 84);
+        ctx.lineTo(x + 5, c + 84);
+        ctx.lineTo(x, c + 84 - (i % 2 ? 22 : 14));
+        ctx.fill();
       }
     }
   }
