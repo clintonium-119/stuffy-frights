@@ -5,6 +5,19 @@ import { solveGaze, solveFootLift, bodyPitchFromFeet } from './articulation';
 export type Mood = 'calm' | 'menacing';
 
 /**
+ * Body-level locomotion style per enemy id. 'hop' = bounce + squash-stretch
+ * (Pou), 'shuffle' = short-limb waddle + bob (Fuggie), 'trot' = subtle bob while
+ * the four legs swing (NewYama), 'haul' = subtle rock while the arms swing
+ * (Charles). Limbed gaits also swing their rig bones.
+ */
+const GAIT: Record<string, 'hop' | 'shuffle' | 'trot' | 'haul'> = {
+  poo: 'hop',
+  fuggie: 'shuffle',
+  newYama: 'trot',
+  charles: 'haul',
+};
+
+/**
  * Pure mood resolution — menacing inside the threat radius or while
  * chasing, with a hold time so the face doesn't flicker at the boundary.
  * Returns the next mood and the updated hold timer.
@@ -63,6 +76,10 @@ export abstract class EnemyBase {
   private aiArms: THREE.Object3D[] | null = null;
   private static readonly _tmp = new THREE.Vector3();
 
+  /** Body-level locomotion style, by enemy id. Limbed ones also swing bones. */
+  private gaitStyle: 'hop' | 'shuffle' | 'trot' | 'haul' = 'trot';
+  private bodyAnim: THREE.Object3D | null = null; // wrapper bobbed/squashed by gait
+  private bodyHeight = 1;
   private bodyPromise: Promise<void> | null = null;
   private heldFor = 0;
   private twitch = 0;
@@ -72,6 +89,7 @@ export abstract class EnemyBase {
 
   constructor(id: string) {
     this.id = id;
+    this.gaitStyle = GAIT[id] ?? 'trot';
   }
 
   /** Call once after construction. Builds the AI mesh body (async, browser). */
@@ -107,10 +125,16 @@ export abstract class EnemyBase {
   }
 
   private async buildAiBody(): Promise<void> {
-    const { buildMeshBody } = await import('./MeshBody');
+    const { buildMeshBody, ENEMY_HEIGHT } = await import('./MeshBody');
     const body = await buildMeshBody(this.id);
     if (!body) return;
-    this.group.add(body.group);
+    this.bodyHeight = ENEMY_HEIGHT[this.id] ?? 1;
+    // Wrap the sized body in an anim group the gait bobs/squashes — keeps the
+    // logical position (this.group) and the sizing (body.group) untouched.
+    const anim = new THREE.Group();
+    anim.add(body.group);
+    this.group.add(anim);
+    this.bodyAnim = anim;
     body.group.traverse((o) => {
       if (o instanceof THREE.Mesh) o.castShadow = true;
     });
@@ -151,14 +175,22 @@ export abstract class EnemyBase {
     }
 
     const legs = this.aiLegs;
-    // AI rig walk: swing the leg bones in diagonal pairs while moving.
-    if (this.aiLegs && this.aiLegs.length >= 4 && this.isMoving) {
+    // AI rig walk: swing the leg bones fore/aft while moving — quadrupeds in
+    // diagonal pairs (FL+HR / FR+HL), bipeds (e.g. Fuggie's stubby feet) in
+    // simple alternation. Eased back to rest when stopped.
+    if (this.aiLegs && this.aiLegs.length >= 2) {
+      const moving = this.isMoving;
       const phase = this.gaitT * 2.6;
       const sw = 0.45;
-      this.aiLegs[0].rotation.x = Math.sin(phase) * sw;
-      this.aiLegs[3].rotation.x = Math.sin(phase) * sw;
-      this.aiLegs[1].rotation.x = Math.sin(phase + Math.PI) * sw;
-      this.aiLegs[2].rotation.x = Math.sin(phase + Math.PI) * sw;
+      const quad = this.aiLegs.length >= 4;
+      const target = (i: number): number => {
+        if (!moving) return 0;
+        const back = quad ? i === 1 || i === 2 : i % 2 === 1; // which legs lag a half-cycle
+        return Math.sin(phase + (back ? Math.PI : 0)) * sw;
+      };
+      this.aiLegs.forEach((leg, i) => {
+        leg.rotation.x = moving ? target(i) : leg.rotation.x + (0 - leg.rotation.x) * k;
+      });
     }
     // AI rig arm-walk (e.g. the gorilla): the long arms swing fore/aft in
     // opposition as he hauls himself along, easing back to rest when stopped.
@@ -203,6 +235,49 @@ export abstract class EnemyBase {
         const target = Math.max(-0.16, Math.min(0.16, -pitch));
         this.group.rotation.x += (target - this.group.rotation.x) * k;
       }
+    }
+
+    this.animateBody(dt);
+  }
+
+  /**
+   * Body-level locomotion on the anim wrapper: Pou bounces (hop) and squishes
+   * down / stretches up; Fuggie shuffles with a short-limb side-rock + bob; the
+   * legged/armed ones get a subtle bob while their bones do the work. Eased back
+   * to neutral when idle.
+   */
+  private animateBody(dt: number): void {
+    const a = this.bodyAnim;
+    if (!a) return;
+    const k = Math.min(1, 12 * dt);
+    const h = this.bodyHeight;
+    if (this.isMoving) {
+      if (this.gaitStyle === 'hop') {
+        const ph = this.gaitT * 3.2;
+        const hop = Math.abs(Math.sin(ph)); // 0 at ground, 1 at apex
+        a.position.y = hop * 0.18 * h;
+        // squish down at the bottom, stretch up at the top (volume-preserving)
+        const st = 1 + (hop - 0.5) * 0.28;
+        a.scale.set(1 / Math.sqrt(st), st, 1 / Math.sqrt(st));
+        a.rotation.z = 0;
+        if (hop < 0.06 && dt > 0) this.onGaitBeat?.('fwump');
+      } else if (this.gaitStyle === 'shuffle') {
+        const ph = this.gaitT * 3.6;
+        a.position.y = Math.abs(Math.sin(ph)) * 0.05 * h;
+        a.rotation.z = Math.sin(ph) * 0.07; // short-limb side rock
+        a.scale.set(1, 1, 1);
+        if (Math.abs(Math.sin(ph)) < 0.06 && dt > 0) this.onGaitBeat?.('shuffle');
+      } else {
+        a.position.y = Math.abs(Math.sin(this.gaitT * 2.6)) * 0.03 * h;
+        a.rotation.z = 0;
+        a.scale.set(1, 1, 1);
+      }
+    } else {
+      a.position.y += (0 - a.position.y) * k;
+      a.rotation.z += (0 - a.rotation.z) * k;
+      a.scale.x += (1 - a.scale.x) * k;
+      a.scale.y += (1 - a.scale.y) * k;
+      a.scale.z += (1 - a.scale.z) * k;
     }
   }
 
