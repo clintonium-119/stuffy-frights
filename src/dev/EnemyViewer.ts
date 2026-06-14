@@ -149,10 +149,11 @@ export class EnemyViewer {
     // A ramp under the enemy (toggled) to dial in stair foot-placement: the
     // surface rises toward +Z (front), so the leading feet step up.
     const rampMat = new THREE.MeshStandardMaterial({ color: 0x5a5048, roughness: 1 });
-    const ramp = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.1, 1.4), rampMat);
-    // Tilt so the top face slopes; front (+Z) end is higher.
+    const ramp = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.1, 1.6), rampMat);
+    // Tilt so the top face slopes; the front (+Z) end is LOWER, so an enemy
+    // walking forward (+Z) is descending — the case to dial in.
     const slope = Math.atan2(EnemyViewer.RAMP_RISE, 1.2);
-    ramp.rotation.x = -slope;
+    ramp.rotation.x = slope;
     ramp.position.set(0, EnemyViewer.RAMP_RISE / 2, 0);
     ramp.receiveShadow = true;
     this.stairs.add(ramp);
@@ -342,9 +343,9 @@ export class EnemyViewer {
 
   private static readonly RAMP_RISE = 0.44;
 
-  /** Top-surface height of the toggled ramp at world z (rises toward +Z). */
+  /** Top-surface height of the toggled ramp at world z (descends toward +Z). */
   private rampHeight(z: number): number {
-    const h = ((z + 0.6) / 1.2) * EnemyViewer.RAMP_RISE;
+    const h = ((0.6 - z) / 1.2) * EnemyViewer.RAMP_RISE;
     return Math.max(0, Math.min(EnemyViewer.RAMP_RISE, h));
   }
 

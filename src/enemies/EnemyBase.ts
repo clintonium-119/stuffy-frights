@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { config } from '../core/config';
-import { solveGaze, solveFootLift } from './articulation';
+import { solveGaze, solveFootLift, bodyPitchFromFeet } from './articulation';
 
 export type Mood = 'calm' | 'menacing';
 
@@ -222,6 +222,10 @@ export abstract class EnemyBase {
     const legs = this.getLegs();
     if (legs && this.floorHeightAt) {
       const bodyGround = this.floorHeightAt(this.position.x, this.position.z, this.floorIndex);
+      let frontLift = 0;
+      let frontN = 0;
+      let backLift = 0;
+      let backN = 0;
       for (const leg of legs) {
         const w = leg.getWorldPosition(EnemyBase._tmp);
         const ground = this.floorHeightAt(w.x, w.z, this.floorIndex);
@@ -229,6 +233,21 @@ export abstract class EnemyBase {
         const data = leg.userData as { baseY?: number };
         if (data.baseY === undefined) data.baseY = leg.position.y;
         leg.position.y += (data.baseY + lift - leg.position.y) * k;
+        // Front/back foot lift drives the body pitch on slopes (+Z is front).
+        if (leg.position.z > 0.05) {
+          frontLift += lift;
+          frontN++;
+        } else if (leg.position.z < -0.05) {
+          backLift += lift;
+          backN++;
+        }
+      }
+      // Tip the whole body with the stairs (nose-up ascending, nose-down
+      // descending) — pitch is the X axis, independent of the facing yaw.
+      if (frontN > 0 && backN > 0) {
+        const pitch = bodyPitchFromFeet(frontLift / frontN, backLift / backN, 0.6);
+        const target = Math.max(-0.16, Math.min(0.16, -pitch));
+        this.group.rotation.x += (target - this.group.rotation.x) * k;
       }
     }
   }
