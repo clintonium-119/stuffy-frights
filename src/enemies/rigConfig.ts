@@ -28,8 +28,11 @@ export const RIG_CONFIG: Record<string, RigConfig> = {
   gorilla: [
     { name: 'root', pivot: [0.5, 0.45, 0.5] },
     { name: 'head', pivot: [0.5, 0.74, 0.45], box: { min: [0.3, 0.74, 0.2], max: [0.7, 1.0, 0.95] }, falloff: 0.08 },
-    { name: 'armL', pivot: [0.37, 0.62, 0.5], box: { min: [0.0, 0.4, 0.15], max: [0.38, 0.72, 0.85] }, falloff: 0.07 },
-    { name: 'armR', pivot: [0.63, 0.62, 0.5], box: { min: [0.62, 0.4, 0.15], max: [1.0, 0.72, 0.85] }, falloff: 0.07 },
+    // The arms splay out + droop: shoulder ~(x0.33,y0.5,z0.38) → hand ~(x0,y0.13,z0.85).
+    // Boxes must reach down to the hands (low y) and forward (high z), not the
+    // shoulder band, or only the shoulder stub moves.
+    { name: 'armL', pivot: [0.33, 0.5, 0.38], box: { min: [0.0, 0.0, 0.1], max: [0.4, 0.56, 1.0] }, falloff: 0.06 },
+    { name: 'armR', pivot: [0.67, 0.5, 0.38], box: { min: [0.6, 0.0, 0.1], max: [1.0, 0.56, 1.0] }, falloff: 0.06 },
   ],
 
   // NewYama (llama) — neck/head up front + four legs in the lower quadrants.

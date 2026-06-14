@@ -87,7 +87,10 @@ export function rigMesh(mesh: THREE.Mesh, config: RigConfig, opts: RigOptions = 
   }
 
   // --- 3. Laplacian smoothing of the weight field over weld topology ---
-  const iters = index ? (opts.smoothIters ?? 12) : 0;
+  // Light touch: the box falloff already blends joints, and heavy smoothing
+  // propagates the body's zero-weight down thin limbs (arms/legs), washing out
+  // the hand/foot so only the stub near the pivot moves.
+  const iters = index ? (opts.smoothIters ?? 3) : 0;
   const lambda = opts.smoothLambda ?? 0.5;
   for (let it = 0; it < iters; it++) {
     const acc = new Float32Array(nW * nB);
