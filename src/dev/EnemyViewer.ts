@@ -12,6 +12,15 @@ import { initMaterials } from '../world/materialLibrary';
 import { EnemyKey, ENEMY_KEYS } from './enemyViewerRoute';
 import { projectionMaterial } from '../enemies/projectionMaterial';
 import { PROJECTION } from '../enemies/projectionConfig';
+import { RigEditor } from './RigEditor';
+
+/** Viewer enemy key → GLB model name (for the rig editor). */
+const KEY_TO_MODEL: Record<EnemyKey, string> = {
+  poo: 'pou',
+  fuggie: 'fuggler',
+  charles: 'gorilla',
+  newyama: 'llama',
+};
 
 // Reference photos, served by Vite in dev only (the viewer isn't in the build).
 const REF_URLS = import.meta.glob('../../assets/enemies/*.jpg', {
@@ -316,7 +325,25 @@ export class EnemyViewer {
     document.title = `Viewer — GLB ${file}`;
   }
 
+  private rigEditor: RigEditor | null = null;
+
+  /** Enter the rig edit mode for an enemy (replaces the live enemy display). */
+  enterRigEdit(key: EnemyKey): void {
+    if (this.enemy) {
+      this.holder.remove(this.enemy.group);
+      this.enemy = null;
+    }
+    this.rigEditor?.dispose();
+    this.currentKey = key;
+    this.rigEditor = new RigEditor(this.scene, KEY_TO_MODEL[key]);
+    this.target.set(0, 0.75, 0);
+    this.frameDist = 3.4;
+    this.applyPreset('front');
+  }
+
   setEnemy(key: EnemyKey): void {
+    this.rigEditor?.dispose();
+    this.rigEditor = null;
     if (this.enemy) this.holder.remove(this.enemy.group);
     this.currentKey = key;
     this.enemy = FACTORY[key]();
@@ -440,6 +467,8 @@ export class EnemyViewer {
     };
 
     for (const k of ENEMY_KEYS) mk(LABEL[k].split(' / ')[0], () => this.setEnemy(k));
+    sep();
+    mk('rig edit', () => this.enterRigEdit(this.currentKey));
     sep();
     for (const p of Object.keys(PRESETS)) mk(p, () => this.applyPreset(p));
     sep();

@@ -22,6 +22,11 @@ if (params.get('ai') === '0') {
   const e = parseViewerRoute(location.hash) ?? parseViewerRoute(location.search);
   viewer.setEnemy(e?.enemy ?? 'newyama');
 }
+// ?rigedit=1 — open the rig edit mode (place bone pivots + weight boxes).
+if (params.get('rigedit') === '1') {
+  const e = parseViewerRoute(location.hash) ?? parseViewerRoute(location.search);
+  viewer.enterRigEdit(e?.enemy ?? 'newyama');
+}
 
 // Re-pick on hash change without a reload.
 window.addEventListener('hashchange', () => {
