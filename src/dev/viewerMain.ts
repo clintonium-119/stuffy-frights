@@ -8,6 +8,8 @@ import { parseViewerRoute } from './enemyViewerRoute';
 const canvas = document.getElementById('viewer') as HTMLCanvasElement;
 const route = parseViewerRoute(location.hash) ?? parseViewerRoute(location.search);
 const viewer = new EnemyViewer(canvas, route?.enemy ?? 'newyama');
+// Dev convenience: expose for console / automated inspection.
+(window as unknown as { __viewer: EnemyViewer }).__viewer = viewer;
 
 // Re-pick on hash change without a reload.
 window.addEventListener('hashchange', () => {
