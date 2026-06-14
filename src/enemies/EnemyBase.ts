@@ -156,6 +156,7 @@ export abstract class EnemyBase {
   /** Call once after construction (subclass constructors finish first). */
   init(): void {
     this.facePlane = this.buildBody();
+    this.facePlane.name = 'face';
     this.faces = bakeFaces((ctx, size, mood) => this.drawFace(ctx, size, mood));
     const mat = this.facePlane.material as THREE.MeshStandardMaterial;
     mat.map = this.faces.calm;

@@ -10,6 +10,24 @@ import { config } from '../core/config';
 import { initMaterials } from '../world/materialLibrary';
 import { EnemyKey, ENEMY_KEYS } from './enemyViewerRoute';
 
+// Reference photos, served by Vite in dev only (the viewer isn't in the build).
+const REF_URLS = import.meta.glob('../../assets/enemies/*.jpg', {
+  eager: true,
+  query: '?url',
+  import: 'default',
+}) as Record<string, string>;
+const REF_PREFIX: Record<EnemyKey, string> = {
+  poo: 'pou',
+  fuggie: 'fuggler',
+  charles: 'gorilla',
+  newyama: 'llama',
+};
+function refUrl(key: EnemyKey, angle: string): string | null {
+  const file = angle === 'iso' ? `${REF_PREFIX[key]}.jpg` : `${REF_PREFIX[key]}_${angle}.jpg`;
+  const hit = Object.entries(REF_URLS).find(([p]) => p.endsWith('/' + file));
+  return hit ? hit[1] : null;
+}
+
 const FACTORY: Record<EnemyKey, () => EnemyBase> = {
   poo: () => new Poo(),
   fuggie: () => new Fuggie(),
@@ -52,6 +70,11 @@ export class EnemyViewer {
   private enemy: EnemyBase | null = null;
   private frameDist = 2.6;
   private preset = 'front';
+  private currentKey: EnemyKey = 'newyama';
+  private readonly refImg = document.createElement('img');
+  private refOn = false;
+  private refOpacity = 0.5;
+  private refAngle = 'front';
   private mode: Mode = 'idle';
   private menacing = false;
   private turntable = false;
@@ -78,6 +101,11 @@ export class EnemyViewer {
     this.controls = new OrbitControls(this.camera, this.renderer.domElement);
     this.controls.enableDamping = true;
     this.controls.target.copy(this.target);
+
+    this.refImg.style.cssText =
+      'position:fixed;inset:0;margin:auto;max-width:96%;max-height:88%;pointer-events:none;' +
+      'opacity:0;z-index:5;object-fit:contain;display:none';
+    document.body.appendChild(this.refImg);
 
     this.buildStudio();
     this.scene.add(this.holder, this.stairs);
@@ -145,6 +173,7 @@ export class EnemyViewer {
 
   setEnemy(key: EnemyKey): void {
     if (this.enemy) this.holder.remove(this.enemy.group);
+    this.currentKey = key;
     this.enemy = FACTORY[key]();
     this.holder.add(this.enemy.group);
     document.title = `Viewer — ${LABEL[key]}`;
@@ -176,6 +205,23 @@ export class EnemyViewer {
     this.camera.position.copy(this.target).addScaledVector(dir.clone().normalize(), this.frameDist);
     this.controls.target.copy(this.target);
     this.controls.update();
+    // Sync the reference overlay to the matching photographed angle.
+    const angle =
+      name === 'left' || name === 'right' ? 'side' : name === 'top' ? this.refAngle : name;
+    this.refAngle = angle;
+    this.updateRef();
+  }
+
+  private updateRef(): void {
+    const url = this.refOn ? refUrl(this.currentKey, this.refAngle) : null;
+    if (url) {
+      this.refImg.src = url;
+      this.refImg.style.display = 'block';
+      this.refImg.style.opacity = String(this.refOpacity);
+    } else {
+      this.refImg.style.display = 'none';
+      this.refImg.style.opacity = '0';
+    }
   }
 
   private frame(time: number): void {
@@ -278,6 +324,19 @@ export class EnemyViewer {
     toggle('look@cam', () => this.lookAtCamera, (v) => (this.lookAtCamera = v));
     toggle('crouch-look', () => this.crouchTarget, (v) => (this.crouchTarget = v));
     toggle('stairs', () => this.onStairs, (v) => this.setStairs(v));
+    sep();
+    toggle('ref', () => this.refOn, (v) => {
+      this.refOn = v;
+      this.updateRef();
+    });
+    mk('ref −', () => {
+      this.refOpacity = Math.max(0.1, this.refOpacity - 0.15);
+      this.updateRef();
+    });
+    mk('ref +', () => {
+      this.refOpacity = Math.min(1, this.refOpacity + 0.15);
+      this.updateRef();
+    });
     document.body.appendChild(bar);
   }
 
