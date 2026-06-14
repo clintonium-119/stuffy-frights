@@ -195,14 +195,19 @@ export class EnemyViewer {
       e.isChasing = this.menacing;
 
       // Look target: camera (eye contact) or a low crouched-player point.
-      if (this.crouchTarget) this.playerPos.set(this.target.x, 0.25, this.target.z + 1.2);
-      else this.playerPos.copy(this.camera.position);
+      const lookPos =
+        this.crouchTarget
+          ? new THREE.Vector3(this.target.x, 0.25, this.target.z + 1.5)
+          : this.camera.position.clone();
       // Feed the articulation look-context if the build supports it (PHASE-03).
       const look = (e as unknown as {
         setLookContext?: (p: THREE.Vector3, crouch: boolean, intensity: number) => void;
       }).setLookContext;
-      if (look) look.call(e, this.playerPos, this.crouchTarget, this.lookAtCamera || this.crouchTarget ? 1 : 0);
+      if (look) look.call(e, lookPos, this.crouchTarget, this.lookAtCamera || this.crouchTarget ? 1 : 0);
 
+      // Mood is driven only by the `menacing` toggle here — keep the simulated
+      // player far so proximity doesn't force menacing in the studio.
+      this.playerPos.set(0, 0.5, 1000);
       e.update(dt, this.playerPos, false);
       if (this.mode === 'walk') {
         e.group.position.x = 0;

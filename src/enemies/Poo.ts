@@ -1,16 +1,20 @@
 import * as THREE from 'three';
-import { EnemyBase, Mood, fabricTexture } from './EnemyBase';
+import { EnemyBase, Mood } from './EnemyBase';
 import { plushMaterial } from '../world/materialLibrary';
+import { furTexture } from '../world/furTexture';
 
 /**
- * Poo (displayed in-game as "Pou") — the tan blob alien plush. Smooth pear body, two big glossy black
- * eyes on stalks sprouting from the top, minimal flat mouth. Bounces along
- * with cartoon squash-and-stretch; the smallest stuffy — it fits anywhere.
+ * Poo (displayed in-game as "Pou") — the tan velour alien plush. A rounded
+ * egg/pear body, widest at the base, tapering up to a short neck where two
+ * big tan eye-pods sit leaning forward over the front. Each pod wears a large
+ * black almond eye with white shines; a small deadpan line is the mouth.
+ * Smoothest nap of the four. Bounces along with cartoon squash-and-stretch.
  */
 export class Poo extends EnemyBase {
   private body!: THREE.Mesh;
-  private stalkL!: THREE.Group;
-  private stalkR!: THREE.Group;
+  private head!: THREE.Group;
+  private podL!: THREE.Group;
+  private podR!: THREE.Group;
   private eyeMats: THREE.MeshStandardMaterial[] = [];
   private hopHeight = 0;
 
@@ -19,70 +23,105 @@ export class Poo extends EnemyBase {
     this.init();
   }
 
+  /** Big cartoon almond eye on a transparent decal: black almond + white shines. */
+  private static eyeTexture(): THREE.CanvasTexture {
+    const s = 128;
+    const c = document.createElement('canvas');
+    c.width = c.height = s;
+    const ctx = c.getContext('2d')!;
+    ctx.clearRect(0, 0, s, s);
+    // Almond: a rounded shape pointed toward the inner-lower corner.
+    ctx.fillStyle = '#070707';
+    ctx.beginPath();
+    ctx.ellipse(s * 0.52, s * 0.5, s * 0.4, s * 0.34, -0.25, 0, Math.PI * 2);
+    ctx.fill();
+    // Two white shine blobs (big + small).
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath();
+    ctx.ellipse(s * 0.4, s * 0.36, s * 0.1, s * 0.13, -0.3, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.ellipse(s * 0.62, s * 0.58, s * 0.05, s * 0.06, 0, 0, Math.PI * 2);
+    ctx.fill();
+    const t = new THREE.CanvasTexture(c);
+    t.colorSpace = THREE.SRGBColorSpace;
+    return t;
+  }
+
   protected buildBody(): THREE.Mesh {
+    const fur = furTexture({
+      base: '#d6ac7e',
+      tip: '#ecc89e',
+      shade: '#c49a6c',
+      fiberLen: 3,
+      density: 0.45,
+      thickness: 1,
+      curl: 0,
+      repeat: [2, 2],
+    });
     const tan = plushMaterial({
-      map: fabricTexture('#d9b286', '#cba271', '#ecc89e', 0.5),
-      sheenColor: 0xecc89e,
-      sheenRoughness: 0.75,
-      roughness: 0.95,
-      fuzz: 0.2, // smooth, lightly-napped blob
+      map: fur.map,
+      normalMap: fur.normal,
+      sheenColor: 0xf0d0a4,
+      sheenRoughness: 0.8,
+      roughness: 0.9,
+      fuzz: 0.18, // smooth velour: faint nap only
     });
 
-    // Pear silhouette via lathe.
+    // Egg/pear silhouette: widest near the base, tapering to a short neck.
     const profile: THREE.Vector2[] = [];
-    for (let i = 0; i <= 14; i++) {
-      const v = i / 14;
-      const r = 0.34 * Math.sin(v * Math.PI) * (1 - v * 0.32) + 0.001;
-      profile.push(new THREE.Vector2(r, v * 0.62));
+    const H = 0.82;
+    for (let i = 0; i <= 22; i++) {
+      const v = i / 22;
+      // Pear: fat bottom lobe, narrowing to a short neck near the top.
+      const r =
+        0.33 * Math.sin(Math.pow(v, 0.74) * Math.PI) * (1 - v * 0.22) +
+        0.04 * Math.sin(v * Math.PI) +
+        0.001;
+      profile.push(new THREE.Vector2(r, v * H));
     }
-    this.body = new THREE.Mesh(new THREE.LatheGeometry(profile, 22), tan);
+    this.body = new THREE.Mesh(new THREE.LatheGeometry(profile, 30), tan);
     this.group.add(this.body);
 
-    // Face plane (mouth + blush area; the eyes are 3D stalks).
+    // Deadpan mouth as the swappable face plane, on the upper-front body.
     const facePlane = new THREE.Mesh(
-      new THREE.CircleGeometry(0.17, 18),
-      new THREE.MeshStandardMaterial({ roughness: 0.9 })
+      new THREE.CircleGeometry(0.13, 18),
+      new THREE.MeshStandardMaterial({ roughness: 0.9, transparent: true })
     );
-    facePlane.position.set(0, 0.34, 0.27);
-    facePlane.rotation.x = -0.12;
+    facePlane.position.set(0, 0.52, 0.28);
+    facePlane.rotation.x = -0.16;
     this.body.add(facePlane);
 
-    // Eye stalks.
-    const glossy = () => {
-      const m = new THREE.MeshStandardMaterial({
-        color: 0x101010,
-        roughness: 0.15,
-        metalness: 0.1,
+    // The two eye-pods live on a head group so PHASE-03 gaze can aim them.
+    this.head = new THREE.Group();
+    this.head.position.set(0, 0.64, 0.04);
+    this.body.add(this.head);
+
+    const makePod = (side: number, radius: number, lift: number, fwd: number): THREE.Group => {
+      const pod = new THREE.Group();
+      const podMesh = new THREE.Mesh(new THREE.SphereGeometry(radius, 18, 16), tan);
+      podMesh.scale.set(1, 1.12, 0.96); // slightly egg-shaped
+      pod.add(podMesh);
+      // Almond eye decal on the front face.
+      const eyeMat = new THREE.MeshStandardMaterial({
+        map: Poo.eyeTexture(),
+        transparent: true,
+        roughness: 0.5,
+        metalness: 0.0,
       });
-      this.eyeMats.push(m);
-      return m;
+      this.eyeMats.push(eyeMat);
+      const eye = new THREE.Mesh(new THREE.PlaneGeometry(radius * 2.0, radius * 2.0), eyeMat);
+      eye.position.set(0, radius * 0.06, radius * 0.92);
+      eye.rotation.set(0.05, 0, side < 0 ? 0.12 : -0.12);
+      pod.add(eye);
+      pod.position.set(side * 0.135, lift, fwd);
+      pod.rotation.set(0.32, side * 0.18, 0); // lean forward, splay out
+      this.head.add(pod);
+      return pod;
     };
-    const makeStalk = (side: number) => {
-      const stalk = new THREE.Group();
-      const stem = new THREE.Mesh(new THREE.CapsuleGeometry(0.045, 0.1, 4, 8), new THREE.MeshStandardMaterial({
-        map: fabricTexture('#d9b286', '#cba271', '#ecc89e', 0.4),
-        roughness: 0.95,
-      }));
-      stem.position.y = 0.06;
-      stalk.add(stem);
-      const eye = new THREE.Mesh(new THREE.SphereGeometry(0.11, 14, 12), glossy());
-      eye.position.y = 0.18;
-      stalk.add(eye);
-      // Painted highlight.
-      const glint = new THREE.Mesh(
-        new THREE.CircleGeometry(0.03, 8),
-        new THREE.MeshBasicMaterial({ color: 0xffffff })
-      );
-      glint.position.set(0.035, 0.22, 0.09);
-      glint.rotation.x = -0.3;
-      stalk.add(glint);
-      stalk.position.set(side * 0.13, 0.58, 0.05);
-      stalk.rotation.z = -side * 0.2;
-      this.body.add(stalk);
-      return stalk;
-    };
-    this.stalkL = makeStalk(-1);
-    this.stalkR = makeStalk(1);
+    // Asymmetric like the real toy: right pod bigger + higher.
+    this.podL = makePod(-1, 0.135, 0.0, 0.05);
+    this.podR = makePod(1, 0.16, 0.06, 0.07);
 
     return facePlane;
   }
@@ -92,58 +131,48 @@ export class Poo extends EnemyBase {
     const c = size / 2;
     if (mood === 'calm') {
       // The deadpan flat line.
-      ctx.strokeStyle = '#4a3a28';
+      ctx.strokeStyle = '#3c2c1c';
       ctx.lineWidth = 9;
       ctx.lineCap = 'round';
       ctx.beginPath();
-      ctx.moveTo(c - 42, c);
-      ctx.lineTo(c + 42, c);
+      ctx.moveTo(c - 40, c);
+      ctx.lineTo(c + 40, c);
       ctx.stroke();
     } else {
       // The line splits into a dark grin.
-      ctx.fillStyle = '#2a1410';
+      ctx.fillStyle = '#241008';
       ctx.beginPath();
-      ctx.moveTo(c - 58, c - 8);
-      ctx.quadraticCurveTo(c, c + 56, c + 58, c - 8);
-      ctx.quadraticCurveTo(c, c + 18, c - 58, c - 8);
+      ctx.moveTo(c - 56, c - 8);
+      ctx.quadraticCurveTo(c, c + 54, c + 56, c - 8);
+      ctx.quadraticCurveTo(c, c + 16, c - 56, c - 8);
       ctx.fill();
-      ctx.fillStyle = '#e8e2d2';
-      for (let i = -2; i <= 2; i++) {
-        ctx.beginPath();
-        ctx.moveTo(c + i * 18 - 6, c + (Math.abs(i) === 2 ? 2 : 8));
-        ctx.lineTo(c + i * 18, c + (Math.abs(i) === 2 ? 12 : 22));
-        ctx.lineTo(c + i * 18 + 6, c + (Math.abs(i) === 2 ? 2 : 8));
-        ctx.fill();
-      }
     }
   }
 
   protected animateGait(t: number, speed: number, dt: number): void {
     const phase = t * 2.6;
     if (speed > 0) {
-      // Parabolic hops with squash and stretch.
       const hop = Math.abs(Math.sin(phase));
-      this.hopHeight = hop * 0.34;
+      this.hopHeight = hop * 0.32;
       this.body.position.y = this.hopHeight;
-      const stretch = 1 + (hop - 0.5) * 0.3;
+      const stretch = 1 + (hop - 0.5) * 0.28;
       this.body.scale.set(1 / Math.sqrt(stretch), stretch, 1 / Math.sqrt(stretch));
-      // Stalk lag.
-      const lag = Math.cos(phase) * 0.3;
-      this.stalkL.rotation.x = lag;
-      this.stalkR.rotation.x = lag;
+      // Eye-pods lag behind the hop (secondary motion).
+      const lag = Math.cos(phase) * 0.26;
+      this.podL.rotation.x = 0.32 + lag;
+      this.podR.rotation.x = 0.32 + lag;
       if (hop < 0.06 && dt > 0) this.onGaitBeat?.('fwump');
     } else {
-      // Idle: settle softly.
       this.body.position.y = 0;
       this.body.scale.set(1, 1, 1);
-      this.stalkL.rotation.x *= 0.9;
-      this.stalkR.rotation.x *= 0.9;
+      this.podL.rotation.x += (0.32 - this.podL.rotation.x) * 0.1;
+      this.podR.rotation.x += (0.32 - this.podR.rotation.x) * 0.1;
     }
-    // Menacing: a faint red ember deep in the black eyes.
+    // Menacing: a faint red ember bleeds into the eyes.
     const red = this.mood === 'menacing';
     for (const m of this.eyeMats) {
-      m.emissive.setHex(red ? 0x330000 : 0x000000);
-      m.emissiveIntensity = red ? 0.55 : 0;
+      m.emissive.setHex(red ? 0x440000 : 0x000000);
+      m.emissiveIntensity = red ? 0.6 : 0;
     }
   }
 }
