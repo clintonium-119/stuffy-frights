@@ -74,7 +74,9 @@ export class EnemyViewer {
   private frameDist = 2.6;
   private preset = 'front';
   private currentKey: EnemyKey = 'newyama';
-  aiMode = false;
+  // The real rigged Meshy body is the default view (matches in-game); ?ai=0
+  // opts into the procedural body for comparison until it's removed.
+  aiMode = true;
   private readonly refImg = document.createElement('img');
   private refOn = false;
   private refOpacity = 0.5;

@@ -1,26 +1,17 @@
 import * as THREE from 'three';
+import { RigConfig, vertexBoneWeights, smooth } from './rigWeights';
 
 /**
- * Builds a `THREE.SkinnedMesh` from an AI-mesh + a per-creature skeleton spec.
- * Bones are placed by normalized-bbox pivots; each vertex is weighted to bones
- * by their region functions (+ a base weight to the root so everything stays
- * attached), top-4 linear-blend skinning. The existing articulation then drives
- * the returned bones (head gaze, per-leg stair placement, etc.).
+ * Builds a `THREE.SkinnedMesh` from an AI-mesh + a per-creature rig config.
+ * Bones are placed at normalized-bbox pivots; each vertex is weighted to the
+ * bones by their weight-region boxes (root holds the remainder), then the
+ * weights are welded + Laplacian-smoothed across the topology and reduced to
+ * top-4 linear-blend skinning. The bind is faithful: with zero articulation the
+ * mesh reproduces the source exactly (no rest rotations are baked). The existing
+ * articulation then drives the returned bones (head gaze, per-leg stair
+ * placement, arm-walk, etc.).
  */
-export interface BoneSpec {
-  name: string;
-  /** Bone pivot in normalized bbox coords [0..1]. */
-  pivot: [number, number, number];
-  /** Region weight for a vertex at normalized bbox coords (0 = none). */
-  weight: (nx: number, ny: number, nz: number) => number;
-  /** Optional rest rotation applied after bind (e.g. neutralize a splayed pose). */
-  rest?: [number, number, number];
-}
-export interface RigSpec {
-  /** bones[0] is the root/body. */
-  bones: BoneSpec[];
-  /** Base weight pinning every vertex to the root so nothing detaches. */
-  rootBase?: number;
+export interface RigOptions {
   /** Laplacian weight-smoothing iterations over welded topology (default 12). */
   smoothIters?: number;
   /** Smoothing strength per iteration, 0..1 (default 0.5). */
@@ -31,12 +22,7 @@ export interface RigResult {
   bones: Record<string, THREE.Bone>;
 }
 
-const smooth = (e0: number, e1: number, x: number): number => {
-  const t = Math.max(0, Math.min(1, (x - e0) / (e1 - e0)));
-  return t * t * (3 - 2 * t);
-};
-
-export function rigMesh(mesh: THREE.Mesh, spec: RigSpec): RigResult {
+export function rigMesh(mesh: THREE.Mesh, config: RigConfig, opts: RigOptions = {}): RigResult {
   const g = mesh.geometry as THREE.BufferGeometry;
   if (!g.attributes.normal) g.computeVertexNormals();
   g.computeBoundingBox();
@@ -48,26 +34,16 @@ export function rigMesh(mesh: THREE.Mesh, spec: RigSpec): RigResult {
   const sz = size.z || 1;
   const pos = g.attributes.position;
   const count = pos.count;
-  const nB = spec.bones.length;
-  const rootBase = spec.rootBase ?? 0.25;
+  const nB = config.length;
 
-  // --- 1. raw per-vertex weights from the region functions (normalized rows) ---
+  // --- 1. raw per-vertex weights from the region boxes (root = remainder) ---
   const W = new Float32Array(count * nB);
   for (let i = 0; i < count; i++) {
     const nx = (pos.getX(i) - min.x) / sx;
     const ny = (pos.getY(i) - min.y) / sy;
     const nz = (pos.getZ(i) - min.z) / sz;
-    let total = 0;
-    for (let b = 0; b < nB; b++) {
-      const ww = b === 0 ? rootBase : Math.max(0, spec.bones[b].weight(nx, ny, nz));
-      W[i * nB + b] = ww;
-      total += ww;
-    }
-    if (total <= 0) {
-      W[i * nB] = 1;
-      total = 1;
-    }
-    for (let b = 0; b < nB; b++) W[i * nB + b] /= total;
+    const row = vertexBoneWeights(nx, ny, nz, config);
+    for (let b = 0; b < nB; b++) W[i * nB + b] = row[b];
   }
 
   // --- 2. weld vertices by position (so smoothing crosses hard-edge splits) ---
@@ -111,8 +87,8 @@ export function rigMesh(mesh: THREE.Mesh, spec: RigSpec): RigResult {
   }
 
   // --- 3. Laplacian smoothing of the weight field over weld topology ---
-  const iters = index ? (spec.smoothIters ?? 12) : 0;
-  const lambda = spec.smoothLambda ?? 0.5;
+  const iters = index ? (opts.smoothIters ?? 12) : 0;
+  const lambda = opts.smoothLambda ?? 0.5;
   for (let it = 0; it < iters; it++) {
     const acc = new Float32Array(nW * nB);
     const cnt = new Float32Array(nW);
@@ -140,6 +116,10 @@ export function rigMesh(mesh: THREE.Mesh, spec: RigSpec): RigResult {
   }
 
   // --- 4. top-4 per vertex from the smoothed weld-group weights ---
+  // Only fill min(4, nB) slots — with fewer than 4 bones the extra slots must be
+  // zero, not a duplicated bone, or the per-vertex weights sum past 1 and the
+  // rest pose inflates/distorts (the 2-bone models, pou + fuggler, hit this).
+  const k4 = Math.min(4, nB);
   const si = new Uint16Array(count * 4);
   const sw = new Float32Array(count * 4);
   const order = [...Array(nB).keys()];
@@ -147,42 +127,43 @@ export function rigMesh(mesh: THREE.Mesh, spec: RigSpec): RigResult {
     const base = weld[i] * nB;
     order.sort((a, b) => Wg[base + b] - Wg[base + a]);
     let s = 0;
-    for (let j = 0; j < 4; j++) s += Wg[base + order[j]] || 0;
+    for (let j = 0; j < k4; j++) s += Wg[base + order[j]] || 0;
     if (s <= 0) s = 1;
     for (let j = 0; j < 4; j++) {
-      const k = order[j] ?? 0;
-      si[i * 4 + j] = k;
-      sw[i * 4 + j] = (Wg[base + k] || 0) / s;
+      if (j < k4) {
+        const k = order[j];
+        si[i * 4 + j] = k;
+        sw[i * 4 + j] = (Wg[base + k] || 0) / s;
+      } else {
+        si[i * 4 + j] = 0;
+        sw[i * 4 + j] = 0;
+      }
     }
   }
   g.setAttribute('skinIndex', new THREE.Uint16BufferAttribute(si, 4));
   g.setAttribute('skinWeight', new THREE.Float32BufferAttribute(sw, 4));
 
+  // --- bones at their pivots; flat hierarchy under the root (or honour parent) ---
   const wp = (p: [number, number, number]) =>
     new THREE.Vector3(min.x + p[0] * sx, min.y + p[1] * sy, min.z + p[2] * sz);
   const bones: THREE.Bone[] = [];
   const byName: Record<string, THREE.Bone> = {};
   const root = new THREE.Bone();
-  root.position.copy(wp(spec.bones[0].pivot));
+  root.position.copy(wp(config[0].pivot));
   bones.push(root);
-  byName[spec.bones[0].name] = root;
+  byName[config[0].name] = root;
   for (let b = 1; b < nB; b++) {
-    const bs = spec.bones[b];
     const bone = new THREE.Bone();
-    bone.position.copy(wp(bs.pivot)).sub(root.position); // local to root
+    bone.position.copy(wp(config[b].pivot)).sub(root.position); // local to root
     root.add(bone);
     bones.push(bone);
-    byName[bs.name] = bone;
+    byName[config[b].name] = bone;
   }
 
   const skinned = new THREE.SkinnedMesh(g, mesh.material as THREE.Material);
   skinned.add(root);
   skinned.bind(new THREE.Skeleton(bones));
-  // Apply rest rotations (pose neutralization) after bind.
-  for (let b = 0; b < nB; b++) {
-    const r = spec.bones[b].rest;
-    if (r) bones[b].rotation.set(r[0], r[1], r[2]);
-  }
+  // No rest rotations: zero articulation must reproduce the source mesh exactly.
   return { skinned, bones: byName };
 }
 

@@ -15,9 +15,10 @@ const viewer = new EnemyViewer(canvas, route?.enemy ?? 'newyama');
 const params = new URLSearchParams(location.search);
 const glb = params.get('glb');
 if (glb) viewer.loadGlb(glb.endsWith('.glb') ? glb : `${glb}.glb`, params.get('tex') ?? undefined, params.get('rig') === '1');
-// ?ai=1 — load the enemy class with its AI mesh body (rigged), driven by the controls.
-if (params.get('ai') === '1') {
-  viewer.aiMode = true;
+// The rigged Meshy body is the default (matches in-game). ?ai=0 opts into the
+// procedural body for side-by-side comparison until it's removed.
+if (params.get('ai') === '0') {
+  viewer.aiMode = false;
   const e = parseViewerRoute(location.hash) ?? parseViewerRoute(location.search);
   viewer.setEnemy(e?.enemy ?? 'newyama');
 }

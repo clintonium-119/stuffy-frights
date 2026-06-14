@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { loadGLB, modelUrl } from '../world/ModelLoader';
 import { ENEMY_MODEL } from './projectionConfig';
 import { rigMesh } from './Skinning';
-import { RIG_SPECS } from './rigSpecs';
+import { RIG_CONFIG } from './rigConfig';
 
 /**
  * Builds a textured AI-mesh body for an enemy from a Meshy-generated GLB: keeps
@@ -55,15 +55,15 @@ export async function buildMeshBody(enemyId: string, targetHeight: number): Prom
   // Rig the main mesh (skeleton + skin weights) so the articulation can drive
   // it. Meshy exports a single mesh, so this rigs the whole body.
   let bones: Record<string, THREE.Bone> = {};
-  const spec = RIG_SPECS[model];
-  if (spec) {
+  const config = RIG_CONFIG[model];
+  if (config) {
     let mainMesh: THREE.Mesh | null = null;
     scene.traverse((o) => {
       if (o instanceof THREE.Mesh && !mainMesh) mainMesh = o;
     });
     if (mainMesh) {
       const parent = (mainMesh as THREE.Mesh).parent!;
-      const res = rigMesh(mainMesh, spec);
+      const res = rigMesh(mainMesh, config);
       parent.add(res.skinned);
       parent.remove(mainMesh);
       bones = res.bones;
@@ -79,6 +79,18 @@ export async function buildMeshBody(enemyId: string, targetHeight: number): Prom
   group.scale.setScalar(s);
   const c = box.getCenter(new THREE.Vector3());
   scene.position.set(-c.x, -box.min.y, -c.z);
+
+  // Re-bind the skeleton now that the body sits in its FINAL transform (GLB node
+  // + centring offset + group scale). Binding earlier — as rigMesh does, before
+  // the mesh is parented/scaled — captures bone inverses without those
+  // transforms, so at render they get applied twice and the rest pose distorts
+  // (e.g. an eye-pod smears into a horn). Re-binding here recomputes the inverses
+  // against the live world matrices, so zero articulation reproduces the source.
+  group.updateMatrixWorld(true);
+  scene.traverse((o) => {
+    const sm = o as THREE.SkinnedMesh;
+    if (sm.isSkinnedMesh) sm.bind(sm.skeleton);
+  });
 
   // The baked texture can't swap to a mean face, so flush the body red instead.
   const setMenacing = (on: boolean) => {

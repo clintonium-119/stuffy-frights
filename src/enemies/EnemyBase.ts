@@ -264,13 +264,14 @@ export abstract class EnemyBase {
     // opposition as he hauls himself along, easing back to rest when stopped.
     // Only rotation.x is touched, so the splay baked into rotation.z is kept.
     if (this.aiArms && this.aiArms.length >= 2) {
+      // Arms extend sideways (along X), so fore/aft hauling is a yaw (Y) swing.
       if (this.isMoving) {
         const sw = Math.sin(this.gaitT * 2.6) * 0.5;
-        this.aiArms[0].rotation.x = sw;
-        this.aiArms[1].rotation.x = -sw;
+        this.aiArms[0].rotation.y = sw;
+        this.aiArms[1].rotation.y = -sw;
       } else {
-        this.aiArms[0].rotation.x += (0 - this.aiArms[0].rotation.x) * k;
-        this.aiArms[1].rotation.x += (0 - this.aiArms[1].rotation.x) * k;
+        this.aiArms[0].rotation.y += (0 - this.aiArms[0].rotation.y) * k;
+        this.aiArms[1].rotation.y += (0 - this.aiArms[1].rotation.y) * k;
       }
     }
     if (legs && this.floorHeightAt) {
