@@ -75,24 +75,25 @@ export class Fuggie extends EnemyBase {
       sheenColor: 0x6fd0b8,
       sheenRoughness: 0.5,
       roughness: 1,
-      fuzz: 0.75,
+      fuzz: 0.5,
     });
 
-    // Tall plump body — rounded but not a uniform pillow.
-    const W = 0.8;
-    const H = 1.06;
-    const D = 0.54;
-    this.bodyMesh = new THREE.Mesh(roundedBox(W, H, D, 0.27, 12), shag);
-    this.bodyMesh.position.y = H / 2 + 0.12; // lifted to sit on the stubby legs
+    // Chunky rounded-square pillow body — flat front-to-back like the real plush.
+    const W = 0.86;
+    const H = 1.0;
+    const D = 0.4;
+    this.bodyMesh = new THREE.Mesh(roundedBox(W, H, D, 0.26, 14), shag);
+    this.bodyMesh.position.y = H / 2 + 0.1; // lifted to sit on the stubby legs
     this.group.add(this.bodyMesh);
 
-    // Soft ear-peaks at the top corners (cones rooted into the body top).
-    const earGeo = new THREE.ConeGeometry(0.14, 0.32, 16);
+    // Soft rounded ear-nubs at the top corners (egg-shaped bumps, not pointy
+    // cones — the fuggler's ears are stubby and round).
+    const earGeo = new THREE.SphereGeometry(0.15, 22, 18);
     for (const sx of [-1, 1]) {
       const ear = new THREE.Mesh(earGeo, shag);
-      ear.position.set(sx * 0.26, H / 2 - 0.02, 0.02);
-      ear.rotation.z = sx * 0.32;
-      ear.rotation.x = -0.12;
+      ear.scale.set(0.92, 1.45, 0.85);
+      ear.position.set(sx * 0.27, H / 2 + 0.02, -0.02);
+      ear.rotation.z = sx * 0.34;
       this.bodyMesh.add(ear);
     }
 
@@ -120,41 +121,64 @@ export class Fuggie extends EnemyBase {
       );
       glint.position.set(sx * -0.035, 0.04, 0.105);
       eye.add(glint);
-      eye.position.set(sx * 0.21, 0.2, front);
+      eye.position.set(sx * 0.22, 0.18, front);
       eye.rotation.z = sx * 0.05; // faint inward tilt → meaner
       this.head.add(eye);
     };
     makeEye(-1);
     makeEye(1);
 
-    // Mouth: the swappable toothy face wrapped onto the (nearly flat) face.
+    // Mouth cavity: the swappable maroon maw on a flat plane held proud of the
+    // shag (only the maroon draws; the rest is transparent), so the deep fuzz
+    // can't swallow it. Mood resizes the maw. Teeth are 3D geometry in front.
     const facePlane = new THREE.Mesh(
-      faceDecal(0.22, 0.7, 40),
+      faceDecal(0.24, 1.8, 40), // nearly flat — the face front is flat
       new THREE.MeshStandardMaterial({ roughness: 0.9, transparent: true })
     );
-    facePlane.position.set(0, 0.0, front + 0.01);
+    facePlane.position.set(0, -0.08, front + 0.04);
     this.head.add(facePlane);
 
-    // Stubby arms hugged to the lower sides (rooted into the body, no gap).
-    const armGeo = new THREE.CapsuleGeometry(0.11, 0.18, 6, 12);
+    // The signature crooked tan SQUARE teeth, as chunky little 3D blocks: two big
+    // front teeth, smaller gappy neighbours up top + a couple on the bottom.
+    const toothMat = new THREE.MeshStandardMaterial({ color: 0xded0ad, roughness: 0.55 });
+    const mouthY = -0.08;
+    // [x, yOffset, width, height, rotZ]
+    const teeth: [number, number, number, number, number][] = [
+      [-0.028, 0.022, 0.052, 0.078, 0.02], // big front left
+      [0.03, 0.026, 0.05, 0.07, -0.04], // big front right
+      [-0.092, 0.03, 0.042, 0.05, 0.12], // upper left
+      [0.094, 0.032, 0.04, 0.046, -0.1], // upper right
+      [-0.15, 0.034, 0.034, 0.038, 0.18], // upper far-left (small)
+      [-0.04, -0.04, 0.04, 0.044, -0.06], // bottom left
+      [0.052, -0.042, 0.036, 0.04, 0.08], // bottom right
+    ];
+    for (const [tx, ty, tw, th, rz] of teeth) {
+      const tooth = new THREE.Mesh(new THREE.BoxGeometry(tw, th, 0.03), toothMat);
+      tooth.position.set(tx, mouthY + ty, front + 0.05);
+      tooth.rotation.z = rz;
+      this.head.add(tooth);
+    }
+
+    // Short stubby arms hanging at the front sides (rooted into the body).
+    const armGeo = new THREE.CapsuleGeometry(0.1, 0.15, 6, 12);
     this.armL = new THREE.Mesh(armGeo, shag);
-    this.armL.position.set(-W / 2 + 0.04, -0.16, 0.12);
-    this.armL.rotation.z = 0.42;
+    this.armL.position.set(-W / 2 + 0.02, -0.2, 0.16);
+    this.armL.rotation.z = 0.14;
     this.armR = new THREE.Mesh(armGeo, shag);
-    this.armR.position.set(W / 2 - 0.04, -0.16, 0.12);
-    this.armR.rotation.z = -0.42;
+    this.armR.position.set(W / 2 - 0.02, -0.2, 0.16);
+    this.armR.rotation.z = -0.14;
     this.bodyMesh.add(this.armL, this.armR);
 
-    // Two little stubby legs to walk on (hip-pivoted for gait + stair feet).
+    // Two little stubby feet poking out the bottom (hip-pivoted for gait + stairs).
     const makeLeg = (sx: number) => {
       const leg = new THREE.Group();
-      leg.position.set(sx * 0.2, 0.26, 0.06);
-      const limb = new THREE.Mesh(new THREE.CapsuleGeometry(0.1, 0.12, 6, 12), shag);
-      limb.position.y = -0.12;
+      leg.position.set(sx * 0.18, 0.2, 0.04);
+      const limb = new THREE.Mesh(new THREE.CapsuleGeometry(0.1, 0.06, 6, 12), shag);
+      limb.position.y = -0.08;
       leg.add(limb);
-      const foot = new THREE.Mesh(new THREE.SphereGeometry(0.11, 16, 12), shag);
-      foot.scale.set(1.1, 0.7, 1.25);
-      foot.position.set(0, -0.22, 0.03);
+      const foot = new THREE.Mesh(new THREE.SphereGeometry(0.12, 16, 12), shag);
+      foot.scale.set(1.1, 0.66, 1.35);
+      foot.position.set(0, -0.16, 0.04);
       leg.add(foot);
       this.group.add(leg);
       this.legs.push(leg);
@@ -179,27 +203,19 @@ export class Fuggie extends EnemyBase {
     const c = size / 2;
     const menace = mood === 'menacing';
 
-    // The mouth only (eyes are 3D): wide, slack, full of crooked SQUARE teeth.
-    const mw = menace ? 110 : 82; // half-width
-    const mh = menace ? 54 : 34;
-    const my = c + 8;
+    // The maroon mouth cavity only (eyes + teeth are 3D geometry). Mood widens
+    // the maw; the gummy maroon lip rings a darker throat.
+    const mw = menace ? 124 : 104; // half-width
+    const mh = menace ? 60 : 46;
+    const my = c;
     ctx.fillStyle = '#7d2f46';
     ctx.beginPath();
     ctx.ellipse(c, my, mw, mh, 0, 0, Math.PI * 2);
     ctx.fill();
     ctx.fillStyle = '#160a0d';
     ctx.beginPath();
-    ctx.ellipse(c, my + 4, mw - 12, mh - 14, 0, 0, Math.PI * 2);
+    ctx.ellipse(c, my + 4, mw - 14, mh - 14, 0, 0, Math.PI * 2);
     ctx.fill();
-    // Crooked off-white SQUARE teeth (the trademark) — gappy top + a few bottom.
-    ctx.fillStyle = '#e2d6ba';
-    const teeth = menace ? 8 : 6;
-    for (let i = 0; i < teeth; i++) {
-      const tx = c - mw + 18 + (i * (mw * 2 - 36)) / (teeth - 1);
-      const jitter = ((i * 37) % 7) - 3;
-      if (i % 4 !== 3) ctx.fillRect(tx - 8, my - mh + 10 + jitter, 15, 20 + (i % 3) * 4);
-      if (i % 3 === 1) ctx.fillRect(tx - 6, my + mh - 28 - jitter, 12, 16);
-    }
   }
 
   protected animateGait(t: number, speed: number, dt: number): void {
