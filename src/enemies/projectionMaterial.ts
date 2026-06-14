@@ -53,8 +53,10 @@ export function projectionMaterial(
     sh.vertexShader =
       'varying vec3 vWP; varying vec3 vWN;\n' +
       sh.vertexShader
-        .replace('#include <begin_vertex>', '#include <begin_vertex>\n vWP=(modelMatrix*vec4(transformed,1.0)).xyz;')
-        .replace('#include <beginnormal_vertex>', '#include <beginnormal_vertex>\n vWN=normalize(mat3(modelMatrix)*objectNormal);');
+        // OBJECT space: the projection is fixed to the mesh, so it doesn't swim
+        // as the enemy moves/rotates in the world.
+        .replace('#include <begin_vertex>', '#include <begin_vertex>\n vWP=transformed;')
+        .replace('#include <beginnormal_vertex>', '#include <beginnormal_vertex>\n vWN=normalize(objectNormal);');
     sh.fragmentShader =
       [
         'uniform sampler2D uFront; uniform sampler2D uBack; uniform sampler2D uSide;',

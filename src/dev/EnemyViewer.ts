@@ -216,19 +216,15 @@ export class EnemyViewer {
       back: { scale: [1, 1], offset: [0, 0], rot: 0 },
       side: { scale: [1, 1], offset: [0, 0], rot: 0 },
     };
-    root.updateWorldMatrix(true, true);
-    const box = new THREE.Box3().setFromObject(root);
-    const uMin = new THREE.Vector3(box.min.x, box.min.y, box.min.z);
-    const uSize = new THREE.Vector3(
-      box.max.x - box.min.x || 1,
-      box.max.y - box.min.y || 1,
-      box.max.z - box.min.z || 1
-    );
     this.projMats = [];
     root.traverse((o) => {
       if (!(o instanceof THREE.Mesh)) return;
       const g = o.geometry as THREE.BufferGeometry;
       if (!g.attributes.normal) g.computeVertexNormals(); // AI meshes ship without normals
+      g.computeBoundingBox();
+      const bb = g.boundingBox!;
+      const uMin = new THREE.Vector3(bb.min.x, bb.min.y, bb.min.z);
+      const uSize = new THREE.Vector3(bb.max.x - bb.min.x || 1, bb.max.y - bb.min.y || 1, bb.max.z - bb.min.z || 1);
       const m = projectionMaterial(views, uMin, uSize, cfg);
       o.material = m;
       this.projMats.push(m);
