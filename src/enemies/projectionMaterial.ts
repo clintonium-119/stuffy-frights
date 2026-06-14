@@ -1,72 +1,85 @@
 import * as THREE from 'three';
+import { EnemyProjection } from './projectionConfig';
 
 /**
- * Clean single-axis camera-projection: the FRONT photo is projected onto
- * front-facing surfaces and the BACK photo onto back-facing ones, split hard by
- * the surface normal's Z sign — so the two projections never overlap (no
- * ghosting) and there's no blur (stays sharp). Per-axis scale + offset let the
- * projection be dialled in to match the mesh; near-white (background) falls back
- * to the toy's base colour.
+ * Camera-projection material. The SIDE photo is the base layer (mirrored for the
+ * opposite flank); FRONT and BACK are layered on top, prioritised where the
+ * surface faces forward/back — single-tap (sharp, no ghosting). Each view has an
+ * independent UV transform (scale/offset/rot) from the stored config, so each
+ * model's projections are dialled in independently and reproducibly. Areas the
+ * projection can't cover fall back to the toy's average colour (not white).
  *
  * The mesh needs normals (AI meshes ship without — computeVertexNormals first).
- * `min`/`size` are the mesh local-space AABB.
+ * `min`/`size` are the mesh local-space AABB. The live uniforms are stashed on
+ * `material.userData.proj` so the viewer can tune them.
  */
 export interface ProjectionViews {
   front: THREE.Texture;
   back: THREE.Texture;
-  /** One side photo; mirrored automatically for the opposite flank. */
   side: THREE.Texture;
-}
-
-export interface ProjectionTuning {
-  /** UV scale about the centre (1 = bbox-fit). */
-  scale?: THREE.Vector2;
-  /** UV offset after scaling. */
-  offset?: THREE.Vector2;
 }
 
 export function projectionMaterial(
   views: ProjectionViews,
   min: THREE.Vector3,
   size: THREE.Vector3,
-  baseColor: number,
-  tuning: ProjectionTuning = {},
+  cfg: EnemyProjection,
   opts: { roughness?: number } = {}
 ): THREE.MeshStandardMaterial {
-  for (const t of [views.front, views.back]) t.colorSpace = THREE.SRGBColorSpace;
-  const base = new THREE.Color(baseColor);
-  const scale = tuning.scale ?? new THREE.Vector2(1, 1);
-  const offset = tuning.offset ?? new THREE.Vector2(0, 0);
+  for (const t of [views.front, views.back, views.side]) t.colorSpace = THREE.SRGBColorSpace;
+  const base = new THREE.Color(cfg.base);
+  const v2 = (a: [number, number]) => new THREE.Vector2(a[0], a[1]);
+  const u = {
+    uFront: { value: views.front },
+    uBack: { value: views.back },
+    uSide: { value: views.side },
+    uMin: { value: min },
+    uSize: { value: size },
+    uBase: { value: new THREE.Vector3(base.r, base.g, base.b) },
+    uFrontS: { value: v2(cfg.front.scale) },
+    uFrontO: { value: v2(cfg.front.offset) },
+    uFrontR: { value: cfg.front.rot },
+    uBackS: { value: v2(cfg.back.scale) },
+    uBackO: { value: v2(cfg.back.offset) },
+    uBackR: { value: cfg.back.rot },
+    uSideS: { value: v2(cfg.side.scale) },
+    uSideO: { value: v2(cfg.side.offset) },
+    uSideR: { value: cfg.side.rot },
+  };
   const mat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: opts.roughness ?? 0.9, metalness: 0 });
+  mat.userData.proj = u;
   mat.onBeforeCompile = (sh) => {
-    sh.uniforms.uFront = { value: views.front };
-    sh.uniforms.uBack = { value: views.back };
-    sh.uniforms.uSide = { value: views.side };
-    sh.uniforms.uMin = { value: min };
-    sh.uniforms.uSize = { value: size };
-    sh.uniforms.uScale = { value: scale };
-    sh.uniforms.uOffset = { value: offset };
-    sh.uniforms.uBase = { value: new THREE.Vector3(base.r, base.g, base.b) };
+    Object.assign(sh.uniforms, u);
     sh.vertexShader =
       'varying vec3 vWP; varying vec3 vWN;\n' +
       sh.vertexShader
         .replace('#include <begin_vertex>', '#include <begin_vertex>\n vWP=(modelMatrix*vec4(transformed,1.0)).xyz;')
         .replace('#include <beginnormal_vertex>', '#include <beginnormal_vertex>\n vWN=normalize(mat3(modelMatrix)*objectNormal);');
     sh.fragmentShader =
-      'uniform sampler2D uFront; uniform sampler2D uBack; uniform sampler2D uSide; uniform vec3 uMin; uniform vec3 uSize; uniform vec2 uScale; uniform vec2 uOffset; uniform vec3 uBase; varying vec3 vWP; varying vec3 vWN;\n' +
+      [
+        'uniform sampler2D uFront; uniform sampler2D uBack; uniform sampler2D uSide;',
+        'uniform vec3 uMin; uniform vec3 uSize; uniform vec3 uBase;',
+        'uniform vec2 uFrontS; uniform vec2 uFrontO; uniform float uFrontR;',
+        'uniform vec2 uBackS; uniform vec2 uBackO; uniform float uBackR;',
+        'uniform vec2 uSideS; uniform vec2 uSideO; uniform float uSideR;',
+        'varying vec3 vWP; varying vec3 vWN;',
+        // scale (zoom about centre) + rotate + offset
+        'vec2 xform(vec2 uv, vec2 s, vec2 o, float r){ vec2 p=uv-0.5; float c=cos(r),sn=sin(r); p=vec2(p.x*c-p.y*sn, p.x*sn+p.y*c); return p/s+0.5+o; }',
+        '',
+      ].join('\n') +
       sh.fragmentShader.replace(
         '#include <map_fragment>',
         [
           'vec3 n=normalize(vWN);',
           'float ux=(vWP.x-uMin.x)/uSize.x, uy=(vWP.y-uMin.y)/uSize.y, uz=(vWP.z-uMin.z)/uSize.z;',
-          'ux=(ux-0.5)/uScale.x+0.5+uOffset.x; uy=(uy-0.5)/uScale.y+0.5+uOffset.y;',
-          'uz=(uz-0.5)/uScale.x+0.5;',
-          // Base layer: the side photo (mirrored for the +X flank).
-          'vec3 col = n.x<0.0 ? texture2D(uSide,vec2(uz,uy)).rgb : texture2D(uSide,vec2(1.0-uz,uy)).rgb;',
-          // Layer front/back on top, prioritised where the surface faces fwd/back.
+          'vec2 fuv=xform(vec2(ux,uy), uFrontS,uFrontO,uFrontR);',
+          'vec2 buv=xform(vec2(1.0-ux,uy), uBackS,uBackO,uBackR);',
+          'vec2 sLuv=xform(vec2(uz,uy), uSideS,uSideO,uSideR);',
+          'vec2 sRuv=xform(vec2(1.0-uz,uy), uSideS,uSideO,uSideR);',
+          'vec3 col = n.x<0.0 ? texture2D(uSide,sLuv).rgb : texture2D(uSide,sRuv).rgb;',
           'float wf=smoothstep(0.25,0.6,n.z), wb=smoothstep(0.25,0.6,-n.z);',
-          'col = mix(col, texture2D(uFront,vec2(ux,uy)).rgb, wf);',
-          'col = mix(col, texture2D(uBack,vec2(1.0-ux,uy)).rgb, wb);',
+          'col = mix(col, texture2D(uFront,fuv).rgb, wf);',
+          'col = mix(col, texture2D(uBack,buv).rgb, wb);',
           'float whiteness=smoothstep(0.82,0.97,min(col.r,min(col.g,col.b)));',
           'diffuseColor.rgb*=mix(col,uBase,whiteness);',
         ].join('\n')
@@ -74,11 +87,3 @@ export function projectionMaterial(
   };
   return mat;
 }
-
-/** Per-enemy base fallback colours (the dominant plush tone). */
-export const ENEMY_BASE_COLOR: Record<string, number> = {
-  poo: 0xd9b286,
-  fuggie: 0x2f9e86,
-  charles: 0x7ed9c4,
-  newYama: 0xc69a55,
-};

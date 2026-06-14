@@ -11,6 +11,7 @@ import { config } from '../core/config';
 import { initMaterials } from '../world/materialLibrary';
 import { EnemyKey, ENEMY_KEYS } from './enemyViewerRoute';
 import { projectionMaterial } from '../enemies/projectionMaterial';
+import { PROJECTION } from '../enemies/projectionConfig';
 
 // Reference photos, served by Vite in dev only (the viewer isn't in the build).
 const REF_URLS = import.meta.glob('../../assets/enemies/*.jpg', {
@@ -179,19 +180,42 @@ export class EnemyViewer {
    * real face/colours/patterns map onto the AI shape (front photo on
    * front-facing tris, back photo on the rest). Proves photo-matched texturing.
    */
-  private projScale = new THREE.Vector2(1, 1);
-  private projOffset = new THREE.Vector2(0, 0);
+  private projMats: THREE.MeshStandardMaterial[] = [];
+  private projModel = 'pou';
 
-  /** Live-tune the projection (mutates the shared uniform vectors). */
-  setProj(sx: number, sy: number, ox: number, oy: number): void {
-    this.projScale.set(sx, sy);
-    this.projOffset.set(ox, oy);
+  /** Live-tune one view's transform on the current model (for dialing in). */
+  setView(view: 'front' | 'back' | 'side', sx: number, sy: number, ox: number, oy: number, rot: number): void {
+    const cap = view[0].toUpperCase() + view.slice(1);
+    for (const m of this.projMats) {
+      const u = m.userData.proj;
+      (u[`u${cap}S`].value as THREE.Vector2).set(sx, sy);
+      (u[`u${cap}O`].value as THREE.Vector2).set(ox, oy);
+      u[`u${cap}R`].value = rot;
+    }
+  }
+
+  /** Print the current model's tuned projection config (paste into projectionConfig.ts). */
+  dumpProj(): string {
+    if (!this.projMats.length) return '{}';
+    const u = this.projMats[0].userData.proj;
+    const baseHex = '0x' + (PROJECTION[this.projModel]?.base ?? 0xcccccc).toString(16);
+    const v = (cap: string) =>
+      `{ scale: [${u['u' + cap + 'S'].value.x}, ${u['u' + cap + 'S'].value.y}], offset: [${u['u' + cap + 'O'].value.x}, ${u['u' + cap + 'O'].value.y}], rot: ${u['u' + cap + 'R'].value} }`;
+    const out = `${this.projModel}: { base: ${baseHex}, front: ${v('Front')}, back: ${v('Back')}, side: ${v('Side')} },`;
+    console.log('PROJ_CONFIG', out);
+    return out;
   }
 
   private projectPhotos(root: THREE.Object3D, base: string): void {
+    this.projModel = base;
     const load = (v: string) => new THREE.TextureLoader().load(`${import.meta.env.BASE_URL}models/${base}_${v}.png`);
     const views = { front: load('front'), back: load('back'), side: load('side') };
-    const BASE: Record<string, number> = { pou: 0xd9b286, fuggler: 0x2f9e86, gorilla: 0x7ed9c4, llama: 0xc69a55 };
+    const cfg = PROJECTION[base] ?? {
+      base: 0xcccccc,
+      front: { scale: [1, 1], offset: [0, 0], rot: 0 },
+      back: { scale: [1, 1], offset: [0, 0], rot: 0 },
+      side: { scale: [1, 1], offset: [0, 0], rot: 0 },
+    };
     root.updateWorldMatrix(true, true);
     const box = new THREE.Box3().setFromObject(root);
     const uMin = new THREE.Vector3(box.min.x, box.min.y, box.min.z);
@@ -200,14 +224,14 @@ export class EnemyViewer {
       box.max.y - box.min.y || 1,
       box.max.z - box.min.z || 1
     );
+    this.projMats = [];
     root.traverse((o) => {
       if (!(o instanceof THREE.Mesh)) return;
       const g = o.geometry as THREE.BufferGeometry;
       if (!g.attributes.normal) g.computeVertexNormals(); // AI meshes ship without normals
-      o.material = projectionMaterial(views, uMin, uSize, BASE[base] ?? 0xcccccc, {
-        scale: this.projScale,
-        offset: this.projOffset,
-      });
+      const m = projectionMaterial(views, uMin, uSize, cfg);
+      o.material = m;
+      this.projMats.push(m);
     });
   }
 
