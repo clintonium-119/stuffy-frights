@@ -244,12 +244,8 @@ const sampleFloorHeight = (x: number, z: number, floorIndex: number): number => 
   return hits.length ? hits[0].point.y : floorY(floorIndex);
 };
 for (const enemy of enemies) enemy.floorHeightAt = sampleFloorHeight;
-// Meshy textured + rigged bodies are the default; ?aimesh=0 falls back to the
-// procedural bodies (and any enemy whose GLB fails to load keeps its procedural
-// body). Async — procedural shows until the mesh swaps in.
-if (new URLSearchParams(location.search).get('aimesh') !== '0') {
-  for (const enemy of enemies) void enemy.useAiMesh();
-}
+// Enemy bodies are the Meshy textured + rigged GLBs, built by EnemyBase.init();
+// no flag, no procedural fallback.
 // Telegraph floor migrations with a distant stair-creak so the house's
 // unpredictability reads as dread, not a glitch.
 director.onMigrate = (r) => audio.migrationCue(r.enemy.position.clone());

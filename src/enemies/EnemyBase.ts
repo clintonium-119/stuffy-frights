@@ -82,22 +82,6 @@ export function fabricTexture(
   return tex;
 }
 
-/** Render a character's two face textures from its painter. */
-function bakeFaces(
-  drawFace: (ctx: CanvasRenderingContext2D, size: number, mood: Mood) => void
-): Record<Mood, THREE.CanvasTexture> {
-  const out = {} as Record<Mood, THREE.CanvasTexture>;
-  for (const mood of ['calm', 'menacing'] as Mood[]) {
-    const canvas = document.createElement('canvas');
-    canvas.width = canvas.height = 256;
-    const ctx = canvas.getContext('2d')!;
-    drawFace(ctx, 256, mood);
-    const tex = new THREE.CanvasTexture(canvas);
-    tex.colorSpace = THREE.SRGBColorSpace;
-    out[mood] = tex;
-  }
-  return out;
-}
 
 /**
  * Shared enemy chassis: owns the model group, face mood swapping with a
@@ -138,8 +122,7 @@ export abstract class EnemyBase {
   private aiArms: THREE.Object3D[] | null = null;
   private static readonly _tmp = new THREE.Vector3();
 
-  protected facePlane: THREE.Mesh | null = null;
-  private faces: Record<Mood, THREE.CanvasTexture> | null = null;
+  private bodyLoaded = false;
   private heldFor = 0;
   private twitch = 0;
   private moveTarget: THREE.Vector3 | null = null;
@@ -150,25 +133,10 @@ export abstract class EnemyBase {
     this.id = id;
   }
 
-  /** Subclasses build the body and return the face plane to manage. */
-  protected abstract buildBody(): THREE.Mesh;
-  /** Subclasses paint their two expressions. */
-  abstract drawFace(ctx: CanvasRenderingContext2D, size: number, mood: Mood): void;
-  /** Subclasses animate their locomotion. t advances with distance moved. */
-  protected abstract animateGait(t: number, speed: number, dt: number): void;
-
-  /** Call once after construction (subclass constructors finish first). */
+  /** Call once after construction. Builds the AI mesh body (async, browser). */
   init(): void {
-    this.facePlane = this.buildBody();
-    this.facePlane.name = 'face';
-    this.faces = bakeFaces((ctx, size, mood) => this.drawFace(ctx, size, mood));
-    const mat = this.facePlane.material as THREE.MeshStandardMaterial;
-    mat.map = this.faces.calm;
-    mat.transparent = true;
     this.baseScale.copy(this.group.scale);
-    this.group.traverse((o) => {
-      if (o instanceof THREE.Mesh) o.castShadow = true;
-    });
+    void this.useAiMesh();
   }
 
   setMoveTarget(target: THREE.Vector3 | null, speed = 0): void {
@@ -187,24 +155,23 @@ export abstract class EnemyBase {
   }
 
   /**
-   * Opt-in: replace the procedural body with the AI-generated textured mesh
-   * (browser-only; loaded async). Hides the procedural meshes and mounts the
-   * mesh body sized to the current body height. The menacing texture swaps with
-   * mood. Procedural body stays as the headless/fallback path.
+   * Build + mount the AI-generated textured + rigged mesh body (browser-only;
+   * loaded async, sized from ENEMY_HEIGHT). Idempotent — init calls it; extra
+   * calls are no-ops. Routes the articulation onto the rig bones (gaze head,
+   * stair/walk legs, arm-walk) and the menacing red-flush onto the body.
    */
   async useAiMesh(): Promise<void> {
-    const box = new THREE.Box3().setFromObject(this.group);
-    const targetH = box.max.y - box.min.y || 1;
+    if (this.bodyLoaded) return;
+    this.bodyLoaded = true;
     const { buildMeshBody } = await import('./MeshBody');
-    const body = await buildMeshBody(this.id, targetH);
+    const body = await buildMeshBody(this.id);
     if (!body) return;
-    this.group.traverse((o) => {
-      if (o instanceof THREE.Mesh) o.visible = false; // hide procedural parts
-    });
     this.group.add(body.group);
+    body.group.traverse((o) => {
+      if (o instanceof THREE.Mesh) o.castShadow = true;
+    });
     this.aiSetMenacing = body.setMenacing;
     this.aiSetMenacing(this.mood === 'menacing');
-    // Route the articulation onto the rig bones (gaze head + stair/walk legs).
     if (body.bones.head) this.aiHead = { obj: body.bones.head, maxYaw: 0.7, maxPitch: 0.7 };
     const legs = ['legFL', 'legFR', 'legHL', 'legHR'].map((n) => body.bones[n]).filter(Boolean);
     if (legs.length) this.aiLegs = legs;
@@ -212,20 +179,10 @@ export abstract class EnemyBase {
     if (arms.length >= 2) this.aiArms = arms;
   }
 
-  /** Subclasses expose their gaze head group + clamp cones (radians). */
-  protected getHead(): { obj: THREE.Object3D; maxYaw: number; maxPitch: number } | null {
-    return null;
-  }
-
-  /** Subclasses expose hip-pivoted leg groups for stair foot placement. */
-  protected getLegs(): THREE.Object3D[] | null {
-    return null;
-  }
-
-  /** Procedural head-turn gaze + stair foot placement, eased per step. */
+  /** Rig-bone head-turn gaze + stair foot placement, eased per step. */
   private updateArticulation(dt: number): void {
     const k = Math.min(1, 8 * dt);
-    const head = this.aiHead ?? this.getHead();
+    const head = this.aiHead;
     if (head) {
       let yaw = 0;
       let pitch = 0;
@@ -249,9 +206,8 @@ export abstract class EnemyBase {
       head.obj.rotation.x += (pitch - head.obj.rotation.x) * k;
     }
 
-    const legs = this.aiLegs ?? this.getLegs();
-    // AI rig walk: swing the leg bones in diagonal pairs while moving (the
-    // procedural gait drives the hidden procedural legs, not these bones).
+    const legs = this.aiLegs;
+    // AI rig walk: swing the leg bones in diagonal pairs while moving.
     if (this.aiLegs && this.aiLegs.length >= 4 && this.isMoving) {
       const phase = this.gaitT * 2.6;
       const sw = 0.45;
@@ -342,7 +298,6 @@ export abstract class EnemyBase {
       }
     }
 
-    this.animateGait(this.gaitT, this.isMoving ? this.speed : 0, dt);
     this.updateArticulation(dt);
 
     // Mood from distance/chase.
@@ -352,11 +307,8 @@ export abstract class EnemyBase {
     this.mood = res.mood;
     this.heldFor = res.heldFor;
     if (this.mood !== prev) {
-      const mat = this.facePlane!.material as THREE.MeshStandardMaterial;
-      mat.map = this.faces![this.mood];
-      mat.needsUpdate = true;
-      this.twitch = 0.12;
-      this.aiSetMenacing?.(this.mood === 'menacing'); // swap to mean textures on the AI body
+      this.twitch = 0.12; // a scale-pop on the body when the mood flips
+      this.aiSetMenacing?.(this.mood === 'menacing'); // red-flush the AI body
     }
     if (this.twitch > 0) {
       this.twitch -= dt;

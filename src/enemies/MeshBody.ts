@@ -30,9 +30,22 @@ const FACE_YAW: Record<string, number> = {
   llama: 0,
 };
 
-export async function buildMeshBody(enemyId: string, targetHeight: number): Promise<MeshBody | null> {
+/**
+ * Target body height (world units) per enemy id, captured from the prior
+ * procedural bodies so the Meshy bodies keep the same in-world scale now that
+ * the procedural bodies (which used to be the sizing reference) are gone.
+ */
+export const ENEMY_HEIGHT: Record<string, number> = {
+  poo: 0.914,
+  fuggie: 1.544,
+  charles: 1.64,
+  newYama: 1.945,
+};
+
+export async function buildMeshBody(enemyId: string, targetHeight?: number): Promise<MeshBody | null> {
   const model = ENEMY_MODEL[enemyId];
   if (!model) return null;
+  const th = targetHeight ?? ENEMY_HEIGHT[enemyId] ?? 1.5;
   const scene = await loadGLB(modelUrl(model));
   const yaw = FACE_YAW[model] ?? 0;
 
@@ -75,7 +88,7 @@ export async function buildMeshBody(enemyId: string, targetHeight: number): Prom
   group.add(scene);
   const box = new THREE.Box3().setFromObject(scene);
   const h = box.max.y - box.min.y || 1;
-  const s = targetHeight / h;
+  const s = th / h;
   group.scale.setScalar(s);
   const c = box.getCenter(new THREE.Vector3());
   scene.position.set(-c.x, -box.min.y, -c.z);
