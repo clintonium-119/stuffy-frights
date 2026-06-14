@@ -30,6 +30,8 @@ export interface FurStyle {
   size?: number;
   /** UV repeat for the resulting textures. Default [1, 1]. */
   repeat?: [number, number];
+  /** Optional colour blotches painted under the fibres (e.g. fuggler mottle). */
+  mottle?: { color: string; count: number; size?: number }[];
 }
 
 export interface FurParams {
@@ -42,6 +44,7 @@ export interface FurParams {
   tip: string;
   shade: string;
   repeat: [number, number];
+  mottle: { color: string; count: number; size: number }[];
 }
 
 const clamp = (v: number, lo: number, hi: number): number => Math.max(lo, Math.min(hi, v));
@@ -80,6 +83,7 @@ export function furParams(style: FurStyle): FurParams {
     tip: style.tip,
     shade: style.shade ?? darken(style.base, 0.7),
     repeat: style.repeat ?? [1, 1],
+    mottle: (style.mottle ?? []).map((m) => ({ color: m.color, count: m.count, size: m.size ?? 38 })),
   };
 }
 
@@ -96,6 +100,27 @@ function paintFur(p: FurParams, mode: 'albedo' | 'normal'): HTMLCanvasElement {
   if (mode === 'albedo') {
     ctx.fillStyle = p.shade;
     ctx.fillRect(0, 0, p.size, p.size);
+    // Colour blotches under the fibres (wrap across edges for tileability).
+    for (const m of p.mottle) {
+      ctx.fillStyle = m.color;
+      for (let i = 0; i < m.count; i++) {
+        ctx.globalAlpha = 0.55 + Math.random() * 0.35;
+        const x = Math.random() * p.size;
+        const y = Math.random() * p.size;
+        ctx.beginPath();
+        ctx.ellipse(
+          x,
+          y,
+          m.size * (0.5 + Math.random() * 0.8),
+          m.size * (0.4 + Math.random() * 0.7),
+          Math.random() * Math.PI,
+          0,
+          Math.PI * 2
+        );
+        ctx.fill();
+      }
+    }
+    ctx.globalAlpha = 1;
   } else {
     ctx.fillStyle = '#8080ff'; // flat tangent normal
     ctx.fillRect(0, 0, p.size, p.size);

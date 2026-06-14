@@ -1,18 +1,50 @@
 import * as THREE from 'three';
-import { EnemyBase, Mood, fabricTexture } from './EnemyBase';
+import { EnemyBase, Mood } from './EnemyBase';
 import { plushMaterial } from '../world/materialLibrary';
+import { furTexture } from '../world/furTexture';
+
+/** A box rounded by pushing its surface verts onto a corner radius. */
+function roundedBox(w: number, h: number, d: number, r: number, seg = 8): THREE.BufferGeometry {
+  const g = new THREE.BoxGeometry(w, h, d, seg, seg, seg);
+  const pos = g.attributes.position;
+  const hw = Math.max(0, w / 2 - r);
+  const hh = Math.max(0, h / 2 - r);
+  const hd = Math.max(0, d / 2 - r);
+  const v = new THREE.Vector3();
+  const inner = new THREE.Vector3();
+  const dir = new THREE.Vector3();
+  for (let i = 0; i < pos.count; i++) {
+    v.fromBufferAttribute(pos, i);
+    inner.set(
+      THREE.MathUtils.clamp(v.x, -hw, hw),
+      THREE.MathUtils.clamp(v.y, -hh, hh),
+      THREE.MathUtils.clamp(v.z, -hd, hd)
+    );
+    dir.copy(v).sub(inner);
+    const len = dir.length();
+    if (len > 1e-5) {
+      dir.multiplyScalar(r / len);
+      v.copy(inner).add(dir);
+    }
+    pos.setXYZ(i, v.x, v.y, v.z);
+  }
+  pos.needsUpdate = true;
+  g.computeVertexNormals();
+  return g;
+}
 
 /**
- * Fuggie — the fuggler. Lumpy teal shag mottled with purple, pointed
- * cat ears, round amber-ringed eyes, stubby hugged arms, and the signature
- * wide mouth full of human-like teeth. The only stuffy whose CALM face
- * already shows teeth. Shambles with an off-rhythm limp.
+ * Fuggie — the fuggler. A tall, thin, rounded-pillow body of coarse teal shag
+ * mottled with blue + purple, two soft ear-bumps at the top corners, big round
+ * glossy eyes with maroon rims, stubby side arms, and the signature gappy mouth
+ * of crooked human-like teeth. Shambles with an off-rhythm limp.
  */
 export class Fuggie extends EnemyBase {
   private bodyMesh!: THREE.Mesh;
   private head!: THREE.Group;
   private armL!: THREE.Mesh;
   private armR!: THREE.Mesh;
+  private eyeMats: THREE.MeshStandardMaterial[] = [];
 
   constructor() {
     super('fuggie');
@@ -20,63 +52,96 @@ export class Fuggie extends EnemyBase {
   }
 
   protected buildBody(): THREE.Mesh {
+    const fur = furTexture({
+      base: '#2f9e86',
+      tip: '#63d2b6',
+      shade: '#24705f',
+      fiberLen: 20,
+      density: 1.7,
+      thickness: 2.0,
+      curl: 0.35,
+      repeat: [2, 3],
+      mottle: [
+        { color: '#7a4f9e', count: 22, size: 34 }, // purple blotches
+        { color: '#3f9ed6', count: 16, size: 30 }, // lighter blue
+      ],
+    });
     const shag = plushMaterial({
-      map: fabricTexture('#2f9e86', '#7a4f9e', '#4fc4ac', 2.6, 14),
-      sheenColor: 0x4fc4ac,
+      map: fur.map,
+      normalMap: fur.normal,
+      sheenColor: 0x6fd0b8,
       sheenRoughness: 0.5,
       roughness: 1,
-      fuzz: 0.55, // coarse, matted shag
+      fuzz: 0.7, // coarse, matted shag
     });
 
-    // Lumpy ovoid: displaced sphere.
-    const geo = new THREE.SphereGeometry(0.42, 24, 18);
-    const pos = geo.attributes.position;
-    for (let i = 0; i < pos.count; i++) {
-      const v = new THREE.Vector3().fromBufferAttribute(pos, i);
-      const bump =
-        1 +
-        0.08 * Math.sin(v.x * 9.1 + 1.3) * Math.cos(v.y * 7.7) +
-        0.06 * Math.sin(v.z * 11.3 + 0.4);
-      v.multiplyScalar(bump);
-      pos.setXYZ(i, v.x, v.y * 1.25, v.z);
-    }
-    geo.computeVertexNormals();
-    this.bodyMesh = new THREE.Mesh(geo, shag);
-    this.bodyMesh.position.y = 0.5;
+    // Tall thin rounded pillow.
+    const W = 0.82;
+    const H = 0.98;
+    const D = 0.5;
+    this.bodyMesh = new THREE.Mesh(roundedBox(W, H, D, 0.24, 9), shag);
+    this.bodyMesh.position.y = H / 2;
     this.group.add(this.bodyMesh);
 
-    // Head is part of the body lump; ears + face mount on a tilt group.
+    // Two soft ear-bumps poking up at the top corners. bodyMesh geometry is
+    // centred at its origin, so the top edge is at local +H/2.
+    const earGeo = new THREE.SphereGeometry(0.16, 14, 12);
+    for (const sx of [-1, 1]) {
+      const ear = new THREE.Mesh(earGeo, shag);
+      ear.scale.set(1.05, 0.8, 0.85);
+      ear.position.set(sx * 0.27, H / 2 - 0.05, 0);
+      this.bodyMesh.add(ear);
+    }
+
+    // Head group carries eyes + mouth so PHASE-03 gaze can tilt them.
     this.head = new THREE.Group();
-    const earGeo = new THREE.ConeGeometry(0.1, 0.22, 4);
-    const earL = new THREE.Mesh(earGeo, shag);
-    earL.position.set(-0.22, 0.52, 0);
-    earL.rotation.z = 0.3;
-    const earR = new THREE.Mesh(earGeo, shag);
-    earR.position.set(0.22, 0.52, 0);
-    earR.rotation.z = -0.3;
-    this.head.add(earL, earR);
+    this.head.position.set(0, 0, 0);
+    this.bodyMesh.add(this.head);
 
-    // Big face plane (eyes + the mouth of many teeth).
+    // Big glossy eyes: maroon rim disc + black dome + white glint.
+    const front = D / 2 + 0.005;
+    const makeEye = (sx: number) => {
+      const eye = new THREE.Group();
+      const rim = new THREE.Mesh(
+        new THREE.CircleGeometry(0.115, 24),
+        new THREE.MeshStandardMaterial({ color: 0x3a0c10, roughness: 0.55 })
+      );
+      eye.add(rim);
+      const domeMat = new THREE.MeshStandardMaterial({ color: 0x0a0708, roughness: 0.12, metalness: 0.15 });
+      this.eyeMats.push(domeMat);
+      const dome = new THREE.Mesh(new THREE.SphereGeometry(0.092, 18, 16), domeMat);
+      dome.scale.set(1, 1, 0.7);
+      dome.position.z = 0.02;
+      eye.add(dome);
+      const glint = new THREE.Mesh(
+        new THREE.CircleGeometry(0.022, 10),
+        new THREE.MeshBasicMaterial({ color: 0xffffff })
+      );
+      glint.position.set(sx * -0.03, 0.035, 0.092);
+      eye.add(glint);
+      eye.position.set(sx * 0.2, 0.16, front);
+      this.head.add(eye);
+    };
+    makeEye(-1);
+    makeEye(1);
+
+    // Mouth: the swappable toothy face plane.
     const facePlane = new THREE.Mesh(
-      new THREE.CircleGeometry(0.3, 22),
-      new THREE.MeshStandardMaterial({ roughness: 0.9 })
+      new THREE.CircleGeometry(0.2, 24),
+      new THREE.MeshStandardMaterial({ roughness: 0.9, transparent: true })
     );
-    facePlane.position.set(0, 0.18, 0.41);
-    facePlane.rotation.x = -0.08;
+    facePlane.position.set(0, -0.04, front);
     this.head.add(facePlane);
-    this.head.position.y = 0.5;
-    this.head.rotation.z = 0.09; // permanent slight tilt
-    this.group.add(this.head);
 
-    // Stubby arms hugged to the body.
-    const armGeo = new THREE.CapsuleGeometry(0.09, 0.2, 4, 8);
+    // Stubby arms hugged low on the sides (local origin is body centre).
+    const armGeo = new THREE.CapsuleGeometry(0.1, 0.16, 5, 9);
     this.armL = new THREE.Mesh(armGeo, shag);
-    this.armL.position.set(-0.4, 0.42, 0.12);
-    this.armL.rotation.z = 0.5;
+    this.armL.position.set(-W / 2 + 0.02, -0.12, 0.08);
+    this.armL.rotation.z = 0.7;
     this.armR = new THREE.Mesh(armGeo, shag);
-    this.armR.position.set(0.4, 0.42, 0.12);
-    this.armR.rotation.z = -0.5;
-    this.group.add(this.armL, this.armR);
+    this.armR.position.set(W / 2 - 0.02, -0.12, 0.08);
+    this.armR.rotation.z = -0.7;
+    this.bodyMesh.add(this.armL, this.armR);
 
     return facePlane;
   }
@@ -86,50 +151,26 @@ export class Fuggie extends EnemyBase {
     const c = size / 2;
     const menace = mood === 'menacing';
 
-    // Round dark eyes with amber rings.
-    for (const dx of [-52, 52]) {
-      ctx.fillStyle = '#b06a28';
-      ctx.beginPath();
-      ctx.arc(c + dx, c - 38, 26, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.fillStyle = '#140a06';
-      ctx.beginPath();
-      ctx.arc(c + dx, c - 38, 21, 0, Math.PI * 2);
-      ctx.fill();
-      if (menace) {
-        ctx.fillStyle = '#aa1100';
-        ctx.beginPath();
-        ctx.arc(c + dx + 4, c - 34, 7, 0, Math.PI * 2);
-        ctx.fill();
-      } else {
-        ctx.fillStyle = '#ffffff';
-        ctx.beginPath();
-        ctx.arc(c + dx - 7, c - 45, 5, 0, Math.PI * 2);
-        ctx.fill();
-      }
-    }
-
-    // The mouth: wide, slack, full of crooked human teeth. Calm already
-    // shows them; menacing stretches wider with more gum.
-    const mw = menace ? 96 : 74; // half-width
-    const mh = menace ? 46 : 30;
-    const my = c + 42;
-    ctx.fillStyle = '#8e3a52'; // gums
+    // The mouth only (eyes are 3D): wide, slack, full of crooked human teeth.
+    const mw = menace ? 104 : 80; // half-width
+    const mh = menace ? 50 : 34;
+    const my = c + 6;
+    ctx.fillStyle = '#7d2f46'; // dark maroon interior
     ctx.beginPath();
     ctx.ellipse(c, my, mw, mh, 0, 0, Math.PI * 2);
     ctx.fill();
-    ctx.fillStyle = '#1c0c10';
+    ctx.fillStyle = '#170a0d';
     ctx.beginPath();
-    ctx.ellipse(c, my + 4, mw - 10, mh - 12, 0, 0, Math.PI * 2);
+    ctx.ellipse(c, my + 4, mw - 12, mh - 14, 0, 0, Math.PI * 2);
     ctx.fill();
-    // Crooked off-white teeth, top and bottom rows.
-    ctx.fillStyle = '#ddd2b8';
+    // Crooked off-white teeth, gappy top row + a couple of bottom.
+    ctx.fillStyle = '#e2d6ba';
     const teeth = menace ? 8 : 6;
     for (let i = 0; i < teeth; i++) {
-      const tx = c - mw + 16 + (i * (mw * 2 - 32)) / (teeth - 1);
+      const tx = c - mw + 18 + (i * (mw * 2 - 36)) / (teeth - 1);
       const jitter = ((i * 37) % 7) - 3;
-      ctx.fillRect(tx - 6, my - mh + 8 + jitter, 12, 16 + (i % 3) * 3);
-      ctx.fillRect(tx - 5, my + mh - 24 - jitter, 10, 14 + ((i + 1) % 2) * 4);
+      if (i % 4 !== 3) ctx.fillRect(tx - 7, my - mh + 10 + jitter, 13, 18 + (i % 3) * 4); // gaps
+      if (i % 3 === 1) ctx.fillRect(tx - 5, my + mh - 26 - jitter, 11, 15);
     }
   }
 
@@ -139,13 +180,16 @@ export class Fuggie extends EnemyBase {
     const amp = speed > 0 ? 1 : 0.15;
     const wobble = Math.sin(phase) * 0.1 + Math.sin(phase * 0.5 + 0.7) * 0.06;
     this.group.rotation.z = wobble * amp;
-    this.bodyMesh.position.y = 0.5 + Math.abs(Math.sin(phase * 0.5)) * 0.05 * amp;
-    // Arms sway out of phase.
+    this.bodyMesh.position.y = 0.49 + Math.abs(Math.sin(phase * 0.5)) * 0.05 * amp;
     this.armL.rotation.x = Math.sin(phase + 0.4) * 0.3 * amp;
     this.armR.rotation.x = Math.sin(phase + Math.PI + 0.9) * 0.3 * amp;
-    // Head tilt deepens when menacing.
-    const tilt = this.mood === 'menacing' ? 0.26 : 0.09;
-    this.head.rotation.z += (tilt - this.head.rotation.z) * Math.min(1, 6 * dt);
     if (speed > 0 && Math.abs(Math.sin(phase * 0.5)) < 0.04 && dt > 0) this.onGaitBeat?.('shuffle');
+
+    // Menacing: a hot red ember bleeds into the glossy eyes.
+    const red = this.mood === 'menacing';
+    for (const m of this.eyeMats) {
+      m.emissive.setHex(red ? 0x550000 : 0x000000);
+      m.emissiveIntensity = red ? 0.7 : 0;
+    }
   }
 }
