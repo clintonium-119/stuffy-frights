@@ -135,6 +135,7 @@ export abstract class EnemyBase {
   private aiSetMenacing: ((on: boolean) => void) | null = null;
   private aiHead: { obj: THREE.Object3D; maxYaw: number; maxPitch: number } | null = null;
   private aiLegs: THREE.Object3D[] | null = null;
+  private aiArms: THREE.Object3D[] | null = null;
   private static readonly _tmp = new THREE.Vector3();
 
   protected facePlane: THREE.Mesh | null = null;
@@ -207,6 +208,8 @@ export abstract class EnemyBase {
     if (body.bones.head) this.aiHead = { obj: body.bones.head, maxYaw: 0.7, maxPitch: 0.7 };
     const legs = ['legFL', 'legFR', 'legHL', 'legHR'].map((n) => body.bones[n]).filter(Boolean);
     if (legs.length) this.aiLegs = legs;
+    const arms = ['armL', 'armR'].map((n) => body.bones[n]).filter(Boolean);
+    if (arms.length >= 2) this.aiArms = arms;
   }
 
   /** Subclasses expose their gaze head group + clamp cones (radians). */
@@ -256,6 +259,19 @@ export abstract class EnemyBase {
       this.aiLegs[3].rotation.x = Math.sin(phase) * sw;
       this.aiLegs[1].rotation.x = Math.sin(phase + Math.PI) * sw;
       this.aiLegs[2].rotation.x = Math.sin(phase + Math.PI) * sw;
+    }
+    // AI rig arm-walk (e.g. the gorilla): the long arms swing fore/aft in
+    // opposition as he hauls himself along, easing back to rest when stopped.
+    // Only rotation.x is touched, so the splay baked into rotation.z is kept.
+    if (this.aiArms && this.aiArms.length >= 2) {
+      if (this.isMoving) {
+        const sw = Math.sin(this.gaitT * 2.6) * 0.5;
+        this.aiArms[0].rotation.x = sw;
+        this.aiArms[1].rotation.x = -sw;
+      } else {
+        this.aiArms[0].rotation.x += (0 - this.aiArms[0].rotation.x) * k;
+        this.aiArms[1].rotation.x += (0 - this.aiArms[1].rotation.x) * k;
+      }
     }
     if (legs && this.floorHeightAt) {
       const bodyGround = this.floorHeightAt(this.position.x, this.position.z, this.floorIndex);
