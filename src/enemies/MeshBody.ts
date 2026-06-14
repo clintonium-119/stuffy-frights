@@ -2,6 +2,8 @@ import * as THREE from 'three';
 import { loadGLB, modelUrl } from '../world/ModelLoader';
 import { projectionMaterial } from './projectionMaterial';
 import { PROJECTION, ENEMY_MODEL } from './projectionConfig';
+import { rigMesh } from './Skinning';
+import { RIG_SPECS } from './rigSpecs';
 
 /**
  * Builds a textured AI-mesh body for an enemy: loads the generated GLB, applies
@@ -12,6 +14,8 @@ import { PROJECTION, ENEMY_MODEL } from './projectionConfig';
 export interface MeshBody {
   group: THREE.Group;
   setMenacing(on: boolean): void;
+  /** Rig bones the articulation drives (head + legs), keyed by name. */
+  bones: Record<string, THREE.Bone>;
 }
 
 export async function buildMeshBody(enemyId: string, targetHeight: number): Promise<MeshBody | null> {
@@ -42,6 +46,23 @@ export async function buildMeshBody(enemyId: string, targetHeight: number): Prom
     mats.push(o.material as THREE.MeshStandardMaterial);
   });
 
+  // Rig the main mesh (skeleton + skin weights) so the articulation can drive it.
+  let bones: Record<string, THREE.Bone> = {};
+  const spec = RIG_SPECS[model];
+  if (spec) {
+    let mainMesh: THREE.Mesh | null = null;
+    scene.traverse((o) => {
+      if (o instanceof THREE.Mesh && !mainMesh) mainMesh = o;
+    });
+    if (mainMesh) {
+      const parent = (mainMesh as THREE.Mesh).parent!;
+      const res = rigMesh(mainMesh, spec);
+      parent.add(res.skinned);
+      parent.remove(mainMesh);
+      bones = res.bones;
+    }
+  }
+
   // Size to target height; feet at y=0, centred on X/Z.
   const group = new THREE.Group();
   group.add(scene);
@@ -60,5 +81,5 @@ export async function buildMeshBody(enemyId: string, targetHeight: number): Prom
       u.uSide.value = on ? sideMean : side;
     }
   };
-  return { group, setMenacing };
+  return { group, setMenacing, bones };
 }

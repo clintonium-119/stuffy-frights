@@ -74,6 +74,7 @@ export class EnemyViewer {
   private frameDist = 2.6;
   private preset = 'front';
   private currentKey: EnemyKey = 'newyama';
+  aiMode = false;
   private readonly refImg = document.createElement('img');
   private refOn = false;
   private refOpacity = 0.5;
@@ -325,6 +326,7 @@ export class EnemyViewer {
     this.holder.position.set(0, 0, 0);
     this.fitToModel();
     this.applyPreset(this.preset);
+    if (this.aiMode && this.enemy) void this.enemy.useAiMesh().then(() => this.fitToModel());
   }
 
   /** Centre + distance the camera framing on the current model's bounds. */
@@ -463,6 +465,10 @@ export class EnemyViewer {
       sync();
       return b;
     };
+    toggle('AI mesh', () => this.aiMode, (v) => {
+      this.aiMode = v;
+      this.setEnemy(this.currentKey); // rebuild with/without the AI body
+    });
     toggle('menacing', () => this.menacing, (v) => (this.menacing = v));
     toggle('turntable', () => this.turntable, (v) => (this.turntable = v));
     toggle('look@cam', () => this.lookAtCamera, (v) => (this.lookAtCamera = v));

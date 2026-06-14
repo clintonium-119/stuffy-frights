@@ -133,6 +133,8 @@ export abstract class EnemyBase {
   private lookTarget: THREE.Vector3 | null = null;
   private lookIntensity = 0;
   private aiSetMenacing: ((on: boolean) => void) | null = null;
+  private aiHead: { obj: THREE.Object3D; maxYaw: number; maxPitch: number } | null = null;
+  private aiLegs: THREE.Object3D[] | null = null;
   private static readonly _tmp = new THREE.Vector3();
 
   protected facePlane: THREE.Mesh | null = null;
@@ -201,6 +203,10 @@ export abstract class EnemyBase {
     this.group.add(body.group);
     this.aiSetMenacing = body.setMenacing;
     this.aiSetMenacing(this.mood === 'menacing');
+    // Route the articulation onto the rig bones (gaze head + stair/walk legs).
+    if (body.bones.head) this.aiHead = { obj: body.bones.head, maxYaw: 0.7, maxPitch: 0.7 };
+    const legs = ['legFL', 'legFR', 'legHL', 'legHR'].map((n) => body.bones[n]).filter(Boolean);
+    if (legs.length) this.aiLegs = legs;
   }
 
   /** Subclasses expose their gaze head group + clamp cones (radians). */
@@ -216,7 +222,7 @@ export abstract class EnemyBase {
   /** Procedural head-turn gaze + stair foot placement, eased per step. */
   private updateArticulation(dt: number): void {
     const k = Math.min(1, 8 * dt);
-    const head = this.getHead();
+    const head = this.aiHead ?? this.getHead();
     if (head) {
       let yaw = 0;
       let pitch = 0;
@@ -240,7 +246,17 @@ export abstract class EnemyBase {
       head.obj.rotation.x += (pitch - head.obj.rotation.x) * k;
     }
 
-    const legs = this.getLegs();
+    const legs = this.aiLegs ?? this.getLegs();
+    // AI rig walk: swing the leg bones in diagonal pairs while moving (the
+    // procedural gait drives the hidden procedural legs, not these bones).
+    if (this.aiLegs && this.aiLegs.length >= 4 && this.isMoving) {
+      const phase = this.gaitT * 2.6;
+      const sw = 0.45;
+      this.aiLegs[0].rotation.x = Math.sin(phase) * sw;
+      this.aiLegs[3].rotation.x = Math.sin(phase) * sw;
+      this.aiLegs[1].rotation.x = Math.sin(phase + Math.PI) * sw;
+      this.aiLegs[2].rotation.x = Math.sin(phase + Math.PI) * sw;
+    }
     if (legs && this.floorHeightAt) {
       const bodyGround = this.floorHeightAt(this.position.x, this.position.z, this.floorIndex);
       let frontLift = 0;
