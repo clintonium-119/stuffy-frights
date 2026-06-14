@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { EnemyBase, Mood } from './EnemyBase';
 import { plushMaterial } from '../world/materialLibrary';
 import { furTexture } from '../world/furTexture';
+import { faceDecal } from './faceDecal';
 
 /**
  * Poo (displayed in-game as "Pou") — the tan velour alien plush. A rounded
@@ -70,58 +71,69 @@ export class Poo extends EnemyBase {
 
     // Egg/pear silhouette: widest near the base, tapering to a short neck.
     const profile: THREE.Vector2[] = [];
-    const H = 0.82;
-    for (let i = 0; i <= 22; i++) {
-      const v = i / 22;
+    const H = 0.9;
+    for (let i = 0; i <= 26; i++) {
+      const v = i / 26;
       // Pear: fat bottom lobe, narrowing to a short neck near the top.
       const r =
-        0.33 * Math.sin(Math.pow(v, 0.74) * Math.PI) * (1 - v * 0.22) +
+        0.31 * Math.sin(Math.pow(v, 0.72) * Math.PI) * (1 - v * 0.24) +
         0.04 * Math.sin(v * Math.PI) +
         0.001;
       profile.push(new THREE.Vector2(r, v * H));
     }
-    this.body = new THREE.Mesh(new THREE.LatheGeometry(profile, 30), tan);
+    this.body = new THREE.Mesh(new THREE.LatheGeometry(profile, 48), tan);
     this.group.add(this.body);
 
-    // Deadpan mouth as the swappable face plane, on the upper-front body.
+    // A neck hump at the top the eye-pods grow out of — so the pods read as
+    // part of the body, not balls resting on it.
+    const hump = new THREE.Mesh(new THREE.SphereGeometry(0.2, 28, 22), tan);
+    hump.scale.set(1, 0.72, 1);
+    hump.position.y = 0.74;
+    this.body.add(hump);
+
+    // Deadpan mouth wrapped onto the body front (curved decal), proud of the bulge.
     const facePlane = new THREE.Mesh(
-      new THREE.CircleGeometry(0.13, 18),
+      faceDecal(0.13, 0.3, 44),
       new THREE.MeshStandardMaterial({ roughness: 0.9, transparent: true })
     );
-    facePlane.position.set(0, 0.52, 0.28);
-    facePlane.rotation.x = -0.16;
+    facePlane.position.set(0, 0.55, 0.255);
+    facePlane.rotation.x = -0.05;
     this.body.add(facePlane);
 
     // The two eye-pods live on a head group so PHASE-03 gaze can aim them.
     this.head = new THREE.Group();
-    this.head.position.set(0, 0.64, 0.04);
+    this.head.position.set(0, 0.68, 0.03);
     this.body.add(this.head);
 
-    const makePod = (side: number, radius: number, lift: number, fwd: number): THREE.Group => {
+    const R = 0.155; // both eyes the same size
+    const makePod = (side: number, lift: number, fwd: number): THREE.Group => {
       const pod = new THREE.Group();
-      const podMesh = new THREE.Mesh(new THREE.SphereGeometry(radius, 18, 16), tan);
-      podMesh.scale.set(1, 1.12, 0.96); // slightly egg-shaped
+      const podMesh = new THREE.Mesh(new THREE.SphereGeometry(R, 28, 24), tan);
+      podMesh.scale.set(1, 1.12, 0.98);
       pod.add(podMesh);
+      // A short stalk where the pod meets the hump, so it's visibly attached.
+      const root = new THREE.Mesh(new THREE.SphereGeometry(R * 0.78, 18, 14), tan);
+      root.position.set(0, -R * 0.85, -R * 0.2);
+      root.scale.set(0.9, 0.8, 0.9);
+      pod.add(root);
       // Almond eye decal on the front face.
       const eyeMat = new THREE.MeshStandardMaterial({
         map: Poo.eyeTexture(),
         transparent: true,
         roughness: 0.5,
-        metalness: 0.0,
       });
       this.eyeMats.push(eyeMat);
-      const eye = new THREE.Mesh(new THREE.PlaneGeometry(radius * 2.0, radius * 2.0), eyeMat);
-      eye.position.set(0, radius * 0.06, radius * 0.92);
-      eye.rotation.set(0.05, 0, side < 0 ? 0.12 : -0.12);
+      const eye = new THREE.Mesh(new THREE.PlaneGeometry(R * 2.0, R * 2.0), eyeMat);
+      eye.position.set(0, R * 0.06, R * 0.94);
+      eye.rotation.set(0.05, 0, side < 0 ? 0.1 : -0.1);
       pod.add(eye);
-      pod.position.set(side * 0.135, lift, fwd);
-      pod.rotation.set(0.32, side * 0.18, 0); // lean forward, splay out
+      pod.position.set(side * 0.115, lift, fwd);
+      pod.rotation.set(0.3, side * 0.14, 0);
       this.head.add(pod);
       return pod;
     };
-    // Asymmetric like the real toy: right pod bigger + higher.
-    this.podL = makePod(-1, 0.135, 0.0, 0.05);
-    this.podR = makePod(1, 0.16, 0.06, 0.07);
+    this.podL = makePod(-1, 0.0, 0.05);
+    this.podR = makePod(1, 0.0, 0.05);
 
     return facePlane;
   }
@@ -143,13 +155,27 @@ export class Poo extends EnemyBase {
       ctx.lineTo(c + 40, c);
       ctx.stroke();
     } else {
-      // The line splits into a dark grin.
-      ctx.fillStyle = '#241008';
+      // The deadpan splits into a wide, dark, sharp-toothed maw.
+      ctx.fillStyle = '#1c0a06';
       ctx.beginPath();
-      ctx.moveTo(c - 56, c - 8);
-      ctx.quadraticCurveTo(c, c + 54, c + 56, c - 8);
-      ctx.quadraticCurveTo(c, c + 16, c - 56, c - 8);
+      ctx.ellipse(c, c + 6, 64, 34, 0, 0, Math.PI * 2);
       ctx.fill();
+      // Jagged sharp teeth, top + bottom rows.
+      ctx.fillStyle = '#efe7d4';
+      const n = 7;
+      for (let i = 0; i < n; i++) {
+        const x = c - 56 + (i * 112) / (n - 1);
+        ctx.beginPath(); // top fang pointing down
+        ctx.moveTo(x - 8, c - 24);
+        ctx.lineTo(x + 8, c - 24);
+        ctx.lineTo(x, c - 24 + (i % 2 ? 22 : 15));
+        ctx.fill();
+        ctx.beginPath(); // bottom fang pointing up
+        ctx.moveTo(x - 7, c + 34);
+        ctx.lineTo(x + 7, c + 34);
+        ctx.lineTo(x, c + 34 - (i % 2 ? 20 : 13));
+        ctx.fill();
+      }
     }
   }
 
