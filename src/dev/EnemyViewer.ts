@@ -179,29 +179,62 @@ export class EnemyViewer {
    * front-facing tris, back photo on the rest). Proves photo-matched texturing.
    */
   private projectPhotos(root: THREE.Object3D, base: string): void {
-    const front = new THREE.TextureLoader().load(`${import.meta.env.BASE_URL}models/${base}_front.png`);
-    front.colorSpace = THREE.SRGBColorSpace;
+    const load = (v: string) => {
+      const t = new THREE.TextureLoader().load(`${import.meta.env.BASE_URL}models/${base}_${v}.png`);
+      t.colorSpace = THREE.SRGBColorSpace;
+      return t;
+    };
+    const front = load('front');
+    const back = load('back');
+    const side = load('side');
+    const BASE: Record<string, number> = { pou: 0xd9b286, fuggler: 0x2f9e86, gorilla: 0x7ed9c4, llama: 0xc69a55 };
+    const baseCol = new THREE.Color(BASE[base] ?? 0xcccccc);
     root.updateWorldMatrix(true, true);
     const box = new THREE.Box3().setFromObject(root);
-    const minX = box.min.x;
-    const minY = box.min.y;
-    const sx = box.max.x - box.min.x || 1;
-    const sy = box.max.y - box.min.y || 1;
-    const wp = new THREE.Vector3();
+    const uMin = new THREE.Vector3(box.min.x, box.min.y, box.min.z);
+    const uSize = new THREE.Vector3(
+      box.max.x - box.min.x || 1,
+      box.max.y - box.min.y || 1,
+      box.max.z - box.min.z || 1
+    );
     root.traverse((o) => {
       if (!(o instanceof THREE.Mesh)) return;
-      // Camera-map: bake planar front-projection UVs (world XY → photo UV).
       const g = o.geometry as THREE.BufferGeometry;
-      const pos = g.attributes.position;
-      const uv = new Float32Array(pos.count * 2);
-      for (let i = 0; i < pos.count; i++) {
-        wp.fromBufferAttribute(pos, i).applyMatrix4(o.matrixWorld);
-        uv[i * 2] = (wp.x - minX) / sx;
-        uv[i * 2 + 1] = (wp.y - minY) / sy;
-      }
-      g.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
       if (!g.attributes.normal) g.computeVertexNormals(); // AI meshes ship without normals
-      o.material = new THREE.MeshStandardMaterial({ map: front, roughness: 0.9, metalness: 0 });
+      const mat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.9, metalness: 0 });
+      mat.onBeforeCompile = (sh) => {
+        sh.uniforms.uFront = { value: front };
+        sh.uniforms.uBack = { value: back };
+        sh.uniforms.uSide = { value: side };
+        sh.uniforms.uMin = { value: uMin };
+        sh.uniforms.uSize = { value: uSize };
+        sh.uniforms.uBase = { value: new THREE.Vector3(baseCol.r, baseCol.g, baseCol.b) };
+        sh.vertexShader =
+          'varying vec3 vWP; varying vec3 vWN;\n' +
+          sh.vertexShader
+            .replace('#include <begin_vertex>', '#include <begin_vertex>\n vWP=(modelMatrix*vec4(transformed,1.0)).xyz;')
+            .replace('#include <beginnormal_vertex>', '#include <beginnormal_vertex>\n vWN=normalize(mat3(modelMatrix)*objectNormal);');
+        sh.fragmentShader =
+          'uniform sampler2D uFront; uniform sampler2D uBack; uniform sampler2D uSide; uniform vec3 uMin; uniform vec3 uSize; uniform vec3 uBase; varying vec3 vWP; varying vec3 vWN;\n' +
+          sh.fragmentShader.replace(
+            '#include <map_fragment>',
+            [
+              'vec3 n=normalize(vWN);',
+              'float ux=(vWP.x-uMin.x)/uSize.x, uy=(vWP.y-uMin.y)/uSize.y, uz=(vWP.z-uMin.z)/uSize.z;',
+              'vec3 cF=texture2D(uFront,vec2(ux,uy)).rgb;',
+              'vec3 cB=texture2D(uBack,vec2(1.0-ux,uy)).rgb;',
+              'vec3 cL=texture2D(uSide,vec2(uz,uy)).rgb;',
+              'vec3 cR=texture2D(uSide,vec2(1.0-uz,uy)).rgb;',
+              'float wF=pow(max(0.0,n.z),3.0), wB=pow(max(0.0,-n.z),3.0), wL=pow(max(0.0,-n.x),3.0), wR=pow(max(0.0,n.x),3.0);',
+              'float ws=wF+wB+wL+wR+1e-3;',
+              'vec3 proj=(cF*wF+cB*wB+cL*wL+cR*wR)/ws;',
+              // Background (near-white) areas fall back to the toy base colour.
+              'float whiteness=smoothstep(0.80,0.96,min(proj.r,min(proj.g,proj.b)));',
+              'diffuseColor.rgb*=mix(proj,uBase,whiteness);',
+            ].join('\n')
+          );
+      };
+      o.material = mat;
     });
   }
 

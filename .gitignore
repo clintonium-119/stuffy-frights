@@ -17,5 +17,9 @@ node_modules/
 # so the bundle is never committed.
 docs/
 
-# AI-mesh working outputs (regenerated via scripts/ai-mesh)
+# AI-mesh working outputs (regenerated via scripts/ai-mesh) — ignore raws, keep finals
 public/models/*.glb
+!public/models/pou.glb
+!public/models/fuggler.glb
+!public/models/gorilla.glb
+!public/models/llama.glb
