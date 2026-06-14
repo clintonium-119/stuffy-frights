@@ -179,9 +179,18 @@ export class EnemyViewer {
    * real face/colours/patterns map onto the AI shape (front photo on
    * front-facing tris, back photo on the rest). Proves photo-matched texturing.
    */
+  private projScale = new THREE.Vector2(1, 1);
+  private projOffset = new THREE.Vector2(0, 0);
+
+  /** Live-tune the projection (mutates the shared uniform vectors). */
+  setProj(sx: number, sy: number, ox: number, oy: number): void {
+    this.projScale.set(sx, sy);
+    this.projOffset.set(ox, oy);
+  }
+
   private projectPhotos(root: THREE.Object3D, base: string): void {
     const load = (v: string) => new THREE.TextureLoader().load(`${import.meta.env.BASE_URL}models/${base}_${v}.png`);
-    const views = { front: load('front'), back: load('back'), side: load('side') };
+    const views = { front: load('front'), back: load('back') };
     const BASE: Record<string, number> = { pou: 0xd9b286, fuggler: 0x2f9e86, gorilla: 0x7ed9c4, llama: 0xc69a55 };
     root.updateWorldMatrix(true, true);
     const box = new THREE.Box3().setFromObject(root);
@@ -195,7 +204,10 @@ export class EnemyViewer {
       if (!(o instanceof THREE.Mesh)) return;
       const g = o.geometry as THREE.BufferGeometry;
       if (!g.attributes.normal) g.computeVertexNormals(); // AI meshes ship without normals
-      o.material = projectionMaterial(views, uMin, uSize, BASE[base] ?? 0xcccccc);
+      o.material = projectionMaterial(views, uMin, uSize, BASE[base] ?? 0xcccccc, {
+        scale: this.projScale,
+        offset: this.projOffset,
+      });
     });
   }
 
