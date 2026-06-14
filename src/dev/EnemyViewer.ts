@@ -190,7 +190,7 @@ export class EnemyViewer {
 
   private projectPhotos(root: THREE.Object3D, base: string): void {
     const load = (v: string) => new THREE.TextureLoader().load(`${import.meta.env.BASE_URL}models/${base}_${v}.png`);
-    const views = { front: load('front'), back: load('back') };
+    const views = { front: load('front'), back: load('back'), side: load('side') };
     const BASE: Record<string, number> = { pou: 0xd9b286, fuggler: 0x2f9e86, gorilla: 0x7ed9c4, llama: 0xc69a55 };
     root.updateWorldMatrix(true, true);
     const box = new THREE.Box3().setFromObject(root);

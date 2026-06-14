@@ -14,6 +14,8 @@ import * as THREE from 'three';
 export interface ProjectionViews {
   front: THREE.Texture;
   back: THREE.Texture;
+  /** One side photo; mirrored automatically for the opposite flank. */
+  side: THREE.Texture;
 }
 
 export interface ProjectionTuning {
@@ -39,6 +41,7 @@ export function projectionMaterial(
   mat.onBeforeCompile = (sh) => {
     sh.uniforms.uFront = { value: views.front };
     sh.uniforms.uBack = { value: views.back };
+    sh.uniforms.uSide = { value: views.side };
     sh.uniforms.uMin = { value: min };
     sh.uniforms.uSize = { value: size };
     sh.uniforms.uScale = { value: scale };
@@ -50,15 +53,20 @@ export function projectionMaterial(
         .replace('#include <begin_vertex>', '#include <begin_vertex>\n vWP=(modelMatrix*vec4(transformed,1.0)).xyz;')
         .replace('#include <beginnormal_vertex>', '#include <beginnormal_vertex>\n vWN=normalize(mat3(modelMatrix)*objectNormal);');
     sh.fragmentShader =
-      'uniform sampler2D uFront; uniform sampler2D uBack; uniform vec3 uMin; uniform vec3 uSize; uniform vec2 uScale; uniform vec2 uOffset; uniform vec3 uBase; varying vec3 vWP; varying vec3 vWN;\n' +
+      'uniform sampler2D uFront; uniform sampler2D uBack; uniform sampler2D uSide; uniform vec3 uMin; uniform vec3 uSize; uniform vec2 uScale; uniform vec2 uOffset; uniform vec3 uBase; varying vec3 vWP; varying vec3 vWN;\n' +
       sh.fragmentShader.replace(
         '#include <map_fragment>',
         [
           'vec3 n=normalize(vWN);',
-          'float ux=(vWP.x-uMin.x)/uSize.x, uy=(vWP.y-uMin.y)/uSize.y;',
-          // scale about centre + offset
+          'float ux=(vWP.x-uMin.x)/uSize.x, uy=(vWP.y-uMin.y)/uSize.y, uz=(vWP.z-uMin.z)/uSize.z;',
           'ux=(ux-0.5)/uScale.x+0.5+uOffset.x; uy=(uy-0.5)/uScale.y+0.5+uOffset.y;',
-          'vec3 col = n.z>=0.0 ? texture2D(uFront,vec2(ux,uy)).rgb : texture2D(uBack,vec2(1.0-ux,uy)).rgb;',
+          'uz=(uz-0.5)/uScale.x+0.5;',
+          // Base layer: the side photo (mirrored for the +X flank).
+          'vec3 col = n.x<0.0 ? texture2D(uSide,vec2(uz,uy)).rgb : texture2D(uSide,vec2(1.0-uz,uy)).rgb;',
+          // Layer front/back on top, prioritised where the surface faces fwd/back.
+          'float wf=smoothstep(0.25,0.6,n.z), wb=smoothstep(0.25,0.6,-n.z);',
+          'col = mix(col, texture2D(uFront,vec2(ux,uy)).rgb, wf);',
+          'col = mix(col, texture2D(uBack,vec2(1.0-ux,uy)).rgb, wb);',
           'float whiteness=smoothstep(0.82,0.97,min(col.r,min(col.g,col.b)));',
           'diffuseColor.rgb*=mix(col,uBase,whiteness);',
         ].join('\n')
