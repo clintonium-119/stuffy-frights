@@ -929,9 +929,13 @@ engine.start();
 // ----------------------------------------------------------- dev harness
 if (import.meta.env.DEV) {
   const params = new URLSearchParams(location.search);
-  const anyDev = ['pose', 'warp', 'scare', 'report', 'showcase', 'scenario'].some((k) =>
+  const anyDev = ['pose', 'warp', 'scare', 'report', 'showcase', 'scenario', 'aimesh'].some((k) =>
     params.has(k)
   );
+  // Opt-in: swap the procedural enemy bodies for the AI-generated textured meshes.
+  if (params.get('aimesh') === '1') {
+    for (const enemy of enemies) void enemy.useAiMesh();
+  }
   if (anyDev && gs.state === 'menu') {
     gs.transition('start');
     menus.hide();

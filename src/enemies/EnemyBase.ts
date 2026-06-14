@@ -132,6 +132,7 @@ export abstract class EnemyBase {
 
   private lookTarget: THREE.Vector3 | null = null;
   private lookIntensity = 0;
+  private aiSetMenacing: ((on: boolean) => void) | null = null;
   private static readonly _tmp = new THREE.Vector3();
 
   protected facePlane: THREE.Mesh | null = null;
@@ -180,6 +181,26 @@ export abstract class EnemyBase {
   setLookContext(target: THREE.Vector3 | null, intensity: number): void {
     this.lookTarget = target ? target.clone() : null;
     this.lookIntensity = Math.max(0, Math.min(1, intensity));
+  }
+
+  /**
+   * Opt-in: replace the procedural body with the AI-generated textured mesh
+   * (browser-only; loaded async). Hides the procedural meshes and mounts the
+   * mesh body sized to the current body height. The menacing texture swaps with
+   * mood. Procedural body stays as the headless/fallback path.
+   */
+  async useAiMesh(): Promise<void> {
+    const box = new THREE.Box3().setFromObject(this.group);
+    const targetH = box.max.y - box.min.y || 1;
+    const { buildMeshBody } = await import('./MeshBody');
+    const body = await buildMeshBody(this.id, targetH);
+    if (!body) return;
+    this.group.traverse((o) => {
+      if (o instanceof THREE.Mesh) o.visible = false; // hide procedural parts
+    });
+    this.group.add(body.group);
+    this.aiSetMenacing = body.setMenacing;
+    this.aiSetMenacing(this.mood === 'menacing');
   }
 
   /** Subclasses expose their gaze head group + clamp cones (radians). */
@@ -302,6 +323,7 @@ export abstract class EnemyBase {
       mat.map = this.faces![this.mood];
       mat.needsUpdate = true;
       this.twitch = 0.12;
+      this.aiSetMenacing?.(this.mood === 'menacing'); // swap to mean textures on the AI body
     }
     if (this.twitch > 0) {
       this.twitch -= dt;
