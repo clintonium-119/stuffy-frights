@@ -24,31 +24,6 @@ export class Poo extends EnemyBase {
     this.init();
   }
 
-  /** Big cartoon almond eye on a transparent decal: black almond + white shines. */
-  private static eyeTexture(): THREE.CanvasTexture {
-    const s = 128;
-    const c = document.createElement('canvas');
-    c.width = c.height = s;
-    const ctx = c.getContext('2d')!;
-    ctx.clearRect(0, 0, s, s);
-    // Almond: a rounded shape pointed toward the inner-lower corner.
-    ctx.fillStyle = '#070707';
-    ctx.beginPath();
-    ctx.ellipse(s * 0.52, s * 0.5, s * 0.4, s * 0.34, -0.25, 0, Math.PI * 2);
-    ctx.fill();
-    // Two white shine blobs (big + small).
-    ctx.fillStyle = '#ffffff';
-    ctx.beginPath();
-    ctx.ellipse(s * 0.4, s * 0.36, s * 0.1, s * 0.13, -0.3, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.beginPath();
-    ctx.ellipse(s * 0.62, s * 0.58, s * 0.05, s * 0.06, 0, 0, Math.PI * 2);
-    ctx.fill();
-    const t = new THREE.CanvasTexture(c);
-    t.colorSpace = THREE.SRGBColorSpace;
-    return t;
-  }
-
   protected buildBody(): THREE.Mesh {
     const fur = furTexture({
       base: '#d6ac7e',
@@ -69,71 +44,85 @@ export class Poo extends EnemyBase {
       fuzz: 0.18, // smooth velour: faint nap only
     });
 
-    // Egg/pear silhouette: widest near the base, tapering to a short neck.
+    // Bottom-heavy teardrop/egg silhouette: widest below the middle, rounding
+    // smoothly closed at both poles (no nub). Sampled over a half-revolution
+    // angle so the top is a rounded dome like the real plush.
     const profile: THREE.Vector2[] = [];
-    const H = 0.9;
-    for (let i = 0; i <= 26; i++) {
-      const v = i / 26;
-      // Pear: fat bottom lobe, narrowing to a short neck near the top.
-      const r =
-        0.31 * Math.sin(Math.pow(v, 0.72) * Math.PI) * (1 - v * 0.24) +
-        0.04 * Math.sin(v * Math.PI) +
-        0.001;
-      profile.push(new THREE.Vector2(r, v * H));
+    const H = 0.8;
+    const Rmax = 0.4;
+    const seg = 44;
+    for (let i = 0; i <= seg; i++) {
+      const th = (i / seg) * Math.PI; // 0 = bottom pole, PI = top pole
+      const u = (1 - Math.cos(th)) / 2; // 0..1 up the body
+      const y = u * H;
+      // Teardrop taper: full width low, ~70% near the crown.
+      const taper = 1 - 0.32 * u;
+      const r = Rmax * Math.sin(th) * taper + 0.001;
+      profile.push(new THREE.Vector2(r, y));
     }
-    this.body = new THREE.Mesh(new THREE.LatheGeometry(profile, 48), tan);
+    this.body = new THREE.Mesh(new THREE.LatheGeometry(profile, 56), tan);
     this.group.add(this.body);
 
-    // A neck hump at the top the eye-pods grow out of — so the pods read as
-    // part of the body, not balls resting on it.
-    const hump = new THREE.Mesh(new THREE.SphereGeometry(0.2, 28, 22), tan);
-    hump.scale.set(1, 0.72, 1);
-    hump.position.y = 0.74;
-    this.body.add(hump);
-
-    // Deadpan mouth wrapped onto the body front (curved decal), proud of the bulge.
+    // Deadpan mouth wrapped onto the body front (curved decal), below the pods.
     const facePlane = new THREE.Mesh(
       faceDecal(0.13, 0.3, 44),
       new THREE.MeshStandardMaterial({ roughness: 0.9, transparent: true })
     );
-    facePlane.position.set(0, 0.55, 0.255);
-    facePlane.rotation.x = -0.05;
+    facePlane.position.set(0, 0.6, 0.285);
+    facePlane.rotation.x = -0.04;
     this.body.add(facePlane);
 
-    // The two eye-pods live on a head group so PHASE-03 gaze can aim them.
+    // The two eye-pods live on a head group (front-top of the body, leaning
+    // forward) so PHASE-03 gaze can aim them. The real plush is asymmetric:
+    // one pod is larger and sits higher than the other.
     this.head = new THREE.Group();
-    this.head.position.set(0, 0.68, 0.03);
+    this.head.position.set(0, 0.58, 0.08);
     this.body.add(this.head);
 
-    const R = 0.155; // both eyes the same size
-    const makePod = (side: number, lift: number, fwd: number): THREE.Group => {
+    // side: -1/+1 flank, lift: extra height, fwd: forward offset, R: pod radius.
+    const makePod = (side: number, lift: number, fwd: number, R: number): THREE.Group => {
       const pod = new THREE.Group();
-      const podMesh = new THREE.Mesh(new THREE.SphereGeometry(R, 28, 24), tan);
-      podMesh.scale.set(1, 1.12, 0.98);
+      const podMesh = new THREE.Mesh(new THREE.SphereGeometry(R, 30, 26), tan);
+      podMesh.scale.set(0.98, 1.12, 1.0); // slightly egg-shaped, taller than wide
       pod.add(podMesh);
-      // A short stalk where the pod meets the hump, so it's visibly attached.
-      const root = new THREE.Mesh(new THREE.SphereGeometry(R * 0.78, 18, 14), tan);
-      root.position.set(0, -R * 0.85, -R * 0.2);
-      root.scale.set(0.9, 0.8, 0.9);
-      pod.add(root);
-      // Almond eye decal on the front face.
-      const eyeMat = new THREE.MeshStandardMaterial({
-        map: Poo.eyeTexture(),
-        transparent: true,
-        roughness: 0.5,
-      });
+      // A fat stalk/neck blending the pod into the crown so it reads attached.
+      const stalk = new THREE.Mesh(new THREE.SphereGeometry(R * 0.84, 22, 16), tan);
+      stalk.position.set(side * R * 0.1, -R * 1.05, -R * 0.3);
+      stalk.scale.set(0.88, 1.0, 0.82);
+      pod.add(stalk);
+
+      // The big black almond eye, built from geometry so it wraps the curved pod
+      // (a flat decal floats off / lets the pod poke through). A flattened black
+      // ellipsoid lens on the front + two white shine beads.
+      const eyeMat = new THREE.MeshStandardMaterial({ color: 0x080808, roughness: 0.45 });
       this.eyeMats.push(eyeMat);
-      const eye = new THREE.Mesh(new THREE.PlaneGeometry(R * 2.0, R * 2.0), eyeMat);
-      eye.position.set(0, R * 0.06, R * 0.94);
-      eye.rotation.set(0.05, 0, side < 0 ? 0.1 : -0.1);
+      const eye = new THREE.Group();
+      const almond = new THREE.Mesh(new THREE.SphereGeometry(1, 28, 20), eyeMat);
+      almond.scale.set(R * 0.82, R * 0.62, R * 0.55);
+      eye.add(almond);
+      const shineMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.3 });
+      const shineA = new THREE.Mesh(new THREE.SphereGeometry(R * 0.16, 14, 12), shineMat);
+      shineA.position.set(-side * R * 0.22, R * 0.16, R * 0.5);
+      shineA.scale.set(1, 1.1, 0.6);
+      eye.add(shineA);
+      const shineB = new THREE.Mesh(new THREE.SphereGeometry(R * 0.08, 12, 10), shineMat);
+      shineB.position.set(side * R * 0.12, -R * 0.08, R * 0.52);
+      shineB.scale.set(1, 1.1, 0.6);
+      eye.add(shineB);
+      // Sit the lens on the pod front, angled with the point toward inner-lower.
+      eye.position.set(side * R * 0.06, R * 0.05, R * 0.62);
+      eye.rotation.set(0.1, side * -0.1, side < 0 ? 0.18 : -0.18);
       pod.add(eye);
+
       pod.position.set(side * 0.115, lift, fwd);
-      pod.rotation.set(0.3, side * 0.14, 0);
+      // Lean forward over the face + a touch outward.
+      pod.rotation.set(0.26, side * 0.14, side * -0.04);
       this.head.add(pod);
       return pod;
     };
-    this.podL = makePod(-1, 0.0, 0.05);
-    this.podR = makePod(1, 0.0, 0.05);
+    // Smaller pod lower-left; larger pod higher-right (matches the reference).
+    this.podL = makePod(-1, 0.05, 0.03, 0.14);
+    this.podR = makePod(1, 0.16, 0.05, 0.175);
 
     return facePlane;
   }
