@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { RGBELoader } from 'three/examples/jsm/loaders/RGBELoader.js';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { EnemyBase } from '../enemies/EnemyBase';
 import { Poo } from '../enemies/Poo';
 import { Fuggie } from '../enemies/Fuggie';
@@ -170,6 +171,35 @@ export class EnemyViewer {
         hdr.dispose();
       }
     );
+  }
+
+  /** Dev: load a raw GLB (e.g. an AI-generated mesh) into the studio to inspect it. */
+  loadGlb(file: string): void {
+    if (this.enemy) {
+      this.holder.remove(this.enemy.group);
+      this.enemy = null;
+    }
+    new GLTFLoader().load(`${import.meta.env.BASE_URL}models/${file}`, (gltf) => {
+      const root = gltf.scene;
+      // Hunyuan meshes come in Y-up but often scaled ~unit; normalize to ~1.2m tall.
+      const box = new THREE.Box3().setFromObject(root);
+      const size = box.getSize(new THREE.Vector3());
+      const s = 1.3 / Math.max(size.x, size.y, size.z, 0.001);
+      root.scale.setScalar(s);
+      root.position.y = -box.min.y * s;
+      root.traverse((o) => {
+        if (o instanceof THREE.Mesh) o.castShadow = true;
+      });
+      this.holder.add(root);
+      const b2 = new THREE.Box3().setFromObject(root);
+      const c2 = b2.getCenter(new THREE.Vector3());
+      this.target.set(0, c2.y, 0);
+      const r = b2.getSize(new THREE.Vector3()).length() * 0.5;
+      const fov = (this.camera.fov * Math.PI) / 180;
+      this.frameDist = (r / Math.sin(fov / 2)) * 0.9 + 0.3;
+      this.applyPreset('front');
+    });
+    document.title = `Viewer — GLB ${file}`;
   }
 
   setEnemy(key: EnemyKey): void {
