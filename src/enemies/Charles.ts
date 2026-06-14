@@ -58,10 +58,11 @@ export class Charles extends EnemyBase {
     body.position.y = 0.6;
     this.torso.add(body);
 
-    // Grey chest/belly patch (the GT two-tone) — a tall oval.
-    const chest = new THREE.Mesh(new THREE.CircleGeometry(0.2, 24), grey);
-    chest.position.set(0, 0.56, 0.41);
-    chest.scale.set(1.0, 1.5, 1);
+    // Grey chest/belly patch (the GT two-tone) — a tall oval that wraps around
+    // the body curve (a curved decal, like the face) rather than a flat disk.
+    const chest = new THREE.Mesh(faceDecal(0.21, 0.54, 36), grey);
+    chest.position.set(0, 0.58, 0.43);
+    chest.scale.set(1.05, 1.4, 1);
     this.torso.add(chest);
 
     // Head group (pivot at the short neck) so PHASE-03 gaze can aim it.
@@ -122,12 +123,12 @@ export class Charles extends EnemyBase {
       const shoulder = new THREE.Mesh(new THREE.SphereGeometry(0.17, 18, 16), mint);
       shoulder.position.y = 0.02;
       arm.add(shoulder);
-      const upper = new THREE.Mesh(new THREE.CapsuleGeometry(0.125, 1.05, 8, 16), mint);
-      upper.position.y = -0.58;
+      const upper = new THREE.Mesh(new THREE.CapsuleGeometry(0.125, 0.88, 8, 16), mint);
+      upper.position.y = -0.5;
       arm.add(upper);
       // Big rounded mitt hand at the end.
       const hand = new THREE.Mesh(new THREE.SphereGeometry(0.16, 18, 16), mint);
-      hand.position.y = -1.2;
+      hand.position.y = -1.04;
       hand.scale.set(1.2, 0.85, 1.4);
       arm.add(hand);
       arm.position.set(side * 0.34, 0.66, 0.04);
@@ -258,13 +259,15 @@ export class Charles extends EnemyBase {
   protected animateGait(t: number, speed: number, dt: number): void {
     const phase = t * 3.2;
     const amp = speed > 0 ? 1 : 0.12; // tiny idle sway
-    // Alternating arm paddles from the splayed rest pose — the body rocks
-    // forward over each planted hand in turn.
-    this.armL.rotation.x = 0.16 + Math.sin(phase) * 0.32 * amp;
-    this.armR.rotation.x = 0.16 + Math.sin(phase + Math.PI) * 0.32 * amp;
-    // Legless body rocks side to side and bobs as the knuckles plant.
-    this.torso.rotation.z = Math.sin(phase) * 0.18 * amp;
-    this.torso.position.y = Math.abs(Math.sin(phase)) * 0.1 * amp;
-    if (speed > 0 && Math.abs(Math.sin(phase)) < 0.08 && dt > 0) this.onGaitBeat?.('knuckle');
+    const sw = Math.sin(phase);
+    // Arms swing fore/aft in opposition — he hauls the legless body forward by
+    // alternately planting and pulling each splayed hand.
+    this.armL.rotation.x = 0.16 + sw * 0.5 * amp;
+    this.armR.rotation.x = 0.16 - sw * 0.5 * amp;
+    // Body sways toward the planted hand and lurches forward with each pull.
+    this.torso.rotation.z = sw * 0.2 * amp;
+    this.torso.rotation.x = Math.abs(sw) * 0.08 * amp;
+    this.torso.position.y = Math.abs(sw) * 0.09 * amp;
+    if (speed > 0 && Math.abs(sw) < 0.08 && dt > 0) this.onGaitBeat?.('knuckle');
   }
 }

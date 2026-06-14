@@ -153,12 +153,13 @@ export class NewYama extends EnemyBase {
     muzzle.position.set(0, -0.07, 0.14);
     this.head.add(muzzle);
 
-    // Face plane on the muzzle front: nose + mouth (swappable for mood).
+    // Face plane held proud of the muzzle front: nose + mouth (swappable for
+    // mood). Flat + proud so the stitching isn't buried in the cream muzzle.
     const facePlane = new THREE.Mesh(
-      faceDecal(0.1, 0.14, 32),
+      faceDecal(0.12, 0.3, 36),
       new THREE.MeshStandardMaterial({ roughness: 0.9, transparent: true })
     );
-    facePlane.position.set(0, -0.06, 0.26);
+    facePlane.position.set(0, -0.075, 0.3);
     this.head.add(facePlane);
 
     this.head.position.y = 0.5;

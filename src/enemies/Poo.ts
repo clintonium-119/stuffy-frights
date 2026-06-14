@@ -120,9 +120,9 @@ export class Poo extends EnemyBase {
       this.head.add(pod);
       return pod;
     };
-    // Smaller pod lower-left; larger pod higher-right (matches the reference).
-    this.podL = makePod(-1, 0.05, 0.03, 0.14);
-    this.podR = makePod(1, 0.16, 0.05, 0.175);
+    // Symmetric eye-pods — same size, same height, mirrored.
+    this.podL = makePod(-1, 0.12, 0.04, 0.16);
+    this.podR = makePod(1, 0.12, 0.04, 0.16);
 
     return facePlane;
   }

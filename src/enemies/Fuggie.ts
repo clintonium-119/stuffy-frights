@@ -48,6 +48,8 @@ export class Fuggie extends EnemyBase {
   private armR!: THREE.Mesh;
   private legs: THREE.Group[] = [];
   private eyeMats: THREE.MeshStandardMaterial[] = [];
+  private calmTeeth!: THREE.Group;
+  private meanTeeth!: THREE.Group;
 
   constructor() {
     super('fuggie');
@@ -142,6 +144,7 @@ export class Fuggie extends EnemyBase {
     // front teeth, smaller gappy neighbours up top + a couple on the bottom.
     const toothMat = new THREE.MeshStandardMaterial({ color: 0xded0ad, roughness: 0.55 });
     const mouthY = -0.08;
+    this.calmTeeth = new THREE.Group();
     // [x, yOffset, width, height, rotZ]
     const teeth: [number, number, number, number, number][] = [
       [-0.028, 0.022, 0.052, 0.078, 0.02], // big front left
@@ -156,29 +159,54 @@ export class Fuggie extends EnemyBase {
       const tooth = new THREE.Mesh(new THREE.BoxGeometry(tw, th, 0.03), toothMat);
       tooth.position.set(tx, mouthY + ty, front + 0.05);
       tooth.rotation.z = rz;
-      this.head.add(tooth);
+      this.calmTeeth.add(tooth);
     }
+    this.head.add(this.calmTeeth);
 
-    // Short stubby arms hanging at the front sides (rooted into the body).
-    const armGeo = new THREE.CapsuleGeometry(0.1, 0.15, 6, 12);
+    // Menacing teeth: longer, jagged, pointed fangs (top row points down, bottom
+    // row up) filling the wider snarl. Hidden until the mood turns menacing.
+    this.meanTeeth = new THREE.Group();
+    this.meanTeeth.visible = false;
+    // [x, yOffset, radius, height, pointDown]
+    const fangs: [number, number, number, number, boolean][] = [
+      [-0.11, 0.03, 0.03, 0.1, true],
+      [-0.05, 0.04, 0.034, 0.14, true], // long front fang
+      [0.02, 0.038, 0.032, 0.12, true],
+      [0.085, 0.03, 0.03, 0.1, true],
+      [0.14, 0.026, 0.026, 0.08, true],
+      [-0.075, -0.05, 0.028, 0.09, false], // bottom fangs point up
+      [0.0, -0.052, 0.03, 0.11, false],
+      [0.075, -0.048, 0.026, 0.085, false],
+    ];
+    for (const [tx, ty, r, h, down] of fangs) {
+      const fang = new THREE.Mesh(new THREE.ConeGeometry(r, h, 8), toothMat);
+      fang.position.set(tx, mouthY + ty, front + 0.05);
+      fang.rotation.x = down ? Math.PI : 0; // cone apex down (top) or up (bottom)
+      this.meanTeeth.add(fang);
+    }
+    this.head.add(this.meanTeeth);
+
+    // Very short stubby arm-nubs hanging at the front sides (rooted into body).
+    const armGeo = new THREE.CapsuleGeometry(0.11, 0.05, 6, 12);
     this.armL = new THREE.Mesh(armGeo, shag);
-    this.armL.position.set(-W / 2 + 0.02, -0.2, 0.16);
-    this.armL.rotation.z = 0.14;
+    this.armL.position.set(-W / 2 + 0.04, -0.16, 0.14);
+    this.armL.rotation.z = 0.16;
     this.armR = new THREE.Mesh(armGeo, shag);
-    this.armR.position.set(W / 2 - 0.02, -0.2, 0.16);
-    this.armR.rotation.z = -0.14;
+    this.armR.position.set(W / 2 - 0.04, -0.16, 0.14);
+    this.armR.rotation.z = -0.16;
     this.bodyMesh.add(this.armL, this.armR);
 
-    // Two little stubby feet poking out the bottom (hip-pivoted for gait + stairs).
+    // Two tiny stubby feet barely poking out the bottom (hip-pivoted for gait +
+    // stairs).
     const makeLeg = (sx: number) => {
       const leg = new THREE.Group();
-      leg.position.set(sx * 0.18, 0.2, 0.04);
-      const limb = new THREE.Mesh(new THREE.CapsuleGeometry(0.1, 0.06, 6, 12), shag);
-      limb.position.y = -0.08;
+      leg.position.set(sx * 0.17, 0.16, 0.04);
+      const limb = new THREE.Mesh(new THREE.CapsuleGeometry(0.11, 0.02, 6, 12), shag);
+      limb.position.y = -0.05;
       leg.add(limb);
       const foot = new THREE.Mesh(new THREE.SphereGeometry(0.12, 16, 12), shag);
-      foot.scale.set(1.1, 0.66, 1.35);
-      foot.position.set(0, -0.16, 0.04);
+      foot.scale.set(1.1, 0.62, 1.3);
+      foot.position.set(0, -0.11, 0.04);
       leg.add(foot);
       this.group.add(leg);
       this.legs.push(leg);
@@ -234,6 +262,9 @@ export class Fuggie extends EnemyBase {
     if (speed > 0 && Math.abs(Math.sin(phase * 0.5)) < 0.04 && dt > 0) this.onGaitBeat?.('shuffle');
 
     const red = this.mood === 'menacing';
+    // Swap the square grin for the jagged fangs when menacing.
+    this.calmTeeth.visible = !red;
+    this.meanTeeth.visible = red;
     for (const m of this.eyeMats) {
       m.emissive.setHex(red ? 0x550000 : 0x000000);
       m.emissiveIntensity = red ? 0.7 : 0;
