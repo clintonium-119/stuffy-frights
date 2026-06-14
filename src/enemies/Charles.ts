@@ -83,12 +83,14 @@ export class Charles extends EnemyBase {
       this.head.add(ear);
     }
 
-    // Grey embroidered gorilla face on a transparent decal plane.
+    // Grey embroidered gorilla face — a fairly flat patch held proud of the
+    // head so the eyes/muzzle don't sink into the fuzz (a tightly-curved decal
+    // buries everything but the centre).
     const facePlane = new THREE.Mesh(
-      faceDecal(0.23, 0.33, 44),
+      faceDecal(0.25, 0.44, 44),
       new THREE.MeshStandardMaterial({ roughness: 0.85, transparent: true })
     );
-    facePlane.position.set(0, 0.14, 0.262);
+    facePlane.position.set(0, 0.13, 0.29);
     this.head.add(facePlane);
 
     // Rainbow cone hat — horizontal rainbow rings, red at the tip.
@@ -110,23 +112,27 @@ export class Charles extends EnemyBase {
     hat.rotation.z = -0.22;
     this.head.add(hat);
 
-    // Long broad arms with big mitt hands, planted forward — the legless body
-    // rests on these (the Gorilla-Tag hand-walk).
+    // Very long thick arms splayed out to the sides (the signature Gorilla-Tag
+    // silhouette: the legless body sits low and the long arms reach way out,
+    // drooping to rest near the floor). Built pointing down, then swung out via
+    // rotation.z.
     const makeArm = (side: number) => {
       const arm = new THREE.Group();
       // Shoulder blob that embeds into the torso so the arm reads attached.
       const shoulder = new THREE.Mesh(new THREE.SphereGeometry(0.17, 18, 16), mint);
       shoulder.position.y = 0.02;
       arm.add(shoulder);
-      const upper = new THREE.Mesh(new THREE.CapsuleGeometry(0.13, 0.86, 8, 16), mint);
-      upper.position.y = -0.47;
+      const upper = new THREE.Mesh(new THREE.CapsuleGeometry(0.125, 1.05, 8, 16), mint);
+      upper.position.y = -0.58;
       arm.add(upper);
-      const hand = new THREE.Mesh(new THREE.SphereGeometry(0.17, 18, 16), mint);
-      hand.position.y = -0.98;
-      hand.scale.set(1.3, 0.7, 1.5);
+      // Big rounded mitt hand at the end.
+      const hand = new THREE.Mesh(new THREE.SphereGeometry(0.16, 18, 16), mint);
+      hand.position.y = -1.2;
+      hand.scale.set(1.2, 0.85, 1.4);
       arm.add(hand);
-      arm.position.set(side * 0.42, 0.86, 0.12); // tucked in so the shoulder overlaps the body
-      arm.rotation.x = -0.5;
+      arm.position.set(side * 0.34, 0.66, 0.04);
+      arm.rotation.z = side * 1.28; // swing the down-arm out to the side
+      arm.rotation.x = 0.16; // a touch forward
       this.torso.add(arm);
       return arm;
     };
@@ -252,9 +258,10 @@ export class Charles extends EnemyBase {
   protected animateGait(t: number, speed: number, dt: number): void {
     const phase = t * 3.2;
     const amp = speed > 0 ? 1 : 0.12; // tiny idle sway
-    // Alternating arm vaults — the whole body swings forward over the hands.
-    this.armL.rotation.x = -0.5 + Math.sin(phase) * 0.55 * amp;
-    this.armR.rotation.x = -0.5 + Math.sin(phase + Math.PI) * 0.55 * amp;
+    // Alternating arm paddles from the splayed rest pose — the body rocks
+    // forward over each planted hand in turn.
+    this.armL.rotation.x = 0.16 + Math.sin(phase) * 0.32 * amp;
+    this.armR.rotation.x = 0.16 + Math.sin(phase + Math.PI) * 0.32 * amp;
     // Legless body rocks side to side and bobs as the knuckles plant.
     this.torso.rotation.z = Math.sin(phase) * 0.18 * amp;
     this.torso.position.y = Math.abs(Math.sin(phase)) * 0.1 * amp;
