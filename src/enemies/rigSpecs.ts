@@ -38,14 +38,14 @@ export const RIG_SPECS: Record<string, RigSpec> = {
       {
         name: 'armL',
         pivot: [0.34, 0.56, 0.5],
-        weight: (x, y) => (1 - smooth(0.22, 0.42, x)) * smooth(0.35, 0.55, y) * (1 - smooth(0.62, 0.78, y)),
-        rest: [0, 0, -0.7],
+        weight: (x, y) => (1 - smooth(0.2, 0.44, x)) * smooth(0.32, 0.55, y) * (1 - smooth(0.6, 0.78, y)),
+        rest: [0, 0, 1.3], // swing the -X arm down
       },
       {
         name: 'armR',
         pivot: [0.66, 0.56, 0.5],
-        weight: (x, y) => smooth(0.58, 0.78, x) * smooth(0.35, 0.55, y) * (1 - smooth(0.62, 0.78, y)),
-        rest: [0, 0, 0.7],
+        weight: (x, y) => smooth(0.56, 0.8, x) * smooth(0.32, 0.55, y) * (1 - smooth(0.6, 0.78, y)),
+        rest: [0, 0, -1.3], // swing the +X arm down
       },
     ],
   },
