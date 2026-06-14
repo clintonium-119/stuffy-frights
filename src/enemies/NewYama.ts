@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { EnemyBase, Mood } from './EnemyBase';
 import { plushMaterial } from '../world/materialLibrary';
 import { furTexture } from '../world/furTexture';
+import { faceDecal } from './faceDecal';
 
 /**
  * New Yama — the big fluffy alpaca/llama. Golden-brown curly fleece, a thick
@@ -50,26 +51,35 @@ export class NewYama extends EnemyBase {
     });
 
     // Barrel torso — long axis front-to-back along +Z (model-forward).
-    const torso = new THREE.Mesh(new THREE.SphereGeometry(0.3, 22, 18), fleece);
+    const torso = new THREE.Mesh(new THREE.SphereGeometry(0.3, 32, 26), fleece);
     torso.scale.set(1.05, 1.0, 1.55);
-    torso.position.y = 1.0;
+    torso.position.y = 1.12;
     this.group.add(torso);
+
+    // Shoulder blend where the neck meets the body (no seam).
+    const chest = new THREE.Mesh(new THREE.SphereGeometry(0.26, 24, 20), fleece);
+    chest.position.set(0, 1.26, 0.28);
+    this.group.add(chest);
 
     // Tail fluff at the back.
     const tail = new THREE.Mesh(new THREE.SphereGeometry(0.1, 12, 10), fleece);
-    tail.position.set(0, 1.04, -0.46);
+    tail.position.set(0, 1.18, -0.46);
     this.group.add(tail);
 
     // Legs: hip-pivoted groups (so PHASE-03 can place feet on stairs). fx
     // selects front/back (+Z front), fz selects side (±X).
     const makeLeg = (fx: number, fz: number) => {
       const leg = new THREE.Group();
-      leg.position.set(fz * 0.17, 0.76, fx * 0.3);
-      const upper = new THREE.Mesh(new THREE.CapsuleGeometry(0.075, 0.5, 5, 9), fleece);
-      upper.position.y = -0.28;
+      leg.position.set(fz * 0.17, 0.88, fx * 0.3);
+      const upper = new THREE.Mesh(new THREE.CapsuleGeometry(0.078, 0.5, 6, 14), fleece);
+      upper.position.y = -0.34;
       leg.add(upper);
+      // Hip blend so the leg root reads attached to the body.
+      const hip = new THREE.Mesh(new THREE.SphereGeometry(0.1, 14, 12), fleece);
+      hip.position.y = 0.0;
+      leg.add(hip);
       const foot = new THREE.Mesh(new THREE.CapsuleGeometry(0.083, 0.08, 4, 8), cream);
-      foot.position.set(0, -0.58, 0.02);
+      foot.position.set(0, -0.70, 0.02);
       foot.rotation.x = Math.PI / 2; // little forward-pointing hoof
       leg.add(foot);
       this.group.add(leg);
@@ -83,7 +93,7 @@ export class NewYama extends EnemyBase {
 
     // Neck group rises from the front of the torso, leaning forward.
     this.neck = new THREE.Group();
-    const neckMesh = new THREE.Mesh(new THREE.CapsuleGeometry(0.15, 0.42, 6, 12), fleece);
+    const neckMesh = new THREE.Mesh(new THREE.CapsuleGeometry(0.155, 0.44, 8, 18), fleece);
     neckMesh.position.y = 0.24;
     this.neck.add(neckMesh);
 
@@ -133,15 +143,15 @@ export class NewYama extends EnemyBase {
 
     // Face plane on the muzzle front: nose + mouth (swappable for mood).
     const facePlane = new THREE.Mesh(
-      new THREE.CircleGeometry(0.1, 18),
+      faceDecal(0.1, 0.14, 32),
       new THREE.MeshStandardMaterial({ roughness: 0.9, transparent: true })
     );
-    facePlane.position.set(0, -0.06, 0.27);
+    facePlane.position.set(0, -0.06, 0.26);
     this.head.add(facePlane);
 
     this.head.position.y = 0.5;
     this.neck.add(this.head);
-    this.neck.position.set(0, 1.18, 0.3); // front-top of torso (+Z)
+    this.neck.position.set(0, 1.32, 0.3); // front-top of torso (+Z)
     this.neck.rotation.x = 0.16; // gentle forward lean
     this.group.add(this.neck);
 
@@ -188,13 +198,20 @@ export class NewYama extends EnemyBase {
       ctx.lineTo(c, c - 4);
       ctx.lineTo(c + 28, c - 26);
       ctx.stroke();
-      ctx.fillStyle = '#3a201c';
+      ctx.fillStyle = '#2a1714';
       ctx.beginPath();
-      ctx.ellipse(c, c + 30, 34, 20, 0, 0, Math.PI * 2);
+      ctx.ellipse(c, c + 32, 38, 24, 0, 0, Math.PI * 2);
       ctx.fill();
-      ctx.fillStyle = '#e8e2d2';
-      for (let i = -2; i <= 2; i++) {
-        ctx.fillRect(c + i * 13 - 5, c + 14, 10, 16);
+      // Sharp bared teeth.
+      ctx.fillStyle = '#ece4ce';
+      const n = 6;
+      for (let i = 0; i < n; i++) {
+        const x = c - 30 + (i * 60) / (n - 1);
+        ctx.beginPath();
+        ctx.moveTo(x - 6, c + 12);
+        ctx.lineTo(x + 6, c + 12);
+        ctx.lineTo(x, c + 12 + (i % 2 ? 24 : 16));
+        ctx.fill();
       }
     }
   }
