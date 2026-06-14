@@ -78,11 +78,19 @@ export function projectionMaterial(
           'vec2 buv=xform(vec2(1.0-ux,uy), uBackS,uBackO,uBackR);',
           'vec2 sLuv=xform(vec2(uz,uy), uSideS,uSideO,uSideR);',
           'vec2 sRuv=xform(vec2(1.0-uz,uy), uSideS,uSideO,uSideR);',
-          'vec3 col = n.x<0.0 ? texture2D(uSide,sLuv).rgb : texture2D(uSide,sRuv).rgb;',
-          'float wf=smoothstep(0.25,0.6,n.z), wb=smoothstep(0.25,0.6,-n.z);',
-          'col = mix(col, texture2D(uFront,fuv).rgb, wf);',
-          'col = mix(col, texture2D(uBack,buv).rgb, wb);',
-          'float whiteness=smoothstep(0.82,0.97,min(col.r,min(col.g,col.b)));',
+          // Weighted triplanar blend: each projection weighted by how much the
+          // surface faces it (sharpened so regions stay crisp, only a thin band
+          // blends -> no hard centreline/flank seams).
+          'vec3 cF=texture2D(uFront,fuv).rgb, cB=texture2D(uBack,buv).rgb;',
+          'vec3 cL=texture2D(uSide,sLuv).rgb, cR=texture2D(uSide,sRuv).rgb;',
+          'float wF=pow(max(0.0,n.z),3.0), wB=pow(max(0.0,-n.z),3.0), wL=pow(max(0.0,-n.x),3.0), wR=pow(max(0.0,n.x),3.0);',
+          // Down-weight near-white (background-edge) samples so they cannot bleed
+          // a white seam where projections meet.
+          '#define CFUL(c) (0.04 + (1.0 - smoothstep(0.80, 0.95, min(c.r,min(c.g,c.b)))))',
+          'wF*=CFUL(cF); wB*=CFUL(cB); wL*=CFUL(cL); wR*=CFUL(cR);',
+          'float ws=wF+wB+wL+wR+1e-4;',
+          'vec3 col=(cF*wF+cB*wB+cL*wL+cR*wR)/ws;',
+          'float whiteness=smoothstep(0.86,0.98,min(col.r,min(col.g,col.b)));',
           'diffuseColor.rgb*=mix(col,uBase,whiteness);',
         ].join('\n')
       );
