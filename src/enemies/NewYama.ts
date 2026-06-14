@@ -29,10 +29,10 @@ export class NewYama extends EnemyBase {
       base: '#c69a55',
       tip: '#e6c184',
       shade: '#9c7838',
-      fiberLen: 15,
-      density: 1.7,
-      thickness: 2.2,
-      curl: 0.85,
+      fiberLen: 19,
+      density: 2.1,
+      thickness: 2.4,
+      curl: 1.05,
       repeat: [3, 4],
     });
     const fleece = plushMaterial({
@@ -50,15 +50,18 @@ export class NewYama extends EnemyBase {
       fuzz: 0.12,
     });
 
-    // Barrel torso — long axis front-to-back along +Z (model-forward).
+    // Upright torso — taller than wide (a standing alpaca, not a barrel),
+    // deepest front-to-back along +Z (model-forward).
     const torso = new THREE.Mesh(new THREE.SphereGeometry(0.3, 32, 26), fleece);
-    torso.scale.set(1.05, 1.0, 1.55);
-    torso.position.y = 1.12;
+    torso.scale.set(0.96, 1.32, 1.42);
+    torso.position.y = 1.06;
     this.group.add(torso);
 
-    // Shoulder blend where the neck meets the body (no seam).
-    const chest = new THREE.Mesh(new THREE.SphereGeometry(0.26, 24, 20), fleece);
-    chest.position.set(0, 1.26, 0.28);
+    // Fuller chest bulging forward where the neck rises (the alpaca's proud
+    // upright front), blending the neck into the body with no seam.
+    const chest = new THREE.Mesh(new THREE.SphereGeometry(0.27, 24, 20), fleece);
+    chest.scale.set(1, 1.15, 1);
+    chest.position.set(0, 1.18, 0.3);
     this.group.add(chest);
 
     // Tail fluff at the back.
@@ -70,17 +73,21 @@ export class NewYama extends EnemyBase {
     // selects front/back (+Z front), fz selects side (±X).
     const makeLeg = (fx: number, fz: number) => {
       const leg = new THREE.Group();
-      leg.position.set(fz * 0.17, 0.88, fx * 0.3);
-      const upper = new THREE.Mesh(new THREE.CapsuleGeometry(0.078, 0.5, 6, 14), fleece);
-      upper.position.y = -0.34;
+      leg.position.set(fz * 0.16, 0.92, fx * 0.28);
+      // Fluffy thigh blending the leg into the fleecy body (so it's not a bare
+      // dowel sticking out of the belly).
+      const thigh = new THREE.Mesh(new THREE.SphereGeometry(0.14, 16, 14), fleece);
+      thigh.scale.set(1, 1.3, 1.05);
+      thigh.position.y = -0.06;
+      leg.add(thigh);
+      // Tapered shank — thicker at the thigh, narrowing toward the foot.
+      const upper = new THREE.Mesh(new THREE.CylinderGeometry(0.092, 0.062, 0.56, 16), fleece);
+      upper.position.y = -0.4;
       leg.add(upper);
-      // Hip blend so the leg root reads attached to the body.
-      const hip = new THREE.Mesh(new THREE.SphereGeometry(0.1, 14, 12), fleece);
-      hip.position.y = 0.0;
-      leg.add(hip);
-      const foot = new THREE.Mesh(new THREE.CapsuleGeometry(0.083, 0.08, 4, 8), cream);
-      foot.position.set(0, -0.70, 0.02);
-      foot.rotation.x = Math.PI / 2; // little forward-pointing hoof
+      // Cream sock-foot, rounded and pointing slightly forward.
+      const foot = new THREE.Mesh(new THREE.SphereGeometry(0.078, 14, 12), cream);
+      foot.scale.set(1.15, 0.82, 1.55);
+      foot.position.set(0, -0.69, 0.03);
       leg.add(foot);
       this.group.add(leg);
       this.legs.push(leg);
@@ -93,9 +100,14 @@ export class NewYama extends EnemyBase {
 
     // Neck group rises from the front of the torso, leaning forward.
     this.neck = new THREE.Group();
-    const neckMesh = new THREE.Mesh(new THREE.CapsuleGeometry(0.155, 0.44, 8, 18), fleece);
+    // Thick fleecy neck, broad at the chest and tapering up to the head.
+    const neckMesh = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.21, 0.5, 18), fleece);
     neckMesh.position.y = 0.24;
     this.neck.add(neckMesh);
+    // Round the neck base into the chest.
+    const neckBase = new THREE.Mesh(new THREE.SphereGeometry(0.2, 16, 14), fleece);
+    neckBase.position.y = 0.02;
+    this.neck.add(neckBase);
 
     // Head group (turns for PHASE-03 gaze).
     this.head = new THREE.Group();
