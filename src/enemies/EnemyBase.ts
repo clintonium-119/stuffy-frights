@@ -23,65 +23,6 @@ export function resolveMood(
   return { mood: want, heldFor: 0 };
 }
 
-/**
- * Plush-fabric canvas texture: speckled base with mottle patches and a
- * fuzz pass. Shared by every stuffy body.
- */
-export function fabricTexture(
-  base: string,
-  mottle: string,
-  fuzz: string,
-  fuzzScale = 1,
-  mottlePatches = 0
-): THREE.CanvasTexture {
-  const size = 256;
-  const canvas = document.createElement('canvas');
-  canvas.width = canvas.height = size;
-  const ctx = canvas.getContext('2d')!;
-  ctx.fillStyle = base;
-  ctx.fillRect(0, 0, size, size);
-
-  // Large mottle patches (e.g. Fuggie's purple blotches).
-  ctx.fillStyle = mottle;
-  for (let i = 0; i < mottlePatches; i++) {
-    ctx.globalAlpha = 0.5 + Math.random() * 0.3;
-    ctx.beginPath();
-    ctx.ellipse(
-      Math.random() * size,
-      Math.random() * size,
-      14 + Math.random() * 30,
-      10 + Math.random() * 24,
-      Math.random() * Math.PI,
-      0,
-      Math.PI * 2
-    );
-    ctx.fill();
-  }
-  ctx.globalAlpha = 1;
-
-  // Fuzz: thousands of tiny strokes.
-  ctx.strokeStyle = fuzz;
-  ctx.lineWidth = 1;
-  const n = Math.round(2600 * fuzzScale);
-  for (let i = 0; i < n; i++) {
-    const x = Math.random() * size;
-    const y = Math.random() * size;
-    const a = Math.random() * Math.PI * 2;
-    const len = 2 + Math.random() * 3 * fuzzScale;
-    ctx.globalAlpha = 0.12 + Math.random() * 0.2;
-    ctx.beginPath();
-    ctx.moveTo(x, y);
-    ctx.lineTo(x + Math.cos(a) * len, y + Math.sin(a) * len);
-    ctx.stroke();
-  }
-  ctx.globalAlpha = 1;
-
-  const tex = new THREE.CanvasTexture(canvas);
-  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
-  tex.colorSpace = THREE.SRGBColorSpace;
-  return tex;
-}
-
 
 /**
  * Shared enemy chassis: owns the model group, face mood swapping with a
@@ -122,7 +63,7 @@ export abstract class EnemyBase {
   private aiArms: THREE.Object3D[] | null = null;
   private static readonly _tmp = new THREE.Vector3();
 
-  private bodyLoaded = false;
+  private bodyPromise: Promise<void> | null = null;
   private heldFor = 0;
   private twitch = 0;
   private moveTarget: THREE.Vector3 | null = null;
@@ -160,9 +101,12 @@ export abstract class EnemyBase {
    * calls are no-ops. Routes the articulation onto the rig bones (gaze head,
    * stair/walk legs, arm-walk) and the menacing red-flush onto the body.
    */
-  async useAiMesh(): Promise<void> {
-    if (this.bodyLoaded) return;
-    this.bodyLoaded = true;
+  useAiMesh(): Promise<void> {
+    if (!this.bodyPromise) this.bodyPromise = this.buildAiBody();
+    return this.bodyPromise;
+  }
+
+  private async buildAiBody(): Promise<void> {
     const { buildMeshBody } = await import('./MeshBody');
     const body = await buildMeshBody(this.id);
     if (!body) return;

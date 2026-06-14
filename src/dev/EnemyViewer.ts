@@ -10,8 +10,6 @@ import { NewYama } from '../enemies/NewYama';
 import { config } from '../core/config';
 import { initMaterials } from '../world/materialLibrary';
 import { EnemyKey, ENEMY_KEYS } from './enemyViewerRoute';
-import { projectionMaterial } from '../enemies/projectionMaterial';
-import { PROJECTION } from '../enemies/projectionConfig';
 import { RigEditor } from './RigEditor';
 
 /** Viewer enemy key → GLB model name (for the rig editor). */
@@ -83,9 +81,6 @@ export class EnemyViewer {
   private frameDist = 2.6;
   private preset = 'front';
   private currentKey: EnemyKey = 'newyama';
-  // The real rigged Meshy body is the default view (matches in-game); ?ai=0
-  // opts into the procedural body for comparison until it's removed.
-  aiMode = true;
   private readonly refImg = document.createElement('img');
   private refOn = false;
   private refOpacity = 0.5;
@@ -187,115 +182,8 @@ export class EnemyViewer {
     );
   }
 
-  /**
-   * Camera-project the front/back reference photos onto a loaded mesh, so the
-   * real face/colours/patterns map onto the AI shape (front photo on
-   * front-facing tris, back photo on the rest). Proves photo-matched texturing.
-   */
-  private projMats: THREE.MeshStandardMaterial[] = [];
-  private projModel = 'pou';
-
-  /** Live-tune one view's transform on the current model (for dialing in). */
-  setView(view: 'front' | 'back' | 'side', sx: number, sy: number, ox: number, oy: number, rot: number): void {
-    const cap = view[0].toUpperCase() + view.slice(1);
-    for (const m of this.projMats) {
-      const u = m.userData.proj;
-      (u[`u${cap}S`].value as THREE.Vector2).set(sx, sy);
-      (u[`u${cap}O`].value as THREE.Vector2).set(ox, oy);
-      u[`u${cap}R`].value = rot;
-    }
-  }
-
-  /** Print the current model's tuned projection config (paste into projectionConfig.ts). */
-  dumpProj(): string {
-    if (!this.projMats.length) return '{}';
-    const u = this.projMats[0].userData.proj;
-    const baseHex = '0x' + (PROJECTION[this.projModel]?.base ?? 0xcccccc).toString(16);
-    const v = (cap: string) =>
-      `{ scale: [${u['u' + cap + 'S'].value.x}, ${u['u' + cap + 'S'].value.y}], offset: [${u['u' + cap + 'O'].value.x}, ${u['u' + cap + 'O'].value.y}], rot: ${u['u' + cap + 'R'].value} }`;
-    const out = `${this.projModel}: { base: ${baseHex}, front: ${v('Front')}, back: ${v('Back')}, side: ${v('Side')} },`;
-    console.log('PROJ_CONFIG', out);
-    return out;
-  }
-
-  private projectPhotos(root: THREE.Object3D, base: string): void {
-    this.projModel = base;
-    const load = (v: string) => new THREE.TextureLoader().load(`${import.meta.env.BASE_URL}models/${base}_${v}.png`);
-    const views = { front: load('front'), back: load('back'), side: load('side') };
-    const cfg = PROJECTION[base] ?? {
-      base: 0xcccccc,
-      front: { scale: [1, 1], offset: [0, 0], rot: 0 },
-      back: { scale: [1, 1], offset: [0, 0], rot: 0 },
-      side: { scale: [1, 1], offset: [0, 0], rot: 0 },
-    };
-    this.projMats = [];
-    root.traverse((o) => {
-      if (!(o instanceof THREE.Mesh)) return;
-      const g = o.geometry as THREE.BufferGeometry;
-      if (!g.attributes.normal) g.computeVertexNormals(); // AI meshes ship without normals
-      g.computeBoundingBox();
-      const bb = g.boundingBox!;
-      const uMin = new THREE.Vector3(bb.min.x, bb.min.y, bb.min.z);
-      const uSize = new THREE.Vector3(bb.max.x - bb.min.x || 1, bb.max.y - bb.min.y || 1, bb.max.z - bb.min.z || 1);
-      const m = projectionMaterial(views, uMin, uSize, cfg);
-      o.material = m;
-      this.projMats.push(m);
-    });
-  }
-
-  private rigHead: THREE.Bone | null = null;
-
-  /**
-   * Proof-of-rig: convert a loaded mesh to a SkinnedMesh with a 2-bone skeleton
-   * (body + a head bone for the top region) and proximity skin weights, so a
-   * single bone rotation deforms just the head/eyes — i.e. the existing gaze
-   * articulation can drive these AI meshes. Animated in frame().
-   */
-  private rigMesh(root: THREE.Object3D): void {
-    let mesh: THREE.Mesh | null = null;
-    root.traverse((o) => {
-      if (o instanceof THREE.Mesh && !mesh) mesh = o;
-    });
-    if (!mesh) return;
-    const m = mesh as THREE.Mesh;
-    const g = m.geometry as THREE.BufferGeometry;
-    g.computeBoundingBox();
-    const bb = g.boundingBox!;
-    const bot = bb.min.y;
-    const h = bb.max.y - bb.min.y;
-    const splitY = bot + h * 0.6; // eye-domes/head region starts here
-    const band = h * 0.12;
-    const pos = g.attributes.position;
-    const si = new Uint16Array(pos.count * 4);
-    const sw = new Float32Array(pos.count * 4);
-    const smooth = (e0: number, e1: number, x: number) => {
-      const t = Math.max(0, Math.min(1, (x - e0) / (e1 - e0)));
-      return t * t * (3 - 2 * t);
-    };
-    for (let i = 0; i < pos.count; i++) {
-      const w = smooth(splitY - band, splitY + band, pos.getY(i)); // head weight
-      si[i * 4] = 0;
-      si[i * 4 + 1] = 1;
-      sw[i * 4] = 1 - w;
-      sw[i * 4 + 1] = w;
-    }
-    g.setAttribute('skinIndex', new THREE.Uint16BufferAttribute(si, 4));
-    g.setAttribute('skinWeight', new THREE.Float32BufferAttribute(sw, 4));
-    const rootBone = new THREE.Bone();
-    rootBone.position.set(0, bot, 0);
-    const head = new THREE.Bone();
-    head.position.set(0, splitY - bot, 0); // local to rootBone
-    rootBone.add(head);
-    const skinned = new THREE.SkinnedMesh(g, m.material as THREE.Material);
-    skinned.add(rootBone);
-    skinned.bind(new THREE.Skeleton([rootBone, head]));
-    m.parent!.add(skinned);
-    m.parent!.remove(m);
-    this.rigHead = head;
-  }
-
-  /** Dev: load a raw GLB (e.g. an AI-generated mesh) into the studio to inspect it. */
-  loadGlb(file: string, projectBase?: string, rig = false): void {
+  /** Dev: load a raw GLB into the studio to inspect it (no rig/material changes). */
+  loadGlb(file: string): void {
     if (this.enemy) {
       this.holder.remove(this.enemy.group);
       this.enemy = null;
@@ -312,8 +200,6 @@ export class EnemyViewer {
         if (o instanceof THREE.Mesh) o.castShadow = true;
       });
       this.holder.add(root);
-      if (projectBase) this.projectPhotos(root, projectBase);
-      if (rig) this.rigMesh(root);
       const b2 = new THREE.Box3().setFromObject(root);
       const c2 = b2.getCenter(new THREE.Vector3());
       this.target.set(0, c2.y, 0);
@@ -355,7 +241,7 @@ export class EnemyViewer {
     this.holder.position.set(0, 0, 0);
     this.fitToModel();
     this.applyPreset(this.preset);
-    if (this.aiMode && this.enemy) void this.enemy.useAiMesh().then(() => this.fitToModel());
+    if (this.enemy) void this.enemy.useAiMesh().then(() => this.fitToModel());
   }
 
   /** Centre + distance the camera framing on the current model's bounds. */
@@ -401,8 +287,6 @@ export class EnemyViewer {
     if (!this.last) this.last = time;
     const dt = Math.min(time - this.last, 0.05);
     this.last = time;
-    // Rig proof: oscillate the head bone so the eyes/head deform (look down/up).
-    if (this.rigHead) this.rigHead.rotation.x = Math.sin(time * 1.3) * 0.55;
     const e = this.enemy;
     if (e) {
       if (this.mode === 'walk') {
@@ -496,10 +380,6 @@ export class EnemyViewer {
       sync();
       return b;
     };
-    toggle('AI mesh', () => this.aiMode, (v) => {
-      this.aiMode = v;
-      this.setEnemy(this.currentKey); // rebuild with/without the AI body
-    });
     toggle('menacing', () => this.menacing, (v) => (this.menacing = v));
     toggle('turntable', () => this.turntable, (v) => (this.turntable = v));
     toggle('look@cam', () => this.lookAtCamera, (v) => (this.lookAtCamera = v));
