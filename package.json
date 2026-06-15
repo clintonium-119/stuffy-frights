@@ -1,7 +1,7 @@
 {
   "name": "stuffy-frights",
   "private": true,
-  "version": "1.4.3",
+  "version": "1.4.4",
   "type": "module",
   "description": "Stuffy Frights — a first-person survival horror game where the stuffed animals hunt you.",
   "scripts": {
