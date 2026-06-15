@@ -3,6 +3,7 @@ import { loadGLB, modelUrl } from '../world/ModelLoader';
 import { ENEMY_MODEL } from './projectionConfig';
 import { rigMesh } from './Skinning';
 import { RIG_CONFIG } from './rigConfig';
+import { ENEMY_TUNING } from './tuningConfig';
 
 /**
  * Builds a textured AI-mesh body for an enemy from a Meshy-generated GLB: keeps
@@ -30,22 +31,11 @@ const FACE_YAW: Record<string, number> = {
   llama: 0,
 };
 
-/**
- * Target body height (world units) per enemy id, captured from the prior
- * procedural bodies so the Meshy bodies keep the same in-world scale now that
- * the procedural bodies (which used to be the sizing reference) are gone.
- */
-export const ENEMY_HEIGHT: Record<string, number> = {
-  poo: 0.914,
-  fuggie: 1.544,
-  charles: 1.64,
-  newYama: 1.945,
-};
-
 export async function buildMeshBody(enemyId: string, targetHeight?: number): Promise<MeshBody | null> {
   const model = ENEMY_MODEL[enemyId];
   if (!model) return null;
-  const th = targetHeight ?? ENEMY_HEIGHT[enemyId] ?? 1.5;
+  // Authored body height lives in the per-enemy tuning (was ENEMY_HEIGHT here).
+  const th = targetHeight ?? ENEMY_TUNING[enemyId]?.height ?? 1.5;
   const scene = await loadGLB(modelUrl(model));
   const yaw = FACE_YAW[model] ?? 0;
 

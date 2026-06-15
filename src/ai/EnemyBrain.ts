@@ -5,6 +5,7 @@ import { House, cellToWorld, floorY } from '../world/layoutTypes';
 import { HidingSpot, HidingSystem } from '../systems/HidingSpot';
 import { NavGraph, PathFollower } from './NavGraph';
 import { PerceptionMemory, PlayerSnapshot, canSee, movementNoiseRadius } from './Perception';
+import { EnemyTuning } from '../enemies/tuningConfig';
 
 /** What the brain needs from its body (EnemyBase satisfies this; tests stub it). */
 export interface BrainBody {
@@ -13,6 +14,8 @@ export interface BrainBody {
   floorIndex: number;
   isChasing: boolean;
   setMoveTarget(target: THREE.Vector3 | null, speed?: number): void;
+  /** Per-enemy tuning (optional so test stubs can omit it → neutral defaults). */
+  tuning?: EnemyTuning;
 }
 
 export type BrainState =
@@ -123,7 +126,7 @@ export class EnemyBrain {
   hearNoise(pos: THREE.Vector3, radius: number): void {
     if (this.passive) return;
     const d = this.enemy.position.distanceTo(pos);
-    if (d > radius) return;
+    if (d > radius * (this.enemy.tuning?.gameplay.hearingMult ?? 1)) return;
     if (this.state === 'patrol' || this.state === 'loseInterest') {
       this.memory.lastNoisePos = pos.clone();
       this.transition('investigate');
@@ -155,7 +158,7 @@ export class EnemyBrain {
   }
 
   private speed(base: number): number {
-    return base * this.speedFactor;
+    return base * this.speedFactor * (this.enemy.tuning?.gameplay.speedMult ?? 1);
   }
 
   update(dt: number, player: PlayerSnapshot): void {
@@ -172,7 +175,8 @@ export class EnemyBrain {
         this.enemy.position,
         this.enemy.group.rotation.y,
         this.enemy.floorIndex,
-        player
+        player,
+        this.enemy.tuning?.gameplay.visionMult ?? 1
       );
     if (seen) this.memory.recordSeen(player.position, this.now);
 

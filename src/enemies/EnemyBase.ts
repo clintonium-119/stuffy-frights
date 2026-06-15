@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { config } from '../core/config';
 import { Articulator, GaitStyle, ArticulatorBones } from './Articulator';
-import { ENEMY_TUNING, DEFAULT_ANIM, EnemyAnimTuning } from './tuningConfig';
+import { ENEMY_TUNING, DEFAULT_ANIM, DEFAULT_GAMEPLAY, EnemyAnimTuning, EnemyTuning } from './tuningConfig';
 
 export type Mood = 'calm' | 'menacing';
 
@@ -28,9 +28,11 @@ export function resolveMood(
   isChasing: boolean,
   prevMood: Mood,
   heldFor: number,
-  dt: number
+  dt: number,
+  /** Per-enemy threat-radius multiplier (1 = the global baseline). */
+  threatMult = 1
 ): { mood: Mood; heldFor: number } {
-  const wantMenacing = isChasing || distance <= config.enemy.threatRadius;
+  const wantMenacing = isChasing || distance <= config.enemy.threatRadius * threatMult;
   const want: Mood = wantMenacing ? 'menacing' : 'calm';
   if (want === prevMood) return { mood: prevMood, heldFor: heldFor + dt };
   if (heldFor < config.enemy.expressionHold) return { mood: prevMood, heldFor: heldFor + dt };
@@ -102,9 +104,20 @@ export abstract class EnemyBase {
     this.gaitStyle = GAIT[id] ?? 'trot';
   }
 
+  /** Per-enemy tuning (shipped values; falls back to neutral for test ids). */
+  get tuning(): EnemyTuning {
+    return ENEMY_TUNING[this.id] ?? { anim: DEFAULT_ANIM, height: 1, gameplay: DEFAULT_GAMEPLAY };
+  }
+
+  /** Apply a body-size multiplier (1 = authored height). Live-editable in the viewer. */
+  setScaleMult(m: number): void {
+    this.baseScale.setScalar(m);
+    this.group.scale.copy(this.baseScale);
+  }
+
   /** Call once after construction. Builds the AI mesh body (async, browser). */
   init(): void {
-    this.baseScale.copy(this.group.scale);
+    this.setScaleMult(this.tuning.gameplay.scaleMult);
     void this.useAiMesh();
   }
 
@@ -135,10 +148,10 @@ export abstract class EnemyBase {
   }
 
   private async buildAiBody(): Promise<void> {
-    const { buildMeshBody, ENEMY_HEIGHT } = await import('./MeshBody');
+    const { buildMeshBody } = await import('./MeshBody');
     const body = await buildMeshBody(this.id);
     if (!body) return;
-    this.bodyHeight = ENEMY_HEIGHT[this.id] ?? 1;
+    this.bodyHeight = ENEMY_TUNING[this.id]?.height ?? 1;
     // Wrap the sized body in an anim group the gait bobs/squashes — keeps the
     // logical position (this.group) and the sizing (body.group) untouched.
     const anim = new THREE.Group();
@@ -222,7 +235,7 @@ export abstract class EnemyBase {
     // Mood from distance/chase.
     const distance = this.position.distanceTo(playerPos);
     const prev = this.mood;
-    const res = resolveMood(distance, this.isChasing, this.mood, this.heldFor, dt);
+    const res = resolveMood(distance, this.isChasing, this.mood, this.heldFor, dt, this.tuning.gameplay.threatMult);
     this.mood = res.mood;
     this.heldFor = res.heldFor;
     if (this.mood !== prev) {

@@ -36,6 +36,13 @@ describe('resolveMood', () => {
     expect(settle(R * 4, true, 'calm', 1)).toBe('menacing');
   });
 
+  it('a per-enemy threat multiplier widens the menacing radius', () => {
+    const d = R + 2; // outside the base radius (stays calm at 1×)
+    let s = { mood: 'calm' as Mood, heldFor: HOLD + 1 };
+    for (let i = 0; i < 60; i++) s = resolveMood(d, false, s.mood, s.heldFor, DT, 2);
+    expect(s.mood).toBe('menacing'); // 2× radius now reaches it
+  });
+
   it('reverts to calm after leaving the radius', () => {
     let mood = settle(R - 1, false, 'calm', 1);
     expect(mood).toBe('menacing');

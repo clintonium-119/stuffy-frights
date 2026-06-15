@@ -283,7 +283,8 @@ hiding.onEnter = (spot) => {
       r.enemy.position,
       r.enemy.group.rotation.y,
       r.enemy.floorIndex,
-      witnessSnapshot(spot.position)
+      witnessSnapshot(spot.position),
+      r.enemy.tuning.gameplay.visionMult
     );
     r.brain.notePlayerEnteredHiding(spot.position, witnessed);
   }
@@ -318,7 +319,8 @@ passages.onPlayerEnter = (passage) => {
       r.enemy.position,
       r.enemy.group.rotation.y,
       r.enemy.floorIndex,
-      witnessSnapshot(at)
+      witnessSnapshot(at),
+      r.enemy.tuning.gameplay.visionMult
     );
     r.brain.notePlayerEnteredPassage(at, exit, witnessed);
   }

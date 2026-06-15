@@ -125,16 +125,20 @@ describe('serializeTuningRecord', () => {
     squash: 0.28,
     rock: 0,
   };
+  const gameplay = { speedMult: 1.05, visionMult: 1, hearingMult: 1, threatMult: 1, scaleMult: 1.1 };
+  const tuning: EnemyTuning = { anim, height: 0.914, gameplay };
 
   it('emits the ENEMY_TUNING declaration with unquoted keys + trimmed numbers', () => {
-    const out = serializeTuningRecord({ poo: { anim } } as Record<string, EnemyTuning>);
+    const out = serializeTuningRecord({ poo: tuning });
     expect(out).toContain('export const ENEMY_TUNING: Record<string, EnemyTuning> = {');
     expect(out).toContain('poo: { anim: { swingRate: 2.6, legSwing: 0.45');
-    expect(out).toContain('bob: 0.18, squash: 0.28, rock: 0 } },');
+    expect(out).toContain('height: 0.914');
+    expect(out).toContain('gameplay: { speedMult: 1.05');
+    expect(out).toContain('scaleMult: 1.1 } },');
   });
 
   it('round-trips deep-equal through the marked region', () => {
-    const record = { poo: { anim }, newYama: { anim } } as Record<string, EnemyTuning>;
+    const record: Record<string, EnemyTuning> = { poo: tuning, newYama: tuning };
     const file = ['// <apo:gen enemyTuning>', 'export const ENEMY_TUNING = { STALE: 1 };', '// </apo:gen>'].join('\n');
     const body = serializeTuningRecord(record);
     const out = replaceMarkedRegion(file, 'enemyTuning', body);
@@ -144,6 +148,8 @@ describe('serializeTuningRecord', () => {
     // eslint-disable-next-line no-new-func
     const parsed = new Function(`return ${literal}`)() as Record<string, EnemyTuning>;
     expect(parsed.poo.anim).toEqual(anim);
-    expect(parsed.newYama.anim).toEqual(anim);
+    expect(parsed.poo.height).toBe(0.914);
+    expect(parsed.poo.gameplay).toEqual(gameplay);
+    expect(parsed.newYama.gameplay.scaleMult).toBe(1.1);
   });
 });

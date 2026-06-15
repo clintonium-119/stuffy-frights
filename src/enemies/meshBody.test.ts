@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { ENEMY_MODEL } from './projectionConfig';
-import { ENEMY_HEIGHT } from './MeshBody';
+import { ENEMY_TUNING } from './tuningConfig';
 import { RIG_CONFIG } from './rigConfig';
 
 /**
@@ -20,7 +20,7 @@ describe('Meshy enemy body wiring', () => {
     it(`${id} maps to a model with a height + rig config`, () => {
       const model = ENEMY_MODEL[id];
       expect(model).toBeTruthy();
-      expect(ENEMY_HEIGHT[id]).toBeGreaterThan(0);
+      expect(ENEMY_TUNING[id].height).toBeGreaterThan(0);
       expect(RIG_CONFIG[model]).toBeTruthy();
       expect(RIG_CONFIG[model][0].name).toBe('root');
     });

@@ -72,7 +72,9 @@ export function canSee(
   enemyPos: THREE.Vector3,
   enemyYaw: number,
   enemyFloor: number,
-  player: PlayerSnapshot
+  player: PlayerSnapshot,
+  /** Per-enemy sight-range multiplier (1 = the global baseline). */
+  visionFactor = 1
 ): boolean {
   if (player.hidden) return false;
   if (player.floor !== enemyFloor) return false;
@@ -81,7 +83,7 @@ export function canSee(
   const dz = player.position.z - enemyPos.z;
   const dist = Math.hypot(dx, dz);
 
-  let range = player.lightOn ? config.ai.visionLightOn : config.ai.visionLightOff;
+  let range = (player.lightOn ? config.ai.visionLightOn : config.ai.visionLightOff) * visionFactor;
   if (player.crouched) {
     range *= config.ai.visionCrouchFactor;
     // Crouched behind cover: a further reduction (lightweight — no prop raycast).

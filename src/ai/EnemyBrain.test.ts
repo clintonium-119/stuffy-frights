@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import { BrainBody, BrainContext, EnemyBrain, clearSearchClaims } from './EnemyBrain';
 import { NavGraph } from './NavGraph';
 import { canSee, movementNoiseRadius, PlayerSnapshot } from './Perception';
+import { DEFAULT_ANIM, DEFAULT_GAMEPLAY, EnemyTuning } from '../enemies/tuningConfig';
 import { house } from '../world/houseLayout';
 import { PROP_PLACEMENTS } from '../world/Props';
 import { HidingSystem } from '../systems/HidingSpot';
@@ -89,6 +90,13 @@ describe('perception', () => {
     expect(config.ai.visionLightOff).toBeLessThan(config.ai.visionLightOn);
   });
 
+  it('a per-enemy vision multiplier extends the sight range', () => {
+    const enemyPos = new THREE.Vector3(15, 3.5, 19);
+    const player = snapshot({ position: new THREE.Vector3(15, 3.5, 26) }); // 7 m, light off (range 5)
+    expect(canSee(house, enemyPos, 0, 1, player)).toBe(false); // baseline: out of range
+    expect(canSee(house, enemyPos, 0, 1, player, 2)).toBe(true); // 2× range → seen
+  });
+
   it('crouching shrinks detection range', () => {
     const enemyPos = new THREE.Vector3(15, 3.5, 19);
     const at = (d: number) => snapshot({ position: new THREE.Vector3(15, 3.5, 19 + d) });
@@ -155,6 +163,40 @@ describe('EnemyBrain transitions', () => {
     const brain = brainWith(body, hiding, new Rng(1));
     brain.hearNoise(new THREE.Vector3(40, 3.5, 14), 6);
     expect(brain.state).toBe('patrol');
+  });
+
+  it('a per-enemy hearing multiplier widens the heard radius', () => {
+    const { hiding } = makeHiding();
+    const tuning: EnemyTuning = { anim: DEFAULT_ANIM, height: 1, gameplay: { ...DEFAULT_GAMEPLAY, hearingMult: 2 } };
+    // Noise 9 m away with radius 6: ignored at 1×, heard at 2× (radius → 12).
+    const far = new THREE.Vector3(15, 3.5, 22);
+    const deaf = stubBody(15, 3.5, 13);
+    expect(deaf.position.distanceTo(far)).toBeGreaterThan(6);
+    brainWith(deaf, hiding, new Rng(1)).hearNoise(far, 6);
+    const sharp = stubBody(15, 3.5, 13);
+    sharp.tuning = tuning;
+    const brain = brainWith(sharp, hiding, new Rng(1));
+    brain.hearNoise(far, 6);
+    expect(brain.state).toBe('investigate');
+  });
+
+  it('a per-enemy speed multiplier scales the drive speed', () => {
+    const { hiding } = makeHiding();
+    const body = stubBody(15, 3.5, 19);
+    const speeds: number[] = [];
+    const base = body.setMoveTarget.bind(body);
+    body.setMoveTarget = (t, s = 0) => {
+      if (t) speeds.push(s);
+      base(t, s);
+    };
+    body.tuning = { anim: DEFAULT_ANIM, height: 1, gameplay: { ...DEFAULT_GAMEPLAY, speedMult: 2 } };
+    const brain = brainWith(body, hiding, new Rng(1));
+    for (let i = 0; i < 10; i++) {
+      brain.update(DT, snapshot({ position: new THREE.Vector3(15, 3.5, 23), lightOn: true }));
+    }
+    expect(brain.state).toBe('chase');
+    // Chase drives at chaseSpeed × 2 (≈9), well above the un-multiplied lunge cap.
+    expect(Math.max(...speeds)).toBeGreaterThan(config.ai.lungeSpeed);
   });
 
   it('investigate → chase on sight; chase sets the menacing flag', () => {

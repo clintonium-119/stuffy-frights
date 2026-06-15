@@ -11,7 +11,7 @@ import { config } from '../core/config';
 import { initMaterials } from '../world/materialLibrary';
 import { EnemyKey, ENEMY_KEYS } from './enemyViewerRoute';
 import { RigEditor } from './RigEditor';
-import { ENEMY_TUNING, EnemyTuning, EnemyAnimTuning } from '../enemies/tuningConfig';
+import { ENEMY_TUNING, EnemyTuning, EnemyAnimTuning, EnemyGameplayTuning } from '../enemies/tuningConfig';
 import { serializeTuningRecord } from './configWriter';
 import { saveConfigBlock } from './saveConfig';
 
@@ -42,6 +42,15 @@ const ANIM_SLIDERS: Array<[string, keyof EnemyAnimTuning, number, number, number
   ['bob', 'bob', 0, 0.5, 0.005],
   ['squash', 'squash', 0, 0.6, 0.01],
   ['rock', 'rock', 0, 0.3, 0.01],
+];
+
+/** Per-enemy gameplay multiplier rows (1.0 = the global baseline). */
+const GAMEPLAY_SLIDERS: Array<[string, keyof EnemyGameplayTuning, number, number, number]> = [
+  ['scale ×', 'scaleMult', 0.5, 2, 0.05],
+  ['speed ×', 'speedMult', 0.5, 2, 0.05],
+  ['vision ×', 'visionMult', 0.5, 2, 0.05],
+  ['hearing ×', 'hearingMult', 0.5, 2, 0.05],
+  ['threat ×', 'threatMult', 0.5, 2, 0.05],
 ];
 
 // Reference photos, served by Vite in dev only (the viewer isn't in the build).
@@ -272,6 +281,7 @@ export class EnemyViewer {
     this.enemy = FACTORY[key]();
     // Inject the editable anim tuning so the panel's sliders drive the live gait.
     this.enemy.animTuning = this.currentAnim();
+    this.enemy.setScaleMult(this.currentGameplay().scaleMult);
     this.holder.add(this.enemy.group);
     document.title = `Viewer — ${LABEL[key]}`;
     this.onStairs = false;
@@ -288,46 +298,78 @@ export class EnemyViewer {
     return this.tuning[KEY_TO_ID[this.currentKey]].anim;
   }
 
-  /** Fixed top-left panel of live animation sliders for the current enemy. */
+  private currentGameplay(): EnemyGameplayTuning {
+    return this.tuning[KEY_TO_ID[this.currentKey]].gameplay;
+  }
+
+  /** Fixed top-left panel: live animation + characteristics sliders. */
   private buildAnimPanel(): void {
     this.animPanel.style.cssText =
-      'position:fixed;top:8px;left:8px;width:210px;background:#0b0e12ee;color:#cdd;' +
-      'font:11px ui-monospace,monospace;padding:10px;border-radius:8px;z-index:15;max-height:80vh;overflow:auto';
+      'position:fixed;top:8px;left:8px;width:215px;background:#0b0e12ee;color:#cdd;' +
+      'font:11px ui-monospace,monospace;padding:10px;border-radius:8px;z-index:15;max-height:92vh;overflow:auto';
     document.body.appendChild(this.animPanel);
     this.refreshAnimPanel();
   }
 
+  /** A labelled range row that writes back through `onInput` on each change. */
+  private sliderRow(label: string, value: number, min: number, max: number, step: number, onInput: (v: number) => void): HTMLElement {
+    const row = document.createElement('label');
+    row.style.cssText = 'display:flex;justify-content:space-between;align-items:center;gap:6px;margin:2px 0';
+    const inp = document.createElement('input');
+    inp.type = 'range';
+    inp.min = String(min);
+    inp.max = String(max);
+    inp.step = String(step);
+    inp.value = String(value);
+    inp.style.flex = '1';
+    const val = document.createElement('span');
+    val.textContent = value.toFixed(2);
+    val.style.width = '34px';
+    inp.oninput = () => {
+      onInput(+inp.value);
+      val.textContent = (+inp.value).toFixed(2);
+    };
+    row.append(
+      Object.assign(document.createElement('span'), { textContent: label, style: 'width:64px' }),
+      inp,
+      val
+    );
+    return row;
+  }
+
+  private heading(text: string): HTMLElement {
+    const h = document.createElement('div');
+    h.textContent = text;
+    h.style.cssText = 'margin:6px 0 2px;color:#8af';
+    return h;
+  }
+
   private refreshAnimPanel(): void {
     const anim = this.currentAnim();
+    const gp = this.currentGameplay();
     this.animPanel.innerHTML = '';
     const title = document.createElement('div');
-    title.innerHTML = `<b>animation — ${this.currentKey}</b>`;
+    title.innerHTML = `<b>tuning — ${this.currentKey}</b>`;
     title.style.marginBottom = '6px';
     this.animPanel.appendChild(title);
+
+    this.animPanel.appendChild(this.heading('animation'));
     for (const [label, key, min, max, step] of ANIM_SLIDERS) {
-      const row = document.createElement('label');
-      row.style.cssText = 'display:flex;justify-content:space-between;align-items:center;gap:6px;margin:2px 0';
-      const inp = document.createElement('input');
-      inp.type = 'range';
-      inp.min = String(min);
-      inp.max = String(max);
-      inp.step = String(step);
-      inp.value = String(anim[key]);
-      inp.style.flex = '1';
-      const val = document.createElement('span');
-      val.textContent = anim[key].toFixed(2);
-      val.style.width = '34px';
-      inp.oninput = () => {
-        anim[key] = +inp.value; // mutates the shared tuning → live gait update
-        val.textContent = (+inp.value).toFixed(2);
-      };
-      row.append(
-        Object.assign(document.createElement('span'), { textContent: label, style: 'width:64px' }),
-        inp,
-        val
+      this.animPanel.appendChild(
+        this.sliderRow(label, anim[key], min, max, step, (v) => (anim[key] = v))
       );
-      this.animPanel.appendChild(row);
     }
+
+    this.animPanel.appendChild(this.heading('characteristics (× baseline)'));
+    for (const [label, key, min, max, step] of GAMEPLAY_SLIDERS) {
+      this.animPanel.appendChild(
+        this.sliderRow(label, gp[key], min, max, step, (v) => {
+          gp[key] = v;
+          if (key === 'scaleMult' && this.enemy) this.enemy.setScaleMult(v); // live resize
+        })
+      );
+    }
+
     this.appendAnimSaveButton();
   }
 
@@ -396,7 +438,8 @@ export class EnemyViewer {
       if (this.mode === 'walk') {
         // Treadmill: aim ahead, then recentre so it strides in place.
         this.walkTarget.set(0, e.position.y, 40);
-        e.setMoveTarget(this.walkTarget, this.menacing ? config.ai.chaseSpeed : config.ai.patrolSpeed);
+        const baseSpeed = this.menacing ? config.ai.chaseSpeed : config.ai.patrolSpeed;
+        e.setMoveTarget(this.walkTarget, baseSpeed * this.currentGameplay().speedMult);
       } else {
         e.setMoveTarget(null, 0);
       }
