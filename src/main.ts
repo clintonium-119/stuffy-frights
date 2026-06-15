@@ -615,6 +615,16 @@ function startNewRun(): void {
 
 /** In-place "play again" from game-over / win (keeps the VR session alive). */
 function playAgain(): void {
+  // An ironman run always ends before this fires — a death resets the ladder,
+  // a full clear completes it (both leave the saved ladder inactive at Easy).
+  // "Play again" should therefore start a brand-new ladder from Tuck-In, not a
+  // single-difficulty run at whatever level the ladder ended on. Re-arm the
+  // ladder + re-apply Easy so the refreshed HUD/config match the new run.
+  if (ironmanOnBoot) {
+    settings.startIronman();
+    bootDifficulty = settings.getIronman().currentLevel;
+    applyDifficulty(bootDifficulty);
+  }
   startNewRun();
   if (!gs.transition('retry')) return;
   enterPlayingChrome();

@@ -214,7 +214,7 @@ export class Menus {
   showGameOver(enemyId: string, ironmanReset = false): void {
     const name = ENEMY_NAMES[enemyId] ?? 'SOMETHING SOFT';
     const ironLine = ironmanReset
-      ? `<p style="color:#d8a35a;max-width:440px;margin:8px auto">Your ironman ladder is over — back to Tuck-In.</p>`
+      ? `<p style="color:#d8a35a;max-width:440px;margin:8px auto">Your ironman ladder is over — try again starts a fresh run at Tuck-In.</p>`
       : '';
     this.screen(`
       <h1 style="font-size:46px;letter-spacing:4px;color:#c0392b;text-shadow:0 0 14px #400">

@@ -303,7 +303,7 @@ export class EnemyViewer {
         this.crouchTarget
           ? new THREE.Vector3(this.target.x, 0.25, this.target.z + 1.5)
           : this.camera.position.clone();
-      // Feed the articulation look-context if the build supports it (PHASE-03).
+      // Feed the articulation look-context if the build supports it.
       const look = (e as unknown as {
         setLookContext?: (p: THREE.Vector3, crouch: boolean, intensity: number) => void;
       }).setLookContext;
