@@ -100,6 +100,10 @@ export class EnemyViewer {
   private refAngle = 'front';
   private mode: Mode = 'idle';
   private menacing = false;
+  private dark = false;
+  // Studio lights + their authored intensities, so `dark` can dim and restore.
+  private readonly studioLights: Array<{ light: THREE.Light; base: number }> = [];
+  private envTexture: THREE.Texture | null = null;
   private turntable = false;
   private lookAtCamera = false;
   private crouchTarget = false;
@@ -148,7 +152,8 @@ export class EnemyViewer {
 
   private buildStudio(): void {
     // Neutral studio: soft ambient + hemisphere fill + a warm key with shadow.
-    this.scene.add(new THREE.AmbientLight(0xffffff, 0.55));
+    const ambient = new THREE.AmbientLight(0xffffff, 0.55);
+    this.scene.add(ambient);
     const hemi = new THREE.HemisphereLight(0xcfe0ff, 0x3a2f28, 0.6);
     this.scene.add(hemi);
     const key = new THREE.DirectionalLight(0xfff2e0, 1.6);
@@ -161,6 +166,8 @@ export class EnemyViewer {
     const rim = new THREE.DirectionalLight(0x9fb6ff, 0.5);
     rim.position.set(-4, 3, -5);
     this.scene.add(rim);
+    // Remember each light's authored intensity so the `dark` toggle can restore.
+    for (const l of [ambient, hemi, key, rim]) this.studioLights.push({ light: l, base: l.intensity });
 
     // Ground disc.
     const ground = new THREE.Mesh(
@@ -194,10 +201,23 @@ export class EnemyViewer {
     new RGBELoader().load(
       `${import.meta.env.BASE_URL}hdri/abandoned_games_room_01_1k.hdr`,
       (hdr) => {
-        this.scene.environment = pmrem.fromEquirectangular(hdr).texture;
+        this.envTexture = pmrem.fromEquirectangular(hdr).texture;
+        if (!this.dark) this.scene.environment = this.envTexture;
         hdr.dispose();
       }
     );
+  }
+
+  /**
+   * Toggle a near-dark stage so the menacing eye-glow reads like it does in the
+   * game (emissive vs. almost no light). Dims the studio lights, blacks the
+   * background, and drops the HDRI environment; restoring brings them all back.
+   */
+  private setDark(on: boolean): void {
+    this.dark = on;
+    for (const { light, base } of this.studioLights) light.intensity = on ? base * 0.04 : base;
+    this.scene.background = new THREE.Color(on ? 0x04050a : 0x202428);
+    this.scene.environment = on ? null : this.envTexture;
   }
 
   /** Dev: load a raw GLB into the studio to inspect it (no rig/material changes). */
@@ -523,6 +543,7 @@ export class EnemyViewer {
       return b;
     };
     toggle('menacing', () => this.menacing, (v) => (this.menacing = v));
+    toggle('dark', () => this.dark, (v) => this.setDark(v));
     toggle('turntable', () => this.turntable, (v) => (this.turntable = v));
     toggle('look@cam', () => this.lookAtCamera, (v) => (this.lookAtCamera = v));
     toggle('crouch-look', () => this.crouchTarget, (v) => (this.crouchTarget = v));

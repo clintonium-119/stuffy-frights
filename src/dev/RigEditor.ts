@@ -6,10 +6,13 @@ import { rigMesh } from '../enemies/Skinning';
 import { RIG_CONFIG } from '../enemies/rigConfig';
 import { RigConfig, BoneConfig } from '../enemies/rigWeights';
 import { clampBox, clamp01, normFromWorld, serializeRig, worldFromNorm, Vec3 } from './rigEditorMath';
-import { serializeRigConfigRecord } from './configWriter';
+import { serializeRigConfigRecord, serializeEyeConfigRecord } from './configWriter';
 import { saveConfigBlock } from './saveConfig';
 import { Articulator, ArticulatorBones, GaitStyle } from '../enemies/Articulator';
 import { ENEMY_TUNING, DEFAULT_ANIM, EnemyAnimTuning } from '../enemies/tuningConfig';
+import { EYE_CONFIG, EyeConfig } from '../enemies/eyeConfig';
+import { applyEyeGlow } from '../enemies/eyeGlow';
+import { config } from '../core/config';
 
 /** Per-enemy gait style (mirrors EnemyBase's GAIT, keyed by the canonical key). */
 const MODEL_GAIT: Record<string, GaitStyle> = {
@@ -60,8 +63,13 @@ export class RigEditor {
   // Draggable handle (TransformControls gizmo doubles as the XYZ indicator).
   private tc: TransformControls | null = null;
   private handle = new THREE.Object3D(); // child of group → local pos is geom-space
-  private handleKind: 'pivot' | 'min' | 'max' = 'pivot';
+  private handleKind: 'pivot' | 'min' | 'max' | 'eyeL' | 'eyeR' = 'pivot';
   private dragging = false;
+  // Editable glowing-eye positions for this enemy (normalized model-box coords),
+  // saved to eyeConfig.ts. Previewed as the real emissive glow on the mesh;
+  // draggable via the handle, with small wireframe centre markers.
+  private eyes: EyeConfig;
+  private eyeGlowTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(
     private scene: THREE.Scene,
@@ -73,6 +81,9 @@ export class RigEditor {
     animTuning?: EnemyAnimTuning
   ) {
     this.config = structuredClone(RIG_CONFIG[model] ?? [{ name: 'root', pivot: [0.5, 0.5, 0.5] }]);
+    this.eyes = structuredClone(
+      EYE_CONFIG[model] ?? { left: [0.4, 0.8, 0.9], right: [0.6, 0.8, 0.9], radius: 0.04 }
+    );
     this.tuningAnim = animTuning ?? structuredClone(ENEMY_TUNING[model]?.anim ?? DEFAULT_ANIM);
     this.scene.add(this.group);
     this.group.add(this.anim);
@@ -98,16 +109,16 @@ export class RigEditor {
     this.tc = tc;
   }
 
-  /** Move the handle (+ gizmo) to the selected bone's pivot / box corner. */
+  /** Move the handle (+ gizmo) to the selected bone's pivot / box corner / eye. */
   private positionHandle(): void {
     if (!this.tc) return;
-    const b = this.config[this.selected] as BoneConfig | undefined;
-    if (!b) {
-      this.tc.detach();
-      return;
+    let norm: Vec3 | undefined;
+    if (this.handleKind === 'eyeL') norm = this.eyes.left;
+    else if (this.handleKind === 'eyeR') norm = this.eyes.right;
+    else {
+      const b = this.config[this.selected] as BoneConfig | undefined;
+      norm = !b ? undefined : this.handleKind === 'pivot' ? b.pivot : this.handleKind === 'min' ? b.box?.min : b.box?.max;
     }
-    const norm =
-      this.handleKind === 'pivot' ? b.pivot : this.handleKind === 'min' ? b.box?.min : b.box?.max;
     if (!norm) {
       this.tc.detach();
       return;
@@ -120,14 +131,24 @@ export class RigEditor {
   /** During a drag: read the handle's geom-space position back into the config. */
   private onHandleDrag(): void {
     if (!this.dragging) return;
-    const b = this.config[this.selected] as BoneConfig | undefined;
-    if (!b) return;
     const p = this.handle.position;
     const n = normFromWorld([p.x, p.y, p.z], this.bbMin, this.bbSize);
+    const clamped: Vec3 = [clamp01(n[0]), clamp01(n[1]), clamp01(n[2])];
+    // Eyes don't affect the skin — just move the marker, no re-rig.
+    if (this.handleKind === 'eyeL' || this.handleKind === 'eyeR') {
+      if (this.handleKind === 'eyeL') this.eyes.left = clamped;
+      else this.eyes.right = clamped;
+      this.drawGizmos();
+      this.refreshPanel();
+      this.scheduleEyeGlow();
+      return;
+    }
+    const b = this.config[this.selected] as BoneConfig | undefined;
+    if (!b) return;
     if (this.handleKind === 'pivot') {
-      b.pivot = [clamp01(n[0]), clamp01(n[1]), clamp01(n[2])];
+      b.pivot = clamped;
     } else if (b.box) {
-      b.box[this.handleKind] = [clamp01(n[0]), clamp01(n[1]), clamp01(n[2])];
+      b.box[this.handleKind] = clamped;
       b.box = clampBox(b.box);
     }
     // Re-rig + redraw the reference gizmos, but leave the handle where the user
@@ -162,6 +183,22 @@ export class RigEditor {
     this.group.scale.setScalar(s);
     this.group.position.set(0, -this.bbMin[1] * s, 0);
     this.rebuild();
+    this.applyEyeGlowPreview();
+  }
+
+  /** Rebuild the eye-glow emissive map on the live material + light it (preview). */
+  private applyEyeGlowPreview(): void {
+    if (!this.skinned) return;
+    const mat = this.skinned.material as THREE.MeshStandardMaterial;
+    if (applyEyeGlow(mat, this.skinned.geometry, this.eyes)) {
+      mat.emissiveIntensity = config.enemyGlow.eyeIntensity;
+    }
+  }
+
+  /** Debounced eye-glow rebuild (the mask is ~1MP; don't rebuild every drag tick). */
+  private scheduleEyeGlow(): void {
+    if (this.eyeGlowTimer) clearTimeout(this.eyeGlowTimer);
+    this.eyeGlowTimer = setTimeout(() => this.applyEyeGlowPreview(), 120);
   }
 
   /** Re-rig the skinned mesh + rebuild the articulation driver (no UI redraw). */
@@ -246,6 +283,22 @@ export class RigEditor {
         helper.renderOrder = 998;
         this.gizmos.add(helper);
       }
+    });
+
+    // Eye-centre markers: the REAL glow is previewed on the mesh material
+    // (applyEyeGlowPreview), so these are just small wireframe crosshairs marking
+    // each centre — yellow on the one the handle is dragging.
+    const mr = 0.025 * this.bbSize[1];
+    ([['eyeL', this.eyes.left], ['eyeR', this.eyes.right]] as const).forEach(([kind, n]) => {
+      const sel = this.handleKind === kind;
+      const p = worldFromNorm(n, this.bbMin, this.bbSize);
+      const marker = new THREE.Mesh(
+        new THREE.SphereGeometry(mr, 10, 8),
+        new THREE.MeshBasicMaterial({ color: sel ? 0xffe000 : 0xff3010, wireframe: true, depthTest: false })
+      );
+      marker.position.set(p[0], p[1], p[2]);
+      marker.renderOrder = 999;
+      this.gizmos.add(marker);
     });
   }
 
@@ -397,6 +450,56 @@ export class RigEditor {
       this.panel.appendChild(row);
     });
 
+    // --- glowing eyes (separate config: eyeConfig.ts) ---
+    mk('eyes (glow) — turn on "dark" to preview the glow');
+    const eyeRow = document.createElement('div');
+    eyeRow.style.cssText = 'display:flex;gap:4px;margin-bottom:4px';
+    (['eyeL', 'eyeR'] as const).forEach((kind) => {
+      const eb = document.createElement('button');
+      eb.textContent = kind === 'eyeL' ? 'drag L' : 'drag R';
+      eb.style.cssText =
+        `flex:1;padding:3px;border:0;border-radius:4px;cursor:pointer;color:#fde;` +
+        `background:${this.handleKind === kind ? '#a44' : '#28303a'}`;
+      eb.onclick = () => {
+        this.handleKind = kind;
+        this.positionHandle();
+        this.drawGizmos();
+        this.refreshPanel();
+      };
+      eyeRow.appendChild(eb);
+    });
+    this.panel.appendChild(eyeRow);
+    const activeEye = this.handleKind === 'eyeR' ? this.eyes.right : this.eyes.left;
+    (['x', 'y', 'z'] as const).forEach((ax, a) =>
+      this.panel.appendChild(
+        this.num(ax, activeEye[a], 0.005, (v) => {
+          activeEye[a] = v;
+          this.drawGizmos();
+          this.positionHandle();
+          this.scheduleEyeGlow();
+        })
+      )
+    );
+    this.panel.appendChild(
+      this.num('radius', this.eyes.radius ?? config.enemyGlow.eyeUvRadius, 0.005, (v) => {
+        this.eyes.radius = v;
+        this.scheduleEyeGlow();
+      })
+    );
+    const saveEyes = document.createElement('button');
+    saveEyes.textContent = 'save eyes to source';
+    saveEyes.style.cssText = 'width:100%;margin-top:6px;padding:5px;background:#a44;color:#fff;border:0;border-radius:5px;cursor:pointer';
+    saveEyes.onclick = () => {
+      const merged = { ...EYE_CONFIG, [this.model]: this.eyes };
+      const body = serializeEyeConfigRecord(merged);
+      saveEyes.textContent = 'saving…';
+      void saveConfigBlock('src/enemies/eyeConfig.ts', 'eyeConfig', body).then((r) => {
+        saveEyes.textContent = r.ok ? 'saved ✓' : `save failed: ${r.error ?? ''}`;
+        setTimeout(() => (saveEyes.textContent = 'save eyes to source'), 1600);
+      });
+    };
+    this.panel.appendChild(saveEyes);
+
     // Save the edited rig straight to rigConfig.ts via the dev write endpoint:
     // merge this model's edited bones back into the full record, serialize, write.
     const save = document.createElement('button');
@@ -429,6 +532,7 @@ export class RigEditor {
   }
 
   dispose(): void {
+    if (this.eyeGlowTimer) clearTimeout(this.eyeGlowTimer);
     if (this.tc) {
       this.tc.detach();
       this.tc.dispose();

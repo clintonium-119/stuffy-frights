@@ -4,8 +4,10 @@ import {
   serializeRigConfigRecord,
   resolveSafeConfigPath,
   serializeTuningRecord,
+  serializeEyeConfigRecord,
 } from './configWriter';
 import { EnemyTuning } from '../enemies/tuningConfig';
+import { EyeConfig } from '../enemies/eyeConfig';
 import { RigConfig } from '../enemies/rigWeights';
 
 describe('replaceMarkedRegion', () => {
@@ -151,5 +153,29 @@ describe('serializeTuningRecord', () => {
     expect(parsed.pou.height).toBe(0.914);
     expect(parsed.pou.gameplay).toEqual(gameplay);
     expect(parsed.newYama.gameplay.scaleMult).toBe(1.1);
+  });
+});
+
+describe('serializeEyeConfigRecord', () => {
+  const eye: EyeConfig = { left: [0.4, 0.82, 0.92], right: [0.6, 0.82, 0.92], radius: 0.05 };
+
+  it('emits the EYE_CONFIG declaration with unquoted keys + trimmed numbers', () => {
+    const out = serializeEyeConfigRecord({ pou: eye });
+    expect(out).toContain('export const EYE_CONFIG: Record<string, EyeConfig> = {');
+    expect(out).toContain('pou: { left: [0.4, 0.82, 0.92], right: [0.6, 0.82, 0.92], radius: 0.05 },');
+  });
+
+  it('round-trips deep-equal through the marked region', () => {
+    const record: Record<string, EyeConfig> = { pou: eye, newYama: { left: [0.45, 0.85, 0.95], right: [0.6, 0.85, 0.95] } };
+    const file = ['// <apo:gen eyeConfig>', 'export const EYE_CONFIG = { STALE: 1 };', '// </apo:gen>'].join('\n');
+    const body = serializeEyeConfigRecord(record);
+    const out = replaceMarkedRegion(file, 'eyeConfig', body);
+    expect(out).not.toContain('STALE');
+    const literal = body.slice(body.indexOf('{'), body.lastIndexOf('}') + 1);
+    // eslint-disable-next-line no-new-func
+    const parsed = new Function(`return ${literal}`)() as Record<string, EyeConfig>;
+    expect(parsed.pou).toEqual(eye);
+    expect(parsed.newYama.radius).toBeUndefined();
+    expect(parsed.newYama.left).toEqual([0.45, 0.85, 0.95]);
   });
 });

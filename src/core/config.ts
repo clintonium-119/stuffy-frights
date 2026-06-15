@@ -137,6 +137,20 @@ export interface GameConfig {
     jumpscareBlackout: number;
   };
 
+  enemyGlow: {
+    /** Eye glow colour (hex) while menacing. */
+    eyeColor: number;
+    /** Eye emissive intensity. Kept low — ACES tone-mapping desaturates hot
+     * emissive toward white, so a redder glow wants a modest value. */
+    eyeIntensity: number;
+    /** Glow gate radius in UV space around each eye centre (per-enemy override
+     * lives in eyeConfig.radius). */
+    eyeUvRadius: number;
+    /** Albedo luminance (0..1) under which a gated texel glows — picks the dark
+     * painted eye out of the lighter face. */
+    eyeDarkThreshold: number;
+  };
+
   passage: {
     /** Seconds for a pried vent grille to fold up to the ceiling. */
     ventFoldSeconds: number;
@@ -317,6 +331,13 @@ export const config: GameConfig = {
     jumpscareLunge: 0.55, // snappier rush so the face slams into frame
     jumpscareRedFade: 0.4,
     jumpscareBlackout: 0.5,
+  },
+
+  enemyGlow: {
+    eyeColor: 0xff0800,
+    eyeIntensity: 1.1,
+    eyeUvRadius: 0.16,
+    eyeDarkThreshold: 0.25,
   },
 
   passage: {

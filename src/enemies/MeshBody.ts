@@ -3,6 +3,9 @@ import { loadGLB, modelUrl } from '../world/ModelLoader';
 import { rigMesh } from './Skinning';
 import { RIG_CONFIG } from './rigConfig';
 import { ENEMY_TUNING } from './tuningConfig';
+import { EYE_CONFIG } from './eyeConfig';
+import { applyEyeGlow } from './eyeGlow';
+import { config } from '../core/config';
 
 /**
  * Builds a textured AI-mesh body for an enemy from a Meshy-generated GLB: keeps
@@ -57,18 +60,20 @@ export async function buildMeshBody(enemyId: string, targetHeight?: number): Pro
   // Rig the main mesh (skeleton + skin weights) so the articulation can drive
   // it. Meshy exports a single mesh, so this rigs the whole body.
   let bones: Record<string, THREE.Bone> = {};
-  const config = RIG_CONFIG[enemyId];
-  if (config) {
+  let skinnedGeom: THREE.BufferGeometry | null = null; // for the eye-glow mask
+  const rig = RIG_CONFIG[enemyId];
+  if (rig) {
     let mainMesh: THREE.Mesh | null = null;
     scene.traverse((o) => {
       if (o instanceof THREE.Mesh && !mainMesh) mainMesh = o;
     });
     if (mainMesh) {
       const parent = (mainMesh as THREE.Mesh).parent!;
-      const res = rigMesh(mainMesh, config);
+      const res = rigMesh(mainMesh, rig);
       parent.add(res.skinned);
       parent.remove(mainMesh);
       bones = res.bones;
+      skinnedGeom = res.skinned.geometry;
     }
   }
 
@@ -94,11 +99,29 @@ export async function buildMeshBody(enemyId: string, targetHeight?: number): Pro
     if (sm.isSkinnedMesh) sm.bind(sm.skeleton);
   });
 
-  // The baked texture can't swap to a mean face, so flush the body red instead.
+  // Glowing eyes for the menacing mood: the baked face can't change expression,
+  // so we make the PAINTED eye region of the albedo emit. An emissive mask lights
+  // up the dark eye pixels near each configured eye centre (see eyeGlow.ts), so
+  // the whole almond glows and deforms/tracks with the head — far better than the
+  // old "animal lightbulb" whole-body flush. Materials without a readable albedo
+  // fall back to a modest body flush so menacing still reads.
+  const eyeCfg = EYE_CONFIG[enemyId];
+  const glowMats = new Set<THREE.MeshStandardMaterial>();
+  if (eyeCfg && skinnedGeom) {
+    for (const m of mats) {
+      if (m.map && applyEyeGlow(m, skinnedGeom, eyeCfg)) glowMats.add(m);
+    }
+  }
+
   const setMenacing = (on: boolean) => {
     for (const m of mats) {
-      m.emissive.setHex(on ? 0x8a1410 : 0x000000);
-      m.emissiveIntensity = on ? 0.7 : 0;
+      if (glowMats.has(m)) {
+        // Eye-glow material: the emissive map confines the glow to the eyes.
+        m.emissiveIntensity = on ? config.enemyGlow.eyeIntensity : 0;
+      } else {
+        m.emissive.setHex(on ? 0x8a1410 : 0x000000);
+        m.emissiveIntensity = on ? 0.5 : 0;
+      }
     }
   };
   return { group, setMenacing, bones };

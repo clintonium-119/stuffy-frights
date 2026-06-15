@@ -1,5 +1,6 @@
 import { RigConfig } from '../enemies/rigWeights';
 import { EnemyTuning } from '../enemies/tuningConfig';
+import { EyeConfig } from '../enemies/eyeConfig';
 import { serializeRig } from './rigEditorMath';
 
 /**
@@ -80,6 +81,14 @@ export function tsLiteral(v: unknown): string {
     return `{ ${inner} }`;
   }
   return 'null';
+}
+
+/** Serialize a whole `EYE_CONFIG` record to its `export const` declaration. */
+export function serializeEyeConfigRecord(record: Record<string, EyeConfig>): string {
+  const entries = Object.entries(record)
+    .map(([id, eye]) => `  ${id}: ${tsLiteral(eye)},`)
+    .join('\n');
+  return `export const EYE_CONFIG: Record<string, EyeConfig> = {\n${entries}\n};`;
 }
 
 /** Serialize a whole `ENEMY_TUNING` record to its `export const` declaration. */

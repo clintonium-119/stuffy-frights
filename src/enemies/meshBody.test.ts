@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { ENEMY_TUNING } from './tuningConfig';
 import { RIG_CONFIG } from './rigConfig';
+import { EYE_CONFIG } from './eyeConfig';
 
 /**
  * The four enemy bodies are Meshy GLBs keyed by the canonical enemy id (= GLB
@@ -20,6 +21,15 @@ describe('Meshy enemy body wiring', () => {
       expect(ENEMY_TUNING[id].height).toBeGreaterThan(0);
       expect(RIG_CONFIG[id]).toBeTruthy();
       expect(RIG_CONFIG[id][0].name).toBe('root');
+    });
+
+    it(`${id} has eye config + a head bone to parent eyes to`, () => {
+      const eye = EYE_CONFIG[id];
+      expect(eye).toBeTruthy();
+      expect(eye.left).toHaveLength(3);
+      expect(eye.right).toHaveLength(3);
+      // Eyes parent to the head bone — it must exist in the rig.
+      expect(RIG_CONFIG[id].some((b) => b.name === 'head')).toBe(true);
     });
   }
 });
