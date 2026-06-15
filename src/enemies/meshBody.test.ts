@@ -23,13 +23,16 @@ describe('Meshy enemy body wiring', () => {
       expect(RIG_CONFIG[id][0].name).toBe('root');
     });
 
-    it(`${id} has eye config + a head bone to parent eyes to`, () => {
-      const eye = EYE_CONFIG[id];
-      expect(eye).toBeTruthy();
-      expect(eye.left).toHaveLength(3);
-      expect(eye.right).toHaveLength(3);
-      // Eyes parent to the head bone — it must exist in the rig.
-      expect(RIG_CONFIG[id].some((b) => b.name === 'head')).toBe(true);
+    it(`${id} has a glow config with at least one stamp`, () => {
+      const glow = EYE_CONFIG[id];
+      expect(glow).toBeTruthy();
+      expect(Array.isArray(glow.stamps)).toBe(true);
+      expect(glow.stamps.length).toBeGreaterThan(0);
+      for (const s of glow.stamps) {
+        expect(typeof s.u).toBe('number');
+        expect(typeof s.v).toBe('number');
+        expect(s.r).toBeGreaterThan(0);
+      }
     });
   }
 });

@@ -157,16 +157,16 @@ describe('serializeTuningRecord', () => {
 });
 
 describe('serializeEyeConfigRecord', () => {
-  const eye: EyeConfig = { left: [0.4, 0.82, 0.92], right: [0.6, 0.82, 0.92], radius: 0.05 };
+  const eye: EyeConfig = { stamps: [{ u: 0.5, v: 0.29, r: 0.08 }, { u: 0.81, v: 0.31, r: 0.06 }] };
 
   it('emits the EYE_CONFIG declaration with unquoted keys + trimmed numbers', () => {
     const out = serializeEyeConfigRecord({ pou: eye });
     expect(out).toContain('export const EYE_CONFIG: Record<string, EyeConfig> = {');
-    expect(out).toContain('pou: { left: [0.4, 0.82, 0.92], right: [0.6, 0.82, 0.92], radius: 0.05 },');
+    expect(out).toContain('pou: { stamps: [{ u: 0.5, v: 0.29, r: 0.08 }, { u: 0.81, v: 0.31, r: 0.06 }] },');
   });
 
   it('round-trips deep-equal through the marked region', () => {
-    const record: Record<string, EyeConfig> = { pou: eye, newYama: { left: [0.45, 0.85, 0.95], right: [0.6, 0.85, 0.95] } };
+    const record: Record<string, EyeConfig> = { pou: eye, newYama: { stamps: [{ u: 0.45, v: 0.85, r: 0.05 }] } };
     const file = ['// <apo:gen eyeConfig>', 'export const EYE_CONFIG = { STALE: 1 };', '// </apo:gen>'].join('\n');
     const body = serializeEyeConfigRecord(record);
     const out = replaceMarkedRegion(file, 'eyeConfig', body);
@@ -175,20 +175,6 @@ describe('serializeEyeConfigRecord', () => {
     // eslint-disable-next-line no-new-func
     const parsed = new Function(`return ${literal}`)() as Record<string, EyeConfig>;
     expect(parsed.pou).toEqual(eye);
-    expect(parsed.newYama.radius).toBeUndefined();
-    expect(parsed.newYama.left).toEqual([0.45, 0.85, 0.95]);
-  });
-
-  it('serializes hand-painted stamps', () => {
-    const withStamps: EyeConfig = {
-      left: [0.4, 0.8, 0.9],
-      right: [0.6, 0.8, 0.9],
-      stamps: [{ u: 0.5, v: 0.29, r: 0.08 }, { u: 0.81, v: 0.31, r: 0.06 }],
-    };
-    const body = serializeEyeConfigRecord({ pou: withStamps });
-    const literal = body.slice(body.indexOf('{'), body.lastIndexOf('}') + 1);
-    // eslint-disable-next-line no-new-func
-    const parsed = new Function(`return ${literal}`)() as Record<string, EyeConfig>;
-    expect(parsed.pou.stamps).toEqual(withStamps.stamps);
+    expect(parsed.newYama.stamps).toEqual([{ u: 0.45, v: 0.85, r: 0.05 }]);
   });
 });

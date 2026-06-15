@@ -60,7 +60,6 @@ export async function buildMeshBody(enemyId: string, targetHeight?: number): Pro
   // Rig the main mesh (skeleton + skin weights) so the articulation can drive
   // it. Meshy exports a single mesh, so this rigs the whole body.
   let bones: Record<string, THREE.Bone> = {};
-  let skinnedGeom: THREE.BufferGeometry | null = null; // for the eye-glow mask
   const rig = RIG_CONFIG[enemyId];
   if (rig) {
     let mainMesh: THREE.Mesh | null = null;
@@ -73,7 +72,6 @@ export async function buildMeshBody(enemyId: string, targetHeight?: number): Pro
       parent.add(res.skinned);
       parent.remove(mainMesh);
       bones = res.bones;
-      skinnedGeom = res.skinned.geometry;
     }
   }
 
@@ -99,17 +97,17 @@ export async function buildMeshBody(enemyId: string, targetHeight?: number): Pro
     if (sm.isSkinnedMesh) sm.bind(sm.skeleton);
   });
 
-  // Glowing eyes for the menacing mood: the baked face can't change expression,
-  // so we make the PAINTED eye region of the albedo emit. An emissive mask lights
-  // up the dark eye pixels near each configured eye centre (see eyeGlow.ts), so
-  // the whole almond glows and deforms/tracks with the head — far better than the
-  // old "animal lightbulb" whole-body flush. Materials without a readable albedo
-  // fall back to a modest body flush so menacing still reads.
+  // Glowing features for the menacing mood: the baked face can't change
+  // expression, so we make the PAINTED regions of the albedo emit. An emissive
+  // mask lights up the dark painted pixels inside the per-enemy glow stamps (see
+  // eyeGlow.ts), so the eyes/mouth glow and deform/track with the head — far
+  // better than the old "animal lightbulb" whole-body flush. Materials without a
+  // readable albedo fall back to a modest body flush so menacing still reads.
   const eyeCfg = EYE_CONFIG[enemyId];
   const glowMats = new Set<THREE.MeshStandardMaterial>();
-  if (eyeCfg && skinnedGeom) {
+  if (eyeCfg) {
     for (const m of mats) {
-      if (m.map && applyEyeGlow(m, skinnedGeom, eyeCfg)) glowMats.add(m);
+      if (m.map && applyEyeGlow(m, eyeCfg)) glowMats.add(m);
     }
   }
 

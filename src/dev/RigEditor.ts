@@ -63,13 +63,11 @@ export class RigEditor {
   // Draggable handle (TransformControls gizmo doubles as the XYZ indicator).
   private tc: TransformControls | null = null;
   private handle = new THREE.Object3D(); // child of group → local pos is geom-space
-  private handleKind: 'pivot' | 'min' | 'max' | 'eyeL' | 'eyeR' = 'pivot';
+  private handleKind: 'pivot' | 'min' | 'max' = 'pivot';
   private dragging = false;
-  // Editable glowing-eye positions for this enemy (normalized model-box coords),
-  // saved to eyeConfig.ts. Previewed as the real emissive glow on the mesh;
-  // draggable via the handle, with small wireframe centre markers.
+  // Editable glow stamps for this enemy, saved to eyeConfig.ts. The real emissive
+  // glow is previewed live on the mesh material; stamps are added by the paint tool.
   private eyes: EyeConfig;
-  private eyeGlowTimer: ReturnType<typeof setTimeout> | null = null;
   // Paint tool: click the mesh to stamp a UV glow disc.
   private paintMode = false;
   private brushR = 0.08;
@@ -90,9 +88,7 @@ export class RigEditor {
     animTuning?: EnemyAnimTuning
   ) {
     this.config = structuredClone(RIG_CONFIG[model] ?? [{ name: 'root', pivot: [0.5, 0.5, 0.5] }]);
-    this.eyes = structuredClone(
-      EYE_CONFIG[model] ?? { left: [0.4, 0.8, 0.9], right: [0.6, 0.8, 0.9], radius: 0.04 }
-    );
+    this.eyes = structuredClone(EYE_CONFIG[model] ?? { stamps: [] });
     this.tuningAnim = animTuning ?? structuredClone(ENEMY_TUNING[model]?.anim ?? DEFAULT_ANIM);
     this.scene.add(this.group);
     this.group.add(this.anim);
@@ -119,16 +115,17 @@ export class RigEditor {
     this.tc = tc;
   }
 
-  /** Move the handle (+ gizmo) to the selected bone's pivot / box corner / eye. */
+  /** Move the handle (+ gizmo) to the selected bone's pivot / box corner. */
   private positionHandle(): void {
     if (!this.tc) return;
-    let norm: Vec3 | undefined;
-    if (this.handleKind === 'eyeL') norm = this.eyes.left;
-    else if (this.handleKind === 'eyeR') norm = this.eyes.right;
-    else {
-      const b = this.config[this.selected] as BoneConfig | undefined;
-      norm = !b ? undefined : this.handleKind === 'pivot' ? b.pivot : this.handleKind === 'min' ? b.box?.min : b.box?.max;
-    }
+    const b = this.config[this.selected] as BoneConfig | undefined;
+    const norm = !b
+      ? undefined
+      : this.handleKind === 'pivot'
+        ? b.pivot
+        : this.handleKind === 'min'
+          ? b.box?.min
+          : b.box?.max;
     if (!norm) {
       this.tc.detach();
       return;
@@ -144,15 +141,6 @@ export class RigEditor {
     const p = this.handle.position;
     const n = normFromWorld([p.x, p.y, p.z], this.bbMin, this.bbSize);
     const clamped: Vec3 = [clamp01(n[0]), clamp01(n[1]), clamp01(n[2])];
-    // Eyes don't affect the skin — just move the marker, no re-rig.
-    if (this.handleKind === 'eyeL' || this.handleKind === 'eyeR') {
-      if (this.handleKind === 'eyeL') this.eyes.left = clamped;
-      else this.eyes.right = clamped;
-      this.drawGizmos();
-      this.refreshPanel();
-      this.scheduleEyeGlow();
-      return;
-    }
     const b = this.config[this.selected] as BoneConfig | undefined;
     if (!b) return;
     if (this.handleKind === 'pivot') {
@@ -196,19 +184,13 @@ export class RigEditor {
     this.applyEyeGlowPreview();
   }
 
-  /** Rebuild the eye-glow emissive map on the live material + light it (preview). */
+  /** Rebuild the glow emissive map on the live material + light it (preview). */
   private applyEyeGlowPreview(): void {
     if (!this.skinned) return;
     const mat = this.skinned.material as THREE.MeshStandardMaterial;
-    if (applyEyeGlow(mat, this.skinned.geometry, this.eyes)) {
+    if (applyEyeGlow(mat, this.eyes)) {
       mat.emissiveIntensity = config.enemyGlow.eyeIntensity;
     }
-  }
-
-  /** Debounced eye-glow rebuild (the mask is ~1MP; don't rebuild every drag tick). */
-  private scheduleEyeGlow(): void {
-    if (this.eyeGlowTimer) clearTimeout(this.eyeGlowTimer);
-    this.eyeGlowTimer = setTimeout(() => this.applyEyeGlowPreview(), 120);
   }
 
   /** Wire click-to-paint: a click (not a drag) on the mesh stamps a UV glow disc. */
@@ -321,22 +303,6 @@ export class RigEditor {
         helper.renderOrder = 998;
         this.gizmos.add(helper);
       }
-    });
-
-    // Eye-centre markers: the REAL glow is previewed on the mesh material
-    // (applyEyeGlowPreview), so these are just small wireframe crosshairs marking
-    // each centre — yellow on the one the handle is dragging.
-    const mr = 0.025 * this.bbSize[1];
-    ([['eyeL', this.eyes.left], ['eyeR', this.eyes.right]] as const).forEach(([kind, n]) => {
-      const sel = this.handleKind === kind;
-      const p = worldFromNorm(n, this.bbMin, this.bbSize);
-      const marker = new THREE.Mesh(
-        new THREE.SphereGeometry(mr, 10, 8),
-        new THREE.MeshBasicMaterial({ color: sel ? 0xffe000 : 0xff3010, wireframe: true, depthTest: false })
-      );
-      marker.position.set(p[0], p[1], p[2]);
-      marker.renderOrder = 999;
-      this.gizmos.add(marker);
     });
   }
 
@@ -488,44 +454,9 @@ export class RigEditor {
       this.panel.appendChild(row);
     });
 
-    // --- glowing eyes (separate config: eyeConfig.ts) ---
-    mk('eyes (glow) — turn on "dark" to preview the glow');
-    const eyeRow = document.createElement('div');
-    eyeRow.style.cssText = 'display:flex;gap:4px;margin-bottom:4px';
-    (['eyeL', 'eyeR'] as const).forEach((kind) => {
-      const eb = document.createElement('button');
-      eb.textContent = kind === 'eyeL' ? 'drag L' : 'drag R';
-      eb.style.cssText =
-        `flex:1;padding:3px;border:0;border-radius:4px;cursor:pointer;color:#fde;` +
-        `background:${this.handleKind === kind ? '#a44' : '#28303a'}`;
-      eb.onclick = () => {
-        this.handleKind = kind;
-        this.positionHandle();
-        this.drawGizmos();
-        this.refreshPanel();
-      };
-      eyeRow.appendChild(eb);
-    });
-    this.panel.appendChild(eyeRow);
-    const activeEye = this.handleKind === 'eyeR' ? this.eyes.right : this.eyes.left;
-    (['x', 'y', 'z'] as const).forEach((ax, a) =>
-      this.panel.appendChild(
-        this.num(ax, activeEye[a], 0.005, (v) => {
-          activeEye[a] = v;
-          this.drawGizmos();
-          this.positionHandle();
-          this.scheduleEyeGlow();
-        })
-      )
-    );
-    this.panel.appendChild(
-      this.num('radius', this.eyes.radius ?? config.enemyGlow.eyeUvRadius, 0.005, (v) => {
-        this.eyes.radius = v;
-        this.scheduleEyeGlow();
-      })
-    );
-
-    // Paint tool: stamp extra glow discs by clicking the mesh.
+    // --- glow paint tool (separate config: eyeConfig.ts) ---
+    mk('glow — turn on "dark"; click mesh to paint');
+    // Paint tool: stamp glow discs by clicking the mesh.
     const stamps = this.eyes.stamps ?? [];
     const paintBtn = document.createElement('button');
     paintBtn.textContent = this.paintMode ? `painting — click mesh (${stamps.length})` : `paint glow (${stamps.length} stamps)`;
@@ -570,7 +501,7 @@ export class RigEditor {
     this.panel.appendChild(stampRow);
 
     const saveEyes = document.createElement('button');
-    saveEyes.textContent = 'save eyes to source';
+    saveEyes.textContent = 'save glow to source';
     saveEyes.style.cssText = 'width:100%;margin-top:6px;padding:5px;background:#a44;color:#fff;border:0;border-radius:5px;cursor:pointer';
     saveEyes.onclick = () => {
       const merged = { ...EYE_CONFIG, [this.model]: this.eyes };
@@ -578,7 +509,7 @@ export class RigEditor {
       saveEyes.textContent = 'saving…';
       void saveConfigBlock('src/enemies/eyeConfig.ts', 'eyeConfig', body).then((r) => {
         saveEyes.textContent = r.ok ? 'saved ✓' : `save failed: ${r.error ?? ''}`;
-        setTimeout(() => (saveEyes.textContent = 'save eyes to source'), 1600);
+        setTimeout(() => (saveEyes.textContent = 'save glow to source'), 1600);
       });
     };
     this.panel.appendChild(saveEyes);
@@ -615,7 +546,6 @@ export class RigEditor {
   }
 
   dispose(): void {
-    if (this.eyeGlowTimer) clearTimeout(this.eyeGlowTimer);
     if (this.domElement) {
       this.domElement.removeEventListener('pointerdown', this.onPaintDown);
       this.domElement.removeEventListener('pointerup', this.onPaintUp);

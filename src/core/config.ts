@@ -143,11 +143,8 @@ export interface GameConfig {
     /** Eye emissive intensity. Kept low — ACES tone-mapping desaturates hot
      * emissive toward white, so a redder glow wants a modest value. */
     eyeIntensity: number;
-    /** Glow gate radius in UV space around each eye centre (per-enemy override
-     * lives in eyeConfig.radius). */
-    eyeUvRadius: number;
-    /** Albedo luminance (0..1) under which a gated texel glows — picks the dark
-     * painted eye out of the lighter face. */
+    /** Albedo luminance (0..1) under which a stamped texel glows — picks the
+     * dark painted feature out of the lighter body. */
     eyeDarkThreshold: number;
   };
 
@@ -336,7 +333,6 @@ export const config: GameConfig = {
   enemyGlow: {
     eyeColor: 0xff0800,
     eyeIntensity: 1.1,
-    eyeUvRadius: 0.16,
     eyeDarkThreshold: 0.25,
   },
 
