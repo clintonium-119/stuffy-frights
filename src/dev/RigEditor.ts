@@ -70,6 +70,15 @@ export class RigEditor {
   // draggable via the handle, with small wireframe centre markers.
   private eyes: EyeConfig;
   private eyeGlowTimer: ReturnType<typeof setTimeout> | null = null;
+  // Paint tool: click the mesh to stamp a UV glow disc.
+  private paintMode = false;
+  private brushR = 0.08;
+  private readonly raycaster = new THREE.Raycaster();
+  private paintDownXY: [number, number] | null = null;
+  private readonly onPaintDown = (e: PointerEvent): void => {
+    this.paintDownXY = [e.clientX, e.clientY];
+  };
+  private readonly onPaintUp = (e: PointerEvent): void => this.handlePaintUp(e);
 
   constructor(
     private scene: THREE.Scene,
@@ -90,6 +99,7 @@ export class RigEditor {
     this.group.add(this.gizmos);
     this.group.add(this.handle);
     this.setupTransform();
+    this.setupPaint();
     this.buildPanel();
     void this.load();
   }
@@ -199,6 +209,34 @@ export class RigEditor {
   private scheduleEyeGlow(): void {
     if (this.eyeGlowTimer) clearTimeout(this.eyeGlowTimer);
     this.eyeGlowTimer = setTimeout(() => this.applyEyeGlowPreview(), 120);
+  }
+
+  /** Wire click-to-paint: a click (not a drag) on the mesh stamps a UV glow disc. */
+  private setupPaint(): void {
+    if (!this.domElement) return;
+    this.domElement.addEventListener('pointerdown', this.onPaintDown);
+    this.domElement.addEventListener('pointerup', this.onPaintUp);
+  }
+
+  /** On a paint-mode click, raycast the mesh and add a stamp at the hit UV. */
+  private handlePaintUp(e: PointerEvent): void {
+    const down = this.paintDownXY;
+    this.paintDownXY = null;
+    if (!this.paintMode || !down || !this.camera || !this.domElement || !this.skinned) return;
+    // A drag (moved pointer) is an orbit, not a paint stroke.
+    if (Math.hypot(e.clientX - down[0], e.clientY - down[1]) > 5) return;
+    const rect = this.domElement.getBoundingClientRect();
+    const ndc = new THREE.Vector2(
+      ((e.clientX - rect.left) / rect.width) * 2 - 1,
+      -((e.clientY - rect.top) / rect.height) * 2 + 1
+    );
+    this.raycaster.setFromCamera(ndc, this.camera);
+    const hit = this.raycaster.intersectObject(this.skinned, true).find((h) => h.uv);
+    if (!hit?.uv) return;
+    if (!this.eyes.stamps) this.eyes.stamps = [];
+    this.eyes.stamps.push({ u: +hit.uv.x.toFixed(4), v: +hit.uv.y.toFixed(4), r: +this.brushR.toFixed(4) });
+    this.applyEyeGlowPreview();
+    this.refreshPanel();
   }
 
   /** Re-rig the skinned mesh + rebuild the articulation driver (no UI redraw). */
@@ -486,6 +524,51 @@ export class RigEditor {
         this.scheduleEyeGlow();
       })
     );
+
+    // Paint tool: stamp extra glow discs by clicking the mesh.
+    const stamps = this.eyes.stamps ?? [];
+    const paintBtn = document.createElement('button');
+    paintBtn.textContent = this.paintMode ? `painting — click mesh (${stamps.length})` : `paint glow (${stamps.length} stamps)`;
+    paintBtn.style.cssText =
+      `width:100%;margin-top:6px;padding:4px;border:0;border-radius:4px;cursor:pointer;color:#fde;` +
+      `background:${this.paintMode ? '#c63' : '#28303a'}`;
+    paintBtn.onclick = () => {
+      this.paintMode = !this.paintMode;
+      // Detach the move gizmo while painting so it can't swallow clicks.
+      if (this.paintMode) this.tc?.detach();
+      else this.positionHandle();
+      this.refreshPanel();
+    };
+    this.panel.appendChild(paintBtn);
+    this.panel.appendChild(
+      this.num('brush', this.brushR, 0.005, (v) => (this.brushR = Math.max(0.01, v)))
+    );
+    const stampRow = document.createElement('div');
+    stampRow.style.cssText = 'display:flex;gap:4px;margin:2px 0';
+    const undo = document.createElement('button');
+    undo.textContent = 'undo stamp';
+    undo.disabled = stamps.length === 0;
+    const clear = document.createElement('button');
+    clear.textContent = 'clear';
+    clear.disabled = stamps.length === 0;
+    for (const b of [undo, clear]) {
+      b.style.cssText =
+        `flex:1;padding:3px;border:0;border-radius:4px;color:#cde;background:#28303a;` +
+        `cursor:${b.disabled ? 'default' : 'pointer'};opacity:${b.disabled ? 0.4 : 1}`;
+    }
+    undo.onclick = () => {
+      this.eyes.stamps?.pop();
+      this.applyEyeGlowPreview();
+      this.refreshPanel();
+    };
+    clear.onclick = () => {
+      this.eyes.stamps = [];
+      this.applyEyeGlowPreview();
+      this.refreshPanel();
+    };
+    stampRow.append(undo, clear);
+    this.panel.appendChild(stampRow);
+
     const saveEyes = document.createElement('button');
     saveEyes.textContent = 'save eyes to source';
     saveEyes.style.cssText = 'width:100%;margin-top:6px;padding:5px;background:#a44;color:#fff;border:0;border-radius:5px;cursor:pointer';
@@ -533,6 +616,10 @@ export class RigEditor {
 
   dispose(): void {
     if (this.eyeGlowTimer) clearTimeout(this.eyeGlowTimer);
+    if (this.domElement) {
+      this.domElement.removeEventListener('pointerdown', this.onPaintDown);
+      this.domElement.removeEventListener('pointerup', this.onPaintUp);
+    }
     if (this.tc) {
       this.tc.detach();
       this.tc.dispose();

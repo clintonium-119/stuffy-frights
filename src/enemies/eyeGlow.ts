@@ -57,6 +57,14 @@ export function buildEyeGlowMask(
   const dark = config.enemyGlow.eyeDarkThreshold;
   const S = MASK_SIZE;
 
+  // Gate circles in UV space: the two eye centres (auto) + any hand-painted
+  // stamps. A texel glows if it's dark AND inside any circle.
+  const circles: Array<[number, number, number]> = [
+    [eyeUV[0][0], eyeUV[0][1], uvR],
+    [eyeUV[1][0], eyeUV[1][1], uvR],
+  ];
+  for (const s of eyes.stamps ?? []) circles.push([s.u, s.v, s.r]);
+
   const src = document.createElement('canvas');
   src.width = S;
   src.height = S;
@@ -72,7 +80,6 @@ export function buildEyeGlowMask(
   if (!octx) return null;
   const oimg = octx.createImageData(S, S);
   const od = oimg.data;
-  const r2 = uvR * uvR;
   // Mask v matches the albedo's flip: for flipY=false a canvas row maps to
   // v = py/S directly; for flipY=true it's mirrored.
   const flip = !!albedo!.flipY;
@@ -83,12 +90,12 @@ export function buildEyeGlowMask(
       const vRaw = (py + 0.5) / S;
       const v = flip ? 1 - vRaw : vRaw;
       let gate = 0;
-      for (const e of eyeUV) {
-        const du = u - e[0];
-        const dv = v - e[1];
+      for (const [cu, cv, cr] of circles) {
+        const du = u - cu;
+        const dv = v - cv;
         const dd = du * du + dv * dv;
-        if (dd < r2) {
-          const t = 1 - Math.sqrt(dd) / uvR;
+        if (dd < cr * cr) {
+          const t = 1 - Math.sqrt(dd) / cr;
           if (t > gate) gate = t;
         }
       }

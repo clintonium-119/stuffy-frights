@@ -178,4 +178,17 @@ describe('serializeEyeConfigRecord', () => {
     expect(parsed.newYama.radius).toBeUndefined();
     expect(parsed.newYama.left).toEqual([0.45, 0.85, 0.95]);
   });
+
+  it('serializes hand-painted stamps', () => {
+    const withStamps: EyeConfig = {
+      left: [0.4, 0.8, 0.9],
+      right: [0.6, 0.8, 0.9],
+      stamps: [{ u: 0.5, v: 0.29, r: 0.08 }, { u: 0.81, v: 0.31, r: 0.06 }],
+    };
+    const body = serializeEyeConfigRecord({ pou: withStamps });
+    const literal = body.slice(body.indexOf('{'), body.lastIndexOf('}') + 1);
+    // eslint-disable-next-line no-new-func
+    const parsed = new Function(`return ${literal}`)() as Record<string, EyeConfig>;
+    expect(parsed.pou.stamps).toEqual(withStamps.stamps);
+  });
 });
