@@ -79,9 +79,9 @@ const FACTORY: Record<EnemyKey, () => EnemyBase> = {
 };
 
 const LABEL: Record<EnemyKey, string> = {
-  poo: 'Poo / Pou',
+  poo: 'Pou / pou',
   fuggie: 'Fuggie / fuggler',
-  charles: 'Charles / gorilla',
+  charles: 'Little Timmy / gorilla',
   newyama: 'NewYama / llama',
 };
 
