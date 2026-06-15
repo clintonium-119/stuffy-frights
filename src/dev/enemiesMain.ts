@@ -1,10 +1,13 @@
 import { EnemyViewer } from './EnemyViewer';
 import { parseViewerRoute } from './enemyViewerRoute';
+import { mountEditorNav } from './editorNav';
 
 /**
- * Entry point for viewer.html — the dev-only enemy studio. Pick the enemy
- * from `?enemy=` or the hash (`#newYama`); default to New Yama.
+ * Entry point for enemies.html — the dev-only enemy studio (the "Enemies" page
+ * of the debug editor). Pick the enemy from `?enemy=` or the hash (`#newYama`);
+ * default to New Yama.
  */
+mountEditorNav('enemies');
 const canvas = document.getElementById('viewer') as HTMLCanvasElement;
 const route = parseViewerRoute(location.hash) ?? parseViewerRoute(location.search);
 const viewer = new EnemyViewer(canvas, route?.enemy ?? 'newYama');

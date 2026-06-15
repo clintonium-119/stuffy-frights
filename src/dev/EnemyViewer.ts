@@ -79,7 +79,7 @@ const PRESETS: Record<string, THREE.Vector3> = {
 
 /**
  * Standalone studio viewer for dialing in one stuffy's model + animations
- * against the reference photos. Dev-only (its own Vite entry, viewer.html) —
+ * against the reference photos. Dev-only (its own Vite entry, enemies.html) —
  * never imported by the game. Reuses the real enemy classes + materials.
  */
 export class EnemyViewer {
