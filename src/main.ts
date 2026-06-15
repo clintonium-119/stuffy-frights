@@ -22,6 +22,7 @@ import { house } from './world/houseLayout';
 import { HouseBuilder } from './world/HouseBuilder';
 import { initMaterials } from './world/materialLibrary';
 import { worldToCell, CELL_SIZE, floorY } from './world/layoutTypes';
+import { floorVisibilityTargets } from './world/floorVisibility';
 import { HidingSystem } from './systems/HidingSpot';
 import { PassageSystem } from './systems/SecretPassage';
 import { WeatherSystem } from './systems/Weather';
@@ -131,11 +132,11 @@ engine.renderer.xr.addEventListener('sessionend', () => {
   vrOverlay = 'none';
 });
 
+// Initial floor framing on the main floor (index 1); per-floor values come
+// from the shared selector so the game + dev floors preview can't drift.
+const initialFloorVis = floorVisibilityTargets(config.visibility, 1);
 engine.scene.background = new THREE.Color(config.visibility.fogColor);
-engine.scene.fog = new THREE.FogExp2(
-  config.visibility.fogColor,
-  config.visibility.fogDensityByFloor[1]
-);
+engine.scene.fog = new THREE.FogExp2(config.visibility.fogColor, initialFloorVis.fogDensity);
 engine.renderer.toneMappingExposure = config.visibility.toneExposure;
 
 // Wire renderer anisotropy into the PBR material library before any material builds.
@@ -144,16 +145,9 @@ initMaterials(engine.renderer);
 const world = HouseBuilder.build(house);
 engine.scene.add(world.group);
 
-const ambientLight = new THREE.AmbientLight(
-  config.visibility.ambientColor,
-  config.visibility.ambientIntensityByFloor[1]
-);
+const ambientLight = new THREE.AmbientLight(config.visibility.ambientColor, initialFloorVis.ambient);
 engine.scene.add(ambientLight);
-const hemisphereLight = new THREE.HemisphereLight(
-  0x303a52,
-  0x14100c,
-  config.visibility.hemisphereIntensityByFloor[1]
-);
+const hemisphereLight = new THREE.HemisphereLight(0x303a52, 0x14100c, initialFloorVis.hemisphere);
 engine.scene.add(hemisphereLight);
 
 // Image-based lighting: a dim, abandoned-interior CC0 HDRI gives PBR surfaces
@@ -860,12 +854,12 @@ engine.addUpdatable({
     }
 
     const fog = engine.scene.fog as THREE.FogExp2 | null;
-    if (fog) fog.density = config.visibility.fogDensityByFloor[player.floorIndex];
     // Per-floor gloom: ease ambient/hemisphere toward this floor's target so
     // the basement reads markedly darker without popping on stairs.
-    const fi = player.floorIndex;
-    const ambTarget = config.visibility.ambientIntensityByFloor[fi];
-    const hemTarget = config.visibility.hemisphereIntensityByFloor[fi];
+    const floorVis = floorVisibilityTargets(config.visibility, player.floorIndex);
+    if (fog) fog.density = floorVis.fogDensity;
+    const ambTarget = floorVis.ambient;
+    const hemTarget = floorVis.hemisphere;
     ambientLight.intensity += (ambTarget - ambientLight.intensity) * Math.min(1, 3 * dt);
     hemisphereLight.intensity += (hemTarget - hemisphereLight.intensity) * Math.min(1, 3 * dt);
 
