@@ -638,6 +638,45 @@ function launchRun(): void {
   enterPlayingChrome();
 }
 
+/**
+ * Quit the current run back to the main menu — from the pause menu, the
+ * game-over screen, or the win screen. Stages a fresh world (so the next PLAY
+ * starts clean; the sim is frozen at the menu), drops the in-run chrome, and
+ * shows the title (desktop / mobile) or the in-headset menu (VR).
+ */
+function quitToMenu(): void {
+  if (!gs.transition('toMenu')) return;
+  startNewRun();
+  hud.show(false);
+  touch?.hide();
+  map.close();
+  menus.hide();
+  vrMessage.hide();
+  if (engine.renderer.xr.isPresenting) {
+    openVRMenu();
+  } else {
+    input.exitPointerLock();
+    menus.showTitle();
+  }
+}
+
+/** In-headset pause menu: resume the run, or quit back to the main menu. */
+function openVRPauseMenu(): void {
+  vrMessage.hide();
+  vrOverlay = 'pause';
+  vrMenu.show(engine.camera, 'PAUSED', [
+    {
+      label: 'RESUME',
+      onSelect: () => {
+        if (!gs.transition('resume')) return;
+        vrMenu.hide();
+        vrOverlay = 'none';
+      },
+    },
+    { label: 'MAIN MENU', onSelect: () => quitToMenu() },
+  ]);
+}
+
 /** Switch difficulty live (config re-applies cleanly) and refresh HUD/menu label. */
 function setVRDifficulty(level: DifficultyLevel): void {
   if (ironmanOnBoot) settings.abandonIronman();
@@ -728,6 +767,7 @@ menus.onResume = () => {
   else if (!engine.renderer.xr.isPresenting) input.requestPointerLock();
 };
 menus.onRetry = playAgain; // in-place restart (no reload) — fresh seed, keys move
+menus.onQuitToMenu = quitToMenu;
 
 // Browser Esc exits pointer lock — make it a clean pause instead of chaos.
 input.onPointerLockLost = () => {
@@ -804,10 +844,7 @@ engine.addUpdatable({
       if (gs.transition('pause')) {
         menus.showPause();
         touch?.hide();
-        if (xrSession) {
-          vrMessage.show(engine.camera, 'PAUSED', 'the stuffies are waiting…', '#cdb98a', 'Pull the right trigger to resume');
-          vrOverlay = 'pause';
-        }
+        if (xrSession) openVRPauseMenu();
       }
     }
 
@@ -906,19 +943,11 @@ engine.onFrame = (dt) => {
     // screens, so poll the controller here (onFrame always runs). Trigger resumes
     // a pause; on game-over / win it reloads to the title (a reload ends the XR
     // session anyway) where the headset browser re-enters VR with one tap.
-    if (vrMessage.visible) {
+    if (vrMessage.visible && (vrOverlay === 'gameover' || vrOverlay === 'win')) {
+      // Game-over / win panel → trigger returns to the in-headset main menu
+      // (stays in VR). Pause now uses the VR menu (handled below), not this panel.
       xrControls?.sample();
-      const i = xrControls?.intent;
-      if (vrOverlay === 'pause') {
-        if (i && (i.interact || i.pause)) {
-          gs.transition('resume');
-          vrMessage.hide();
-          vrOverlay = 'none';
-        }
-      } else if (i?.interact) {
-        // Game-over / win → back to the in-headset main menu (stays in VR).
-        openVRMenu();
-      }
+      if (xrControls?.intent?.interact) openVRMenu();
     } else if (vrMenu.visible) {
       xrControls?.sample();
       const i = xrControls?.intent;

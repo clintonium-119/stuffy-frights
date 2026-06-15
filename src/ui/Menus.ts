@@ -44,6 +44,8 @@ export class Menus {
   onStart: (() => void) | null = null;
   onResume: (() => void) | null = null;
   onRetry: (() => void) | null = null;
+  /** Player chose to quit back to the main menu (from pause / game-over / win). */
+  onQuitToMenu: (() => void) | null = null;
   /** Player chose a difficulty on the select screen (main persists + starts/reloads). */
   onSelectDifficulty: ((level: DifficultyLevel) => void) | null = null;
   /** Player asked to view the stats screen. */
@@ -206,9 +208,10 @@ export class Menus {
       <h2 style="letter-spacing:3px;color:#d8c9a0">PAUSED</h2>
       <p style="color:#8a7d65">the stuffies are waiting…</p>
       ${CONTROLS_HTML}
-      <div>${this.button('KEEP PLAYING', 'btn-resume')}</div>
+      <div>${this.button('KEEP PLAYING', 'btn-resume')}${this.button('MAIN MENU', 'btn-quit')}</div>
     `);
     this.root.querySelector('#btn-resume')!.addEventListener('click', () => this.onResume?.());
+    this.root.querySelector('#btn-quit')!.addEventListener('click', () => this.onQuitToMenu?.());
   }
 
   showGameOver(enemyId: string, ironmanReset = false): void {
@@ -223,9 +226,10 @@ export class Menus {
         Squeezed in a very firm hug until everything went dark.<br>
         The house resets. The keys move. Try again?</p>
       ${ironLine}
-      <div>${this.button('TRY AGAIN', 'btn-retry')}</div>
+      <div>${this.button('TRY AGAIN', 'btn-retry')}${this.button('MAIN MENU', 'btn-quit')}</div>
     `);
     this.root.querySelector('#btn-retry')!.addEventListener('click', () => this.onRetry?.());
+    this.root.querySelector('#btn-quit')!.addEventListener('click', () => this.onQuitToMenu?.());
   }
 
   /**
@@ -259,11 +263,12 @@ export class Menus {
         Behind you, four fuzzy silhouettes crowd the doorway… waving?<br><br>
         <b>Time:</b> ${mins}m ${secs}s &nbsp;·&nbsp; <b>Doors tried:</b> ${stats.exitsTried} of 3</p>
       ${ladderLine}
-      <div>${buttons}</div>
+      <div>${buttons}${this.button('MAIN MENU', 'btn-quit')}</div>
     `);
     this.root
       .querySelector('#btn-continue')
       ?.addEventListener('click', () => this.onContinueIronman?.());
     this.root.querySelector('#btn-retry')?.addEventListener('click', () => this.onRetry?.());
+    this.root.querySelector('#btn-quit')!.addEventListener('click', () => this.onQuitToMenu?.());
   }
 }

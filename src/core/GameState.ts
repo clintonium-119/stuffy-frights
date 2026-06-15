@@ -16,7 +16,8 @@ export type GameEvent =
   | 'caught'
   | 'gameOverShown'
   | 'retry'
-  | 'win';
+  | 'win'
+  | 'toMenu';
 
 /**
  * The run's state machine as a pure transition table. Key semantics from
@@ -27,10 +28,10 @@ const TABLE: Record<GameStateName, Partial<Record<GameEvent, GameStateName>>> = 
   menu: { start: 'playing' },
   playing: { openMap: 'mapOpen', pause: 'paused', caught: 'jumpscare', win: 'won' },
   mapOpen: { closeMap: 'playing', pause: 'paused', caught: 'jumpscare', win: 'won' },
-  paused: { resume: 'playing' },
+  paused: { resume: 'playing', toMenu: 'menu' },
   jumpscare: { gameOverShown: 'gameOver' },
-  gameOver: { retry: 'playing' },
-  won: { retry: 'playing' },
+  gameOver: { retry: 'playing', toMenu: 'menu' },
+  won: { retry: 'playing', toMenu: 'menu' },
 };
 
 export class GameState {
