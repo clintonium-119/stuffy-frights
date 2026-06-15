@@ -51,3 +51,20 @@ describe('rigEditorMath', () => {
     expect(out.split('\n')[1]).not.toContain('box:');
   });
 });
+
+describe('rig handle drag', () => {
+  it('clampBox corrects a box corner dragged past its partner', () => {
+    // max dragged below min on X → clampBox keeps min<max within [0,1].
+    const b = clampBox({ min: [0.6, 0.2, 0.2], max: [0.3, 0.8, 0.8] });
+    expect(b.min[0]).toBeLessThan(b.max[0]);
+    for (let a = 0; a < 3; a++) {
+      expect(b.min[a]).toBeGreaterThanOrEqual(0);
+      expect(b.max[a]).toBeLessThanOrEqual(1);
+    }
+  });
+
+  it('clamp01 bounds a handle dragged outside the bounding box', () => {
+    expect(clamp01(1.4)).toBe(1);
+    expect(clamp01(-0.3)).toBe(0);
+  });
+});

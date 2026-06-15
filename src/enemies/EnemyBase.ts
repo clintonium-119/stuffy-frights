@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { config } from '../core/config';
-import { solveGaze, solveFootLift, bodyPitchFromFeet } from './articulation';
+import { Articulator, GaitStyle, ArticulatorBones } from './Articulator';
 
 export type Mood = 'calm' | 'menacing';
 
@@ -10,7 +10,7 @@ export type Mood = 'calm' | 'menacing';
  * the four legs swing (NewYama), 'haul' = subtle rock while the arms swing
  * (Charles). Limbed gaits also swing their rig bones.
  */
-const GAIT: Record<string, 'hop' | 'shuffle' | 'trot' | 'haul'> = {
+const GAIT: Record<string, GaitStyle> = {
   poo: 'hop',
   fuggie: 'shuffle',
   newYama: 'trot',
@@ -77,14 +77,11 @@ export abstract class EnemyBase {
   private lookTarget: THREE.Vector3 | null = null;
   private lookIntensity = 0;
   private aiSetMenacing: ((on: boolean) => void) | null = null;
-  private aiHead: { obj: THREE.Object3D; maxYaw: number; maxPitch: number } | null = null;
-  private aiLegs: THREE.Object3D[] | null = null;
-  private aiArms: THREE.Object3D[] | null = null;
-  private static readonly _tmp = new THREE.Vector3();
+  /** Shared procedural-articulation driver, built once the AI body mounts. */
+  private articulator: Articulator | null = null;
 
   /** Body-level locomotion style, by enemy id. Limbed ones also swing bones. */
-  private gaitStyle: 'hop' | 'shuffle' | 'trot' | 'haul' = 'trot';
-  private bodyAnim: THREE.Object3D | null = null; // wrapper bobbed/squashed by gait
+  private gaitStyle: GaitStyle = 'trot';
   private bodyHeight = 1;
   private bodyPromise: Promise<void> | null = null;
   private heldFor = 0;
@@ -140,151 +137,39 @@ export abstract class EnemyBase {
     const anim = new THREE.Group();
     anim.add(body.group);
     this.group.add(anim);
-    this.bodyAnim = anim;
     body.group.traverse((o) => {
       if (o instanceof THREE.Mesh) o.castShadow = true;
     });
     this.aiSetMenacing = body.setMenacing;
     this.aiSetMenacing(this.mood === 'menacing');
-    if (body.bones.head) this.aiHead = { obj: body.bones.head, maxYaw: 0.7, maxPitch: 0.7 };
+    const bones: ArticulatorBones = {};
+    if (body.bones.head) bones.head = body.bones.head;
     const legs = ['legFL', 'legFR', 'legHL', 'legHR'].map((n) => body.bones[n]).filter(Boolean);
-    if (legs.length) this.aiLegs = legs;
+    if (legs.length) bones.legs = legs;
     const arms = ['armL', 'armR'].map((n) => body.bones[n]).filter(Boolean);
-    if (arms.length >= 2) this.aiArms = arms;
+    if (arms.length >= 2) bones.arms = arms;
+    this.articulator = new Articulator(
+      bones,
+      this.group,
+      anim,
+      this.gaitStyle,
+      this.bodyHeight,
+      (kind) => this.onGaitBeat?.(kind)
+    );
   }
 
-  /** Rig-bone head-turn gaze + stair foot placement, eased per step. */
+  /** Rig-bone head gaze, gait swing, stair foot placement + body bob/squash. */
   private updateArticulation(dt: number): void {
-    const k = Math.min(1, 8 * dt);
-    const head = this.aiHead;
-    if (head) {
-      let yaw = 0;
-      let pitch = 0;
-      if (this.lookTarget && this.lookIntensity > 0) {
-        const w = head.obj.getWorldPosition(EnemyBase._tmp);
-        const g = solveGaze({
-          headX: w.x,
-          headY: w.y,
-          headZ: w.z,
-          targetX: this.lookTarget.x,
-          targetY: this.lookTarget.y,
-          targetZ: this.lookTarget.z,
-          bodyYaw: this.group.rotation.y,
-          maxYaw: head.maxYaw,
-          maxPitch: head.maxPitch,
-        });
-        yaw = g.yaw * this.lookIntensity;
-        pitch = g.pitch * this.lookIntensity;
-      }
-      head.obj.rotation.y += (yaw - head.obj.rotation.y) * k;
-      head.obj.rotation.x += (pitch - head.obj.rotation.x) * k;
-    }
-
-    const legs = this.aiLegs;
-    // AI rig walk: swing the leg bones fore/aft while moving — quadrupeds in
-    // diagonal pairs (FL+HR / FR+HL), bipeds (e.g. Fuggie's stubby feet) in
-    // simple alternation. Eased back to rest when stopped.
-    if (this.aiLegs && this.aiLegs.length >= 2) {
-      const moving = this.isMoving;
-      const phase = this.gaitT * 2.6;
-      const sw = 0.45;
-      const quad = this.aiLegs.length >= 4;
-      const target = (i: number): number => {
-        if (!moving) return 0;
-        const back = quad ? i === 1 || i === 2 : i % 2 === 1; // which legs lag a half-cycle
-        return Math.sin(phase + (back ? Math.PI : 0)) * sw;
-      };
-      this.aiLegs.forEach((leg, i) => {
-        leg.rotation.x = moving ? target(i) : leg.rotation.x + (0 - leg.rotation.x) * k;
-      });
-    }
-    // AI rig arm-walk (e.g. the gorilla): the long arms swing fore/aft in
-    // opposition as he hauls himself along, easing back to rest when stopped.
-    // Only rotation.x is touched, so the splay baked into rotation.z is kept.
-    if (this.aiArms && this.aiArms.length >= 2) {
-      // Arms extend sideways (along X), so fore/aft hauling is a yaw (Y) swing.
-      if (this.isMoving) {
-        const sw = Math.sin(this.gaitT * 2.6) * 0.5;
-        this.aiArms[0].rotation.y = sw;
-        this.aiArms[1].rotation.y = -sw;
-      } else {
-        this.aiArms[0].rotation.y += (0 - this.aiArms[0].rotation.y) * k;
-        this.aiArms[1].rotation.y += (0 - this.aiArms[1].rotation.y) * k;
-      }
-    }
-    if (legs && this.floorHeightAt) {
-      const bodyGround = this.floorHeightAt(this.position.x, this.position.z, this.floorIndex);
-      let frontLift = 0;
-      let frontN = 0;
-      let backLift = 0;
-      let backN = 0;
-      for (const leg of legs) {
-        const w = leg.getWorldPosition(EnemyBase._tmp);
-        const ground = this.floorHeightAt(w.x, w.z, this.floorIndex);
-        const lift = solveFootLift({ groundUnderFoot: ground, groundUnderBody: bodyGround, maxLift: 0.4 });
-        const data = leg.userData as { baseY?: number };
-        if (data.baseY === undefined) data.baseY = leg.position.y;
-        leg.position.y += (data.baseY + lift - leg.position.y) * k;
-        // Front/back foot lift drives the body pitch on slopes (+Z is front).
-        if (leg.position.z > 0.05) {
-          frontLift += lift;
-          frontN++;
-        } else if (leg.position.z < -0.05) {
-          backLift += lift;
-          backN++;
-        }
-      }
-      // Tip the whole body with the stairs (nose-up ascending, nose-down
-      // descending) — pitch is the X axis, independent of the facing yaw.
-      if (frontN > 0 && backN > 0) {
-        const pitch = bodyPitchFromFeet(frontLift / frontN, backLift / backN, 0.6);
-        const target = Math.max(-0.16, Math.min(0.16, -pitch));
-        this.group.rotation.x += (target - this.group.rotation.x) * k;
-      }
-    }
-
-    this.animateBody(dt);
-  }
-
-  /**
-   * Body-level locomotion on the anim wrapper: Pou bounces (hop) and squishes
-   * down / stretches up; Fuggie shuffles with a short-limb side-rock + bob; the
-   * legged/armed ones get a subtle bob while their bones do the work. Eased back
-   * to neutral when idle.
-   */
-  private animateBody(dt: number): void {
-    const a = this.bodyAnim;
-    if (!a) return;
-    const k = Math.min(1, 12 * dt);
-    const h = this.bodyHeight;
-    if (this.isMoving) {
-      if (this.gaitStyle === 'hop') {
-        const ph = this.gaitT * 3.2;
-        const hop = Math.abs(Math.sin(ph)); // 0 at ground, 1 at apex
-        a.position.y = hop * 0.18 * h;
-        // squish down at the bottom, stretch up at the top (volume-preserving)
-        const st = 1 + (hop - 0.5) * 0.28;
-        a.scale.set(1 / Math.sqrt(st), st, 1 / Math.sqrt(st));
-        a.rotation.z = 0;
-        if (hop < 0.06 && dt > 0) this.onGaitBeat?.('fwump');
-      } else if (this.gaitStyle === 'shuffle') {
-        const ph = this.gaitT * 3.6;
-        a.position.y = Math.abs(Math.sin(ph)) * 0.05 * h;
-        a.rotation.z = Math.sin(ph) * 0.07; // short-limb side rock
-        a.scale.set(1, 1, 1);
-        if (Math.abs(Math.sin(ph)) < 0.06 && dt > 0) this.onGaitBeat?.('shuffle');
-      } else {
-        a.position.y = Math.abs(Math.sin(this.gaitT * 2.6)) * 0.03 * h;
-        a.rotation.z = 0;
-        a.scale.set(1, 1, 1);
-      }
-    } else {
-      a.position.y += (0 - a.position.y) * k;
-      a.rotation.z += (0 - a.rotation.z) * k;
-      a.scale.x += (1 - a.scale.x) * k;
-      a.scale.y += (1 - a.scale.y) * k;
-      a.scale.z += (1 - a.scale.z) * k;
-    }
+    this.articulator?.pose({
+      dt,
+      moving: this.isMoving,
+      gaitT: this.gaitT,
+      lookTarget: this.lookTarget,
+      lookIntensity: this.lookIntensity,
+      position: this.position,
+      floorIndex: this.floorIndex,
+      floorHeightAt: this.floorHeightAt,
+    });
   }
 
   get isMoving(): boolean {

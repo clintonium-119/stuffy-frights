@@ -221,7 +221,13 @@ export class EnemyViewer {
     }
     this.rigEditor?.dispose();
     this.currentKey = key;
-    this.rigEditor = new RigEditor(this.scene, KEY_TO_MODEL[key]);
+    this.rigEditor = new RigEditor(
+      this.scene,
+      KEY_TO_MODEL[key],
+      this.camera,
+      this.renderer.domElement,
+      this.controls
+    );
     this.target.set(0, 0.75, 0);
     this.frameDist = 3.4;
     this.applyPreset('front');
@@ -318,6 +324,21 @@ export class EnemyViewer {
         e.group.position.z = 0;
       }
       if (this.turntable) this.holder.rotation.y += dt * 0.6;
+    }
+    // Rig edit mode: drive the editor's own bones with the shared articulation
+    // so rig changes are seen against the real idle / walk / crouch-look motion.
+    if (this.rigEditor) {
+      const moving = this.mode === 'walk';
+      let lookTarget: THREE.Vector3 | null = null;
+      let lookIntensity = 0;
+      if (this.crouchTarget) {
+        lookTarget = new THREE.Vector3(this.target.x, 0.25, this.target.z + 1.5);
+        lookIntensity = 1;
+      } else if (this.lookAtCamera) {
+        lookTarget = this.camera.position.clone();
+        lookIntensity = 1;
+      }
+      this.rigEditor.tick(dt, { moving, lookTarget, lookIntensity });
     }
     this.controls.update();
     this.renderer.render(this.scene, this.camera);
