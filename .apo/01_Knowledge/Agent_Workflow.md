@@ -33,7 +33,7 @@ Fork spec terseness directive (from `~/.pi/agent/AGENTS.md`, read 2026-06-12): i
 >
 > Expected answers when this section is filled:
 > - [ ] Should a project-level `CLAUDE.md`/`AGENTS.md` exist with game-specific rails (asset handling, perf budgets)?
-> - [ ] Playtest workflow: how do agents verify gameplay changes (verify loop at `http://localhost:3000` is configured — `.apo/.config.json`, written 2026-06-12)?
+> - [ ] Playtest workflow: how do agents verify gameplay changes (verify loop at `http://localhost:3100` is configured — `.apo/.config.json`, written 2026-06-12)?
 >
 > Look at: team preference; first few `/apo:execute` sessions.
 
@@ -41,4 +41,4 @@ Fork spec terseness directive (from `~/.pi/agent/AGENTS.md`, read 2026-06-12): i
 
 - `.claude/settings.local.json` — local Claude Code permission allowlist (`Read(//home/clintonium-119/.apo/**)`). **Source:** read 2026-06-12.
 - `apo` bin at `~/.local/bin/apo` — control-plane bookkeeping (workstreams, items, ids). **Source:** `apo --help` (run 2026-06-12).
-- Verify loop configured: `verify.localhostUrl = http://localhost:3000` in `.apo/.config.json` (user-confirmed during init, 2026-06-12). Fires on `/apo:execute` / `/apo:bug-fix` when ground truth (Figma ref / attachments) exists.
+- Verify loop configured: `verify.localhostUrl = http://localhost:3100` in `.apo/.config.json` (user-confirmed during init, 2026-06-12). Fires on `/apo:execute` / `/apo:bug-fix` when ground truth (Figma ref / attachments) exists.

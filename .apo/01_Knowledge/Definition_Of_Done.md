@@ -20,7 +20,7 @@ tags: [apovault, knowledge, definition_of_done]
 >
 > Expected answers when this section is filled:
 > - [ ] Lint / test / typecheck gates required before a step counts as done?
-> - [ ] Must changes be verified playable in-browser (verify loop at `http://localhost:3000`)?
+> - [ ] Must changes be verified playable in-browser (verify loop at `http://localhost:3100`)?
 > - [ ] PR description requirements (DEC refs, screenshots/video of gameplay)?
 > - [ ] Performance gate (target FPS / frame budget on reference hardware)?
 > - [ ] Merge gate (CI green, manual playtest)?

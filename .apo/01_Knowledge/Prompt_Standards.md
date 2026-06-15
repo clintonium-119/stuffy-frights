@@ -22,7 +22,7 @@ No project-level `CLAUDE.md` / `AGENTS.md` exists (read 2026-06-13). User-global
 
 **Observed working rails** (from the `loop` + `refine` workstreams):
 
-- **Playable verification is expected.** Every gameplay/visual change is validated in-browser via chrome-devtools against `npm run dev` (`http://localhost:3000/stuffy-frights/`) before a phase is considered done — not just unit tests.
+- **Playable verification is expected.** Every gameplay/visual change is validated in-browser via chrome-devtools against `npm run dev` (`http://localhost:3100/stuffy-frights/`) before a phase is considered done — not just unit tests.
 - **Procedural-first; assets need a DEC.** Geometry is built in code, audio is WebAudio synthesis, and textures default to runtime `CanvasTexture`. Bundled texture image files (e.g. CC0 plush/fur maps for the enemies) are permitted with recorded provenance + a decision note. Binary meshes (GLTF/GLB) remain out unless a decision note adopts them. Do not introduce asset files without a DEC.
 - **Tuning goes through `src/core/config.ts`**, not inline magic numbers. Balance values are explicitly playtest-tunable knobs.
 - **Determinism:** use the injected seeded `Rng`, never `Math.random()` in gameplay logic.

@@ -53,7 +53,7 @@ Get close and you'll see their faces change.
 
 ```bash
 npm install
-npm run dev      # play at http://localhost:3000
+npm run dev      # play at http://localhost:3100
 ```
 
 Production build:

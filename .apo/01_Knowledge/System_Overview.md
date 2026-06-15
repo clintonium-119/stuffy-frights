@@ -47,7 +47,7 @@ See [[01_Knowledge/Code_Map|Code Map]] for the subsystem split and module bounda
 
 - **Rendering/engine:** Three.js `^0.165` / WebGL (`@types/three` `^0.165`). PBR `MeshStandardMaterial`, soft shadow mapping, ACES tone mapping, `FogExp2` per floor.
 - **Language:** TypeScript `^5.4`, ES2022 target, `strict`.
-- **Build/dev:** Vite `^5.2` (dev server port 3000 strict; production build → `docs/`, base `/stuffy-frights/`).
+- **Build/dev:** Vite `^5.2` (dev server port 3100 strict; production build → `docs/`, base `/stuffy-frights/`).
 - **Testing:** Vitest `^1.6`, headless, co-located `*.test.ts`.
 - **Audio:** Web Audio API (synthesis only, no audio files).
 - **Persistence/network:** none — fully client-side.

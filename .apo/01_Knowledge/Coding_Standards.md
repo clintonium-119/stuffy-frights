@@ -57,7 +57,7 @@ The game's analog of a design-token module is **`src/core/config.ts`** — a sin
 
 From `package.json` (read 2026-06-13):
 
-- `npm run dev` — Vite dev server at `http://localhost:3000` (`strictPort: true`; matches the verify-config dev URL).
+- `npm run dev` — Vite dev server at `http://localhost:3100` (`strictPort: true`; matches the verify-config dev URL).
 - `npm run build` — `tsc --noEmit && vite build`; output to `docs/` (GitHub Pages publish dir), base path `/stuffy-frights/`.
 - `npm run preview` — serve the production build.
 - `npm test` — `vitest run --passWithNoTests`.

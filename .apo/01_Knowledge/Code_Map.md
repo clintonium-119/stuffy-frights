@@ -42,7 +42,7 @@ Entry point `src/main.ts` (600 lines) wires every subsystem together; it belongs
 ├── index.html             # Vite entry HTML
 ├── package.json           # three ^0.165, vite ^5.2, vitest ^1.6, typescript ^5.4
 ├── tsconfig.json          # ES2022, strict, bundler resolution, noEmit
-├── vite.config.ts         # base /stuffy-frights/, outDir docs/, dev port 3000 (strict)
+├── vite.config.ts         # base /stuffy-frights/, outDir docs/, dev port 3100 (strict)
 ├── src/
 │   ├── main.ts            # bootstrap + wiring (state machine ↔ systems ↔ UI ↔ audio)
 │   ├── core/              # Engine, Input, Collision, GameState, config, rng
