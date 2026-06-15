@@ -190,6 +190,13 @@ export class RigEditor {
     const mat = this.skinned.material as THREE.MeshStandardMaterial;
     if (applyEyeGlow(mat, this.eyes)) {
       mat.emissiveIntensity = config.enemyGlow.eyeIntensity;
+    } else {
+      // No mask built (e.g. all stamps cleared) — strip any existing glow so the
+      // preview reflects the empty stamp set instead of leaving the old map lit.
+      mat.emissiveMap?.dispose();
+      mat.emissiveMap = null;
+      mat.emissiveIntensity = 0;
+      mat.needsUpdate = true;
     }
   }
 
