@@ -564,7 +564,7 @@ function enterPlayingChrome(): void {
   hud.setDifficultyInfo(
     m.name,
     m.tier,
-    ironmanOnBoot ? `Ironman ${settings.ironmanRung()}/${DIFFICULTY_ORDER.length}` : null
+    ironmanOnBoot ? `Escape Loop ${settings.ironmanRung()}/${DIFFICULTY_ORDER.length}` : null
   );
   enterVR.hide();
   if (mobile) {
@@ -698,7 +698,7 @@ function openVRMenu(): void {
       },
     })),
     {
-      label: 'IRONMAN',
+      label: 'ESCAPE LOOP',
       onSelect: () => {
         settings.startIronman();
         ironmanOnBoot = true;

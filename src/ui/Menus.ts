@@ -108,9 +108,9 @@ export class Menus {
       <h1 style="font-family:'Creepster',cursive;font-size:84px;letter-spacing:3px;margin:0;color:#cdb98a;
         text-shadow:0 0 22px #6a1212,0 0 6px #000">STUFFY FRIGHTS</h1>
       <p style="color:#8a7d65;letter-spacing:2px;margin-top:6px">the stuffed animals are awake</p>
-      <div style="margin-top:36px">${this.button('PLAY', 'btn-play')}<br>${this.button('IRONMAN', 'btn-iron')}<br>${this.button('HOW TO PLAY', 'btn-how')}<br>${this.button('STATS', 'btn-stats')}</div>
+      <div style="margin-top:36px">${this.button('PLAY', 'btn-play')}<br>${this.button('ESCAPE LOOP', 'btn-iron')}<br>${this.button('HOW TO PLAY', 'btn-how')}<br>${this.button('STATS', 'btn-stats')}</div>
       <p style="color:#7a6f58;max-width:430px;margin:16px auto 0;font-size:13px;line-height:1.5">
-        Ironman: win all four frights back-to-back, Tuck-In through Stuffy FrightMare.
+        Escape Loop: win all four frights back-to-back, Tuck-In through Stuffy FrightMare.
         One hug and you're back to the start.</p>
       <p style="position:absolute;bottom:10px;left:0;right:0;margin:0;color:#5f5746;
         font-size:12px;letter-spacing:1px">v${__APP_VERSION__}</p>
@@ -188,7 +188,7 @@ export class Menus {
         </tr>
         ${rows}
       </table>
-      <p style="color:#d8a35a;margin:6px auto">Ironman — best streak <b>${im.bestStreak}/${DIFFICULTY_ORDER.length}</b> · furthest reached <b>${reached}</b></p>
+      <p style="color:#d8a35a;margin:6px auto">Escape Loop — best streak <b>${im.bestStreak}/${DIFFICULTY_ORDER.length}</b> · furthest reached <b>${reached}</b></p>
       <div style="margin-top:12px">${this.button('BACK', 'btn-back')}</div>
     `);
     this.root.querySelector('#btn-back')!.addEventListener('click', () => this.showTitle());
@@ -217,7 +217,7 @@ export class Menus {
   showGameOver(enemyId: string, ironmanReset = false): void {
     const name = ENEMY_NAMES[enemyId] ?? 'SOMETHING SOFT';
     const ironLine = ironmanReset
-      ? `<p style="color:#d8a35a;max-width:440px;margin:8px auto">Your ironman ladder is over — try again starts a fresh run at Tuck-In.</p>`
+      ? `<p style="color:#d8a35a;max-width:440px;margin:8px auto">Your Escape Loop is over — try again starts a fresh run at Tuck-In.</p>`
       : '';
     this.screen(`
       <h1 style="font-size:46px;letter-spacing:4px;color:#c0392b;text-shadow:0 0 14px #400">
@@ -247,12 +247,12 @@ export class Menus {
     let ladderLine = '';
     let buttons = this.button('PLAY AGAIN', 'btn-retry');
     if (ironman === 'complete') {
-      heading = 'IRONMAN COMPLETE!';
+      heading = 'ESCAPE LOOP COMPLETE!';
       ladderLine = `<p style="color:#d8a35a;max-width:460px;margin:6px auto">
         All four frights, back-to-back. The whole house fears <b>you</b> now.</p>`;
     } else if (ironman) {
       ladderLine = `<p style="color:#d8a35a;max-width:460px;margin:6px auto">
-        Ironman ${ironman.rung}/${ironman.total} cleared — next up: <b>${ironman.nextName}</b>.</p>`;
+        Escape Loop ${ironman.rung}/${ironman.total} cleared — next up: <b>${ironman.nextName}</b>.</p>`;
       buttons = this.button(`CONTINUE → ${ironman.nextName}`, 'btn-continue');
     }
     this.screen(`
