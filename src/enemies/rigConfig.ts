@@ -18,7 +18,7 @@ import { RigConfig } from './rigWeights';
 export const RIG_CONFIG: Record<string, RigConfig> = {
   pou: [
     { name: 'root', pivot: [0.5, 0.4, 0.5] },
-    { name: 'head', pivot: [0.5, 0.64, 0.42], box: { min: [0.12, 0.64, 0.28], max: [0.88, 1, 1] }, falloff: 0.1 },
+    { name: 'head', pivot: [0.5, 0.686, 0.606], box: { min: [0.083, 0.672, 0.28], max: [1, 1, 1] }, falloff: 0.1 },
   ],
   fuggler: [
     { name: 'root', pivot: [0.5, 0.4, 0.5] },
