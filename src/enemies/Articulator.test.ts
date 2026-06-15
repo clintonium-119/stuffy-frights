@@ -1,8 +1,23 @@
 import { describe, it, expect } from 'vitest';
 import * as THREE from 'three';
 import { Articulator, ArticulatorBones, ArticulationFrame } from './Articulator';
+import { EnemyAnimTuning } from './tuningConfig';
 
 const DT = 1 / 60;
+
+// Fixture matching the prior hardcoded constants (hop body params so the hop
+// body tests keep their expected magnitudes).
+const TEST_ANIM: EnemyAnimTuning = {
+  swingRate: 2.6,
+  legSwing: 0.45,
+  armSwing: 0.5,
+  headYaw: 0.7,
+  headPitch: 0.7,
+  bobRate: 3.2,
+  bob: 0.18,
+  squash: 0.28,
+  rock: 0.07,
+};
 
 function frame(over: Partial<ArticulationFrame> = {}): ArticulationFrame {
   return {
@@ -21,7 +36,7 @@ function frame(over: Partial<ArticulationFrame> = {}): ArticulationFrame {
 function make(bones: ArticulatorBones, gait: 'hop' | 'shuffle' | 'trot' | 'haul' = 'trot', h = 1, beat?: (k: string) => void) {
   const root = new THREE.Object3D();
   const anim = new THREE.Object3D();
-  return { art: new Articulator(bones, root, anim, gait, h, beat), root, anim };
+  return { art: new Articulator(bones, root, anim, gait, h, TEST_ANIM, beat), root, anim };
 }
 
 describe('Articulator head gaze', () => {
@@ -52,6 +67,35 @@ describe('Articulator head gaze', () => {
       art.pose(frame({ lookTarget: new THREE.Vector3(0, -5, 0), lookIntensity: 0.5 }));
     }
     expect(head.rotation.x).toBeCloseTo(0.35, 2);
+  });
+});
+
+describe('Articulator reads tuning params', () => {
+  it('larger legSwing yields a larger leg rotation', () => {
+    const small = new THREE.Object3D();
+    const big = new THREE.Object3D();
+    const root = new THREE.Object3D();
+    const a1 = new Articulator({ legs: [small, new THREE.Object3D()] }, root, new THREE.Object3D(), 'trot', 1, { ...TEST_ANIM, legSwing: 0.2 });
+    const a2 = new Articulator({ legs: [big, new THREE.Object3D()] }, root, new THREE.Object3D(), 'trot', 1, { ...TEST_ANIM, legSwing: 0.8 });
+    const f = frame({ moving: true, gaitT: (Math.PI / 2) / 2.6 });
+    a1.pose(f);
+    a2.pose(f);
+    expect(Math.abs(big.rotation.x)).toBeGreaterThan(Math.abs(small.rotation.x));
+    expect(Math.abs(big.rotation.x)).toBeCloseTo(0.8, 5);
+  });
+
+  it('a tighter headYaw cone clamps the gaze harder', () => {
+    const h1 = new THREE.Object3D();
+    const h2 = new THREE.Object3D();
+    const a1 = new Articulator({ head: h1 }, new THREE.Object3D(), new THREE.Object3D(), 'trot', 1, { ...TEST_ANIM, headYaw: 0.3 });
+    const a2 = new Articulator({ head: h2 }, new THREE.Object3D(), new THREE.Object3D(), 'trot', 1, { ...TEST_ANIM, headYaw: 1.0 });
+    for (let i = 0; i < 120; i++) {
+      const f = frame({ lookTarget: new THREE.Vector3(50, 0, 0), lookIntensity: 1 });
+      a1.pose(f);
+      a2.pose(f);
+    }
+    expect(h1.rotation.y).toBeCloseTo(0.3, 2);
+    expect(h2.rotation.y).toBeCloseTo(1.0, 2);
   });
 });
 

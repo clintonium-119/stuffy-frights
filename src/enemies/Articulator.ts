@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { solveGaze, solveFootLift, bodyPitchFromFeet } from './articulation';
+import { EnemyAnimTuning } from './tuningConfig';
 
 /**
  * Body-level locomotion style per enemy. 'hop' = bounce + squash-stretch (Pou),
@@ -40,12 +41,11 @@ export interface ArticulationFrame {
  * editor can drive the same motion live while authoring rigs. The pure angle /
  * offset math stays in articulation.ts; this composes it onto Three.js bones.
  *
- * The constants here (swing amplitudes, gait rates, head cone, ease rates) are
- * the values the body previously inlined; they become per-enemy tunables later.
+ * The swing amplitudes, gait rates, and head cone come from the per-enemy
+ * `anim` tuning (read live, so viewer edits reflect immediately); ease rates
+ * and beat thresholds stay fixed.
  */
 export class Articulator {
-  private static readonly HEAD_MAX_YAW = 0.7;
-  private static readonly HEAD_MAX_PITCH = 0.7;
   private static readonly _tmp = new THREE.Vector3();
 
   constructor(
@@ -56,6 +56,8 @@ export class Articulator {
     private readonly bodyAnim: THREE.Object3D,
     private readonly gaitStyle: GaitStyle,
     private readonly bodyHeight: number,
+    /** Per-enemy animation parameters (held by reference → live-editable). */
+    private readonly anim: EnemyAnimTuning,
     private readonly onGaitBeat?: (kind: string) => void
   ) {}
 
@@ -77,8 +79,8 @@ export class Articulator {
           targetY: f.lookTarget.y,
           targetZ: f.lookTarget.z,
           bodyYaw: this.bodyRoot.rotation.y,
-          maxYaw: Articulator.HEAD_MAX_YAW,
-          maxPitch: Articulator.HEAD_MAX_PITCH,
+          maxYaw: this.anim.headYaw,
+          maxPitch: this.anim.headPitch,
         });
         yaw = g.yaw * f.lookIntensity;
         pitch = g.pitch * f.lookIntensity;
@@ -93,8 +95,8 @@ export class Articulator {
     // to rest when stopped.
     if (legs && legs.length >= 2) {
       const moving = f.moving;
-      const phase = f.gaitT * 2.6;
-      const sw = 0.45;
+      const phase = f.gaitT * this.anim.swingRate;
+      const sw = this.anim.legSwing;
       const quad = legs.length >= 4;
       const target = (i: number): number => {
         if (!moving) return 0;
@@ -112,7 +114,7 @@ export class Articulator {
     const arms = this.bones.arms;
     if (arms && arms.length >= 2) {
       if (f.moving) {
-        const sw = Math.sin(f.gaitT * 2.6) * 0.5;
+        const sw = Math.sin(f.gaitT * this.anim.swingRate) * this.anim.armSwing;
         arms[0].rotation.y = sw;
         arms[1].rotation.y = -sw;
       } else {
@@ -165,23 +167,24 @@ export class Articulator {
     const k = Math.min(1, 12 * dt);
     const h = this.bodyHeight;
     if (moving) {
+      const p = this.anim;
       if (this.gaitStyle === 'hop') {
-        const ph = gaitT * 3.2;
+        const ph = gaitT * p.bobRate;
         const hop = Math.abs(Math.sin(ph)); // 0 at ground, 1 at apex
-        a.position.y = hop * 0.18 * h;
+        a.position.y = hop * p.bob * h;
         // squish down at the bottom, stretch up at the top (volume-preserving)
-        const st = 1 + (hop - 0.5) * 0.28;
+        const st = 1 + (hop - 0.5) * p.squash;
         a.scale.set(1 / Math.sqrt(st), st, 1 / Math.sqrt(st));
         a.rotation.z = 0;
         if (hop < 0.06 && dt > 0) this.onGaitBeat?.('fwump');
       } else if (this.gaitStyle === 'shuffle') {
-        const ph = gaitT * 3.6;
-        a.position.y = Math.abs(Math.sin(ph)) * 0.05 * h;
-        a.rotation.z = Math.sin(ph) * 0.07; // short-limb side rock
+        const ph = gaitT * p.bobRate;
+        a.position.y = Math.abs(Math.sin(ph)) * p.bob * h;
+        a.rotation.z = Math.sin(ph) * p.rock; // short-limb side rock
         a.scale.set(1, 1, 1);
         if (Math.abs(Math.sin(ph)) < 0.06 && dt > 0) this.onGaitBeat?.('shuffle');
       } else {
-        a.position.y = Math.abs(Math.sin(gaitT * 2.6)) * 0.03 * h;
+        a.position.y = Math.abs(Math.sin(gaitT * p.bobRate)) * p.bob * h;
         a.rotation.z = 0;
         a.scale.set(1, 1, 1);
       }

@@ -1,4 +1,5 @@
 import { RigConfig } from '../enemies/rigWeights';
+import { EnemyTuning } from '../enemies/tuningConfig';
 import { serializeRig } from './rigEditorMath';
 
 /**
@@ -64,4 +65,27 @@ export function serializeRigConfigRecord(record: Record<string, RigConfig>): str
     .map(([model, bones]) => serializeRig(model, bones))
     .join('\n');
   return `export const RIG_CONFIG: Record<string, RigConfig> = {\n${entries}\n};`;
+}
+
+/** A plain value → TS-literal string (numbers trimmed, object keys unquoted). */
+export function tsLiteral(v: unknown): string {
+  if (typeof v === 'number') return String(+v.toFixed(4));
+  if (typeof v === 'string') return `'${v}'`;
+  if (typeof v === 'boolean') return String(v);
+  if (Array.isArray(v)) return `[${v.map(tsLiteral).join(', ')}]`;
+  if (v && typeof v === 'object') {
+    const inner = Object.entries(v)
+      .map(([k, val]) => `${k}: ${tsLiteral(val)}`)
+      .join(', ');
+    return `{ ${inner} }`;
+  }
+  return 'null';
+}
+
+/** Serialize a whole `ENEMY_TUNING` record to its `export const` declaration. */
+export function serializeTuningRecord(record: Record<string, EnemyTuning>): string {
+  const entries = Object.entries(record)
+    .map(([id, tuning]) => `  ${id}: ${tsLiteral(tuning)},`)
+    .join('\n');
+  return `export const ENEMY_TUNING: Record<string, EnemyTuning> = {\n${entries}\n};`;
 }

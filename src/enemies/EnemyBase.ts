@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { config } from '../core/config';
 import { Articulator, GaitStyle, ArticulatorBones } from './Articulator';
+import { ENEMY_TUNING, DEFAULT_ANIM, EnemyAnimTuning } from './tuningConfig';
 
 export type Mood = 'calm' | 'menacing';
 
@@ -79,6 +80,12 @@ export abstract class EnemyBase {
   private aiSetMenacing: ((on: boolean) => void) | null = null;
   /** Shared procedural-articulation driver, built once the AI body mounts. */
   private articulator: Articulator | null = null;
+  /**
+   * Optional animation-tuning override (dev viewer injects an editable clone so
+   * its sliders drive the live gait). Null → the shipped ENEMY_TUNING entry.
+   * Set before the AI body finishes building.
+   */
+  animTuning: EnemyAnimTuning | null = null;
 
   /** Body-level locomotion style, by enemy id. Limbed ones also swing bones. */
   private gaitStyle: GaitStyle = 'trot';
@@ -148,12 +155,14 @@ export abstract class EnemyBase {
     if (legs.length) bones.legs = legs;
     const arms = ['armL', 'armR'].map((n) => body.bones[n]).filter(Boolean);
     if (arms.length >= 2) bones.arms = arms;
+    const tuning = this.animTuning ?? ENEMY_TUNING[this.id]?.anim ?? DEFAULT_ANIM;
     this.articulator = new Articulator(
       bones,
       this.group,
       anim,
       this.gaitStyle,
       this.bodyHeight,
+      tuning,
       (kind) => this.onGaitBeat?.(kind)
     );
   }

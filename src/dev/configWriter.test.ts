@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { replaceMarkedRegion, serializeRigConfigRecord, resolveSafeConfigPath } from './configWriter';
+import {
+  replaceMarkedRegion,
+  serializeRigConfigRecord,
+  resolveSafeConfigPath,
+  serializeTuningRecord,
+} from './configWriter';
+import { EnemyTuning } from '../enemies/tuningConfig';
 import { RigConfig } from '../enemies/rigWeights';
 
 describe('replaceMarkedRegion', () => {
@@ -104,5 +110,40 @@ describe('serializeRigConfigRecord', () => {
     const out = replaceMarkedRegion(file, 'rigConfig', serializeRigConfigRecord(fixture));
     expect(out).toContain('llama: [');
     expect(out).not.toContain('STALE');
+  });
+});
+
+describe('serializeTuningRecord', () => {
+  const anim = {
+    swingRate: 2.6,
+    legSwing: 0.45,
+    armSwing: 0.5,
+    headYaw: 0.7,
+    headPitch: 0.7,
+    bobRate: 3.2,
+    bob: 0.18,
+    squash: 0.28,
+    rock: 0,
+  };
+
+  it('emits the ENEMY_TUNING declaration with unquoted keys + trimmed numbers', () => {
+    const out = serializeTuningRecord({ poo: { anim } } as Record<string, EnemyTuning>);
+    expect(out).toContain('export const ENEMY_TUNING: Record<string, EnemyTuning> = {');
+    expect(out).toContain('poo: { anim: { swingRate: 2.6, legSwing: 0.45');
+    expect(out).toContain('bob: 0.18, squash: 0.28, rock: 0 } },');
+  });
+
+  it('round-trips deep-equal through the marked region', () => {
+    const record = { poo: { anim }, newYama: { anim } } as Record<string, EnemyTuning>;
+    const file = ['// <apo:gen enemyTuning>', 'export const ENEMY_TUNING = { STALE: 1 };', '// </apo:gen>'].join('\n');
+    const body = serializeTuningRecord(record);
+    const out = replaceMarkedRegion(file, 'enemyTuning', body);
+    expect(out).not.toContain('STALE');
+    // Reconstruct the object literal and check structural equality.
+    const literal = body.slice(body.indexOf('{'), body.lastIndexOf('}') + 1);
+    // eslint-disable-next-line no-new-func
+    const parsed = new Function(`return ${literal}`)() as Record<string, EnemyTuning>;
+    expect(parsed.poo.anim).toEqual(anim);
+    expect(parsed.newYama.anim).toEqual(anim);
   });
 });

@@ -9,6 +9,7 @@ import { clampBox, clamp01, normFromWorld, serializeRig, worldFromNorm, Vec3 } f
 import { serializeRigConfigRecord } from './configWriter';
 import { saveConfigBlock } from './saveConfig';
 import { Articulator, ArticulatorBones, GaitStyle } from '../enemies/Articulator';
+import { ENEMY_TUNING, DEFAULT_ANIM, EnemyAnimTuning } from '../enemies/tuningConfig';
 
 /** Per-model gait style (mirrors EnemyBase's GAIT, keyed by GLB model name). */
 const MODEL_GAIT: Record<string, GaitStyle> = {
@@ -16,6 +17,14 @@ const MODEL_GAIT: Record<string, GaitStyle> = {
   fuggler: 'shuffle',
   gorilla: 'haul',
   llama: 'trot',
+};
+
+/** GLB model name → enemy id (for the per-enemy tuning lookup). */
+const MODEL_ID: Record<string, string> = {
+  pou: 'poo',
+  fuggler: 'fuggie',
+  gorilla: 'charles',
+  llama: 'newYama',
 };
 
 /** Look context the viewer pushes into the rig editor each frame. */
@@ -53,6 +62,9 @@ export class RigEditor {
   // exposes the defects (e.g. the llama crouch-look ear lag).
   private articulator: Articulator | null = null;
   private gaitT = 0;
+  // Editable per-enemy animation tuning (clone → mutated by the anim sliders;
+  // held by the Articulator by reference so edits show live).
+  private tuningAnim: EnemyAnimTuning;
   // Draggable handle (TransformControls gizmo doubles as the XYZ indicator).
   private tc: TransformControls | null = null;
   private handle = new THREE.Object3D(); // child of group → local pos is geom-space
@@ -64,9 +76,12 @@ export class RigEditor {
     private readonly model: string,
     private readonly camera?: THREE.Camera,
     private readonly domElement?: HTMLElement,
-    private readonly orbit?: OrbitControls
+    private readonly orbit?: OrbitControls,
+    /** Shared editable anim tuning (viewer-owned) — drives playback live. */
+    animTuning?: EnemyAnimTuning
   ) {
     this.config = structuredClone(RIG_CONFIG[model] ?? [{ name: 'root', pivot: [0.5, 0.5, 0.5] }]);
+    this.tuningAnim = animTuning ?? structuredClone(ENEMY_TUNING[MODEL_ID[model] ?? '']?.anim ?? DEFAULT_ANIM);
     this.scene.add(this.group);
     this.group.add(this.anim);
     this.group.add(this.gizmos);
@@ -184,7 +199,8 @@ export class RigEditor {
       this.group,
       this.anim,
       MODEL_GAIT[this.model] ?? 'trot',
-      this.bbSize[1]
+      this.bbSize[1],
+      this.tuningAnim
     );
     this.applyTestPose();
   }

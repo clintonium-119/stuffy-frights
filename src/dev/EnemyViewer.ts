@@ -11,6 +11,9 @@ import { config } from '../core/config';
 import { initMaterials } from '../world/materialLibrary';
 import { EnemyKey, ENEMY_KEYS } from './enemyViewerRoute';
 import { RigEditor } from './RigEditor';
+import { ENEMY_TUNING, EnemyTuning, EnemyAnimTuning } from '../enemies/tuningConfig';
+import { serializeTuningRecord } from './configWriter';
+import { saveConfigBlock } from './saveConfig';
 
 /** Viewer enemy key → GLB model name (for the rig editor). */
 const KEY_TO_MODEL: Record<EnemyKey, string> = {
@@ -19,6 +22,27 @@ const KEY_TO_MODEL: Record<EnemyKey, string> = {
   charles: 'gorilla',
   newyama: 'llama',
 };
+
+/** Viewer enemy key → enemy id (the ENEMY_TUNING key). */
+const KEY_TO_ID: Record<EnemyKey, string> = {
+  poo: 'poo',
+  fuggie: 'fuggie',
+  charles: 'charles',
+  newyama: 'newYama',
+};
+
+/** Editable anim-slider rows: [label, key, min, max, step]. */
+const ANIM_SLIDERS: Array<[string, keyof EnemyAnimTuning, number, number, number]> = [
+  ['swing rate', 'swingRate', 0, 8, 0.1],
+  ['leg swing', 'legSwing', 0, 1.2, 0.01],
+  ['arm swing', 'armSwing', 0, 1.2, 0.01],
+  ['head yaw', 'headYaw', 0, 1.4, 0.02],
+  ['head pitch', 'headPitch', 0, 1.4, 0.02],
+  ['bob rate', 'bobRate', 0, 8, 0.1],
+  ['bob', 'bob', 0, 0.5, 0.005],
+  ['squash', 'squash', 0, 0.6, 0.01],
+  ['rock', 'rock', 0, 0.3, 0.01],
+];
 
 // Reference photos, served by Vite in dev only (the viewer isn't in the build).
 const REF_URLS = import.meta.glob('../../assets/enemies/*.jpg', {
@@ -95,6 +119,10 @@ export class EnemyViewer {
   private readonly walkTarget = new THREE.Vector3();
   private readonly playerPos = new THREE.Vector3();
   private readonly stairs = new THREE.Group();
+  // Editable per-enemy tuning clone — its anim block drives both the live enemy
+  // and the rig editor (by reference), so the anim sliders show edits live.
+  private readonly tuning: Record<string, EnemyTuning> = structuredClone(ENEMY_TUNING);
+  private readonly animPanel = document.createElement('div');
 
   constructor(canvas: HTMLCanvasElement, initial: EnemyKey) {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
@@ -123,6 +151,7 @@ export class EnemyViewer {
     this.setEnemy(initial);
     this.applyPreset('front');
     this.buildControlBar();
+    this.buildAnimPanel();
 
     window.addEventListener('resize', () => this.onResize());
     this.renderer.setAnimationLoop((t) => this.frame(t / 1000));
@@ -226,8 +255,10 @@ export class EnemyViewer {
       KEY_TO_MODEL[key],
       this.camera,
       this.renderer.domElement,
-      this.controls
+      this.controls,
+      this.currentAnim()
     );
+    this.refreshAnimPanel();
     this.target.set(0, 0.75, 0);
     this.frameDist = 3.4;
     this.applyPreset('front');
@@ -239,6 +270,8 @@ export class EnemyViewer {
     if (this.enemy) this.holder.remove(this.enemy.group);
     this.currentKey = key;
     this.enemy = FACTORY[key]();
+    // Inject the editable anim tuning so the panel's sliders drive the live gait.
+    this.enemy.animTuning = this.currentAnim();
     this.holder.add(this.enemy.group);
     document.title = `Viewer — ${LABEL[key]}`;
     this.onStairs = false;
@@ -247,7 +280,72 @@ export class EnemyViewer {
     this.holder.position.set(0, 0, 0);
     this.fitToModel();
     this.applyPreset(this.preset);
+    this.refreshAnimPanel();
     if (this.enemy) void this.enemy.useAiMesh().then(() => this.fitToModel());
+  }
+
+  private currentAnim(): EnemyAnimTuning {
+    return this.tuning[KEY_TO_ID[this.currentKey]].anim;
+  }
+
+  /** Fixed top-left panel of live animation sliders for the current enemy. */
+  private buildAnimPanel(): void {
+    this.animPanel.style.cssText =
+      'position:fixed;top:8px;left:8px;width:210px;background:#0b0e12ee;color:#cdd;' +
+      'font:11px ui-monospace,monospace;padding:10px;border-radius:8px;z-index:15;max-height:80vh;overflow:auto';
+    document.body.appendChild(this.animPanel);
+    this.refreshAnimPanel();
+  }
+
+  private refreshAnimPanel(): void {
+    const anim = this.currentAnim();
+    this.animPanel.innerHTML = '';
+    const title = document.createElement('div');
+    title.innerHTML = `<b>animation — ${this.currentKey}</b>`;
+    title.style.marginBottom = '6px';
+    this.animPanel.appendChild(title);
+    for (const [label, key, min, max, step] of ANIM_SLIDERS) {
+      const row = document.createElement('label');
+      row.style.cssText = 'display:flex;justify-content:space-between;align-items:center;gap:6px;margin:2px 0';
+      const inp = document.createElement('input');
+      inp.type = 'range';
+      inp.min = String(min);
+      inp.max = String(max);
+      inp.step = String(step);
+      inp.value = String(anim[key]);
+      inp.style.flex = '1';
+      const val = document.createElement('span');
+      val.textContent = anim[key].toFixed(2);
+      val.style.width = '34px';
+      inp.oninput = () => {
+        anim[key] = +inp.value; // mutates the shared tuning → live gait update
+        val.textContent = (+inp.value).toFixed(2);
+      };
+      row.append(
+        Object.assign(document.createElement('span'), { textContent: label, style: 'width:64px' }),
+        inp,
+        val
+      );
+      this.animPanel.appendChild(row);
+    }
+    this.appendAnimSaveButton();
+  }
+
+  /** Save the whole edited tuning record back to tuningConfig.ts via the endpoint. */
+  private appendAnimSaveButton(): void {
+    const save = document.createElement('button');
+    save.textContent = 'save tuning';
+    save.style.cssText =
+      'width:100%;margin-top:8px;padding:5px;background:#2a6;color:#fff;border:0;border-radius:5px;cursor:pointer';
+    save.onclick = () => {
+      const body = serializeTuningRecord(this.tuning);
+      save.textContent = 'saving…';
+      void saveConfigBlock('src/enemies/tuningConfig.ts', 'enemyTuning', body).then((r) => {
+        save.textContent = r.ok ? 'saved ✓' : `save failed: ${r.error ?? ''}`;
+        setTimeout(() => (save.textContent = 'save tuning'), 1600);
+      });
+    };
+    this.animPanel.appendChild(save);
   }
 
   /** Centre + distance the camera framing on the current model's bounds. */
