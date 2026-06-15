@@ -5,7 +5,10 @@ import {
   resolveSafeConfigPath,
   serializeTuningRecord,
   serializeEyeConfigRecord,
+  serializeVisibility,
+  serializeDifficultyVisibility,
 } from './configWriter';
+import { config } from '../core/config';
 import { EnemyTuning } from '../enemies/tuningConfig';
 import { EyeConfig } from '../enemies/eyeConfig';
 import { RigConfig } from '../enemies/rigWeights';
@@ -176,5 +179,42 @@ describe('serializeEyeConfigRecord', () => {
     const parsed = new Function(`return ${literal}`)() as Record<string, EyeConfig>;
     expect(parsed.pou).toEqual(eye);
     expect(parsed.newYama.stamps).toEqual([{ u: 0.45, v: 0.85, r: 0.05 }]);
+  });
+});
+
+describe('serializeVisibility', () => {
+  it('emits hex colours as 0x and round-trips the live config.visibility deep-equal', () => {
+    const out = serializeVisibility(config.visibility);
+    expect(out).toContain('fogColor: 0x05060a');
+    expect(out).toContain('ambientColor: 0x2a3045');
+    // wrap the `visibility: {...},` property body into an object literal + parse
+    // eslint-disable-next-line no-new-func
+    const parsed = new Function(`return {${out}}`)() as { visibility: typeof config.visibility };
+    expect(parsed.visibility).toEqual(config.visibility);
+  });
+
+  it('round-trips through the marked region', () => {
+    const file = ['// <apo:gen visibility>', '  visibility: { STALE: 1 },', '// </apo:gen>'].join('\n');
+    const out = replaceMarkedRegion(file, 'visibility', serializeVisibility(config.visibility));
+    expect(out).not.toContain('STALE');
+    expect(out).toContain('toneExposure:');
+  });
+});
+
+describe('serializeDifficultyVisibility', () => {
+  it('emits only the two per-floor arrays and round-trips through a marked region', () => {
+    const o = {
+      ambientIntensityByFloor: [0.0245, 0.042, 0.042, 0.0315],
+      hemisphereIntensityByFloor: [0.0105, 0.0175, 0.0175, 0.014],
+    };
+    const body = serializeDifficultyVisibility(o);
+    expect(body).toContain('ambientIntensityByFloor: [0.0245, 0.042, 0.042, 0.0315]');
+    expect(body).not.toContain('fogColor');
+    const file = ['// <apo:gen vis-nightmare>', '    visibility: { STALE: 1 },', '// </apo:gen>'].join('\n');
+    const out = replaceMarkedRegion(file, 'vis-nightmare', body);
+    expect(out).not.toContain('STALE');
+    // eslint-disable-next-line no-new-func
+    const parsed = new Function(`return {${body}}`)() as { visibility: typeof o };
+    expect(parsed.visibility).toEqual(o);
   });
 });

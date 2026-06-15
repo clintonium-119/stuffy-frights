@@ -9,6 +9,8 @@ import {
   effectiveVisibility,
   VisibilityOverride,
 } from '../world/floorVisibility';
+import { serializeVisibility, serializeDifficultyVisibility } from './configWriter';
+import { saveConfigBlock } from './saveConfig';
 
 type Visibility = GameConfig['visibility'];
 
@@ -308,5 +310,40 @@ export class FloorsEditor {
       this.refreshPanel();
     };
     this.panel.appendChild(fl);
+
+    this.panel.appendChild(this.saveButton());
+  }
+
+  /**
+   * Save the current target to source: Baseline/Medium → the config.ts baseline
+   * `visibility` block; Easy/Hard/Nightmare → that preset's override in
+   * difficulty.ts. (Medium has no override and routes to the baseline.)
+   */
+  protected saveButton(): HTMLElement {
+    const b = document.createElement('button');
+    const o = this.overrideFor(this.target);
+    const toDifficulty = !!(o?.ambientIntensityByFloor && o?.hemisphereIntensityByFloor);
+    const label = toDifficulty ? `save ${this.target}` : 'save baseline';
+    b.textContent = label;
+    b.style.cssText =
+      'width:100%;margin-top:8px;padding:5px;border:0;border-radius:5px;cursor:pointer;color:#fff;background:#2a6';
+    b.onclick = () => {
+      b.textContent = 'saving…';
+      const save = toDifficulty
+        ? saveConfigBlock(
+            'src/core/difficulty.ts',
+            `vis-${this.target}`,
+            serializeDifficultyVisibility({
+              ambientIntensityByFloor: o!.ambientIntensityByFloor!,
+              hemisphereIntensityByFloor: o!.hemisphereIntensityByFloor!,
+            })
+          )
+        : saveConfigBlock('src/core/config.ts', 'visibility', serializeVisibility(this.baseline));
+      void save.then((r) => {
+        b.textContent = r.ok ? 'saved ✓' : `save failed: ${r.error ?? ''}`;
+        setTimeout(() => (b.textContent = label), 1600);
+      });
+    };
+    return b;
   }
 }

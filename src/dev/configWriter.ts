@@ -1,7 +1,19 @@
 import { RigConfig } from '../enemies/rigWeights';
 import { EnemyTuning } from '../enemies/tuningConfig';
 import { EyeConfig } from '../enemies/eyeConfig';
+import { GameConfig } from '../core/config';
 import { serializeRig } from './rigEditorMath';
+
+type Visibility = GameConfig['visibility'];
+/** Per-difficulty visibility override (the two per-floor intensity arrays). */
+export interface DifficultyVisibility {
+  ambientIntensityByFloor: readonly number[];
+  hemisphereIntensityByFloor: readonly number[];
+}
+
+const hexColor = (n: number): string => `0x${n.toString(16).padStart(6, '0')}`;
+// String(n) gives the shortest exact round-trip (no toFixed rounding of 5-dp values).
+const numArray = (a: readonly number[]): string => `[${a.map((n) => String(n)).join(', ')}]`;
 
 /**
  * Pure (no fs / DOM / three) helpers backing the dev write-to-source round-trip.
@@ -89,6 +101,40 @@ export function serializeEyeConfigRecord(record: Record<string, EyeConfig>): str
     .map(([id, eye]) => `  ${id}: ${tsLiteral(eye)},`)
     .join('\n');
   return `export const EYE_CONFIG: Record<string, EyeConfig> = {\n${entries}\n};`;
+}
+
+/**
+ * Serialize the `visibility` block of config.ts (the marked region inside the
+ * `config` object literal). Colours emit as `0x…` hex for readability; numbers
+ * use their exact shortest form. Indented to sit inside the config object.
+ */
+export function serializeVisibility(v: Visibility): string {
+  return [
+    '  visibility: {',
+    `    ambientColor: ${hexColor(v.ambientColor)},`,
+    `    ambientIntensity: ${String(v.ambientIntensity)},`,
+    `    hemisphereIntensity: ${String(v.hemisphereIntensity)},`,
+    `    ambientIntensityByFloor: ${numArray(v.ambientIntensityByFloor)},`,
+    `    hemisphereIntensityByFloor: ${numArray(v.hemisphereIntensityByFloor)},`,
+    `    fogDensityByFloor: ${numArray(v.fogDensityByFloor)},`,
+    `    fogColor: ${hexColor(v.fogColor)},`,
+    `    toneExposure: ${String(v.toneExposure)},`,
+    `    environmentIntensity: ${String(v.environmentIntensity)},`,
+    '  },',
+  ].join('\n');
+}
+
+/**
+ * Serialize one difficulty's `visibility` override block (the two per-floor
+ * arrays), indented to sit inside a `DIFFICULTY_PRESETS` preset object.
+ */
+export function serializeDifficultyVisibility(o: DifficultyVisibility): string {
+  return [
+    '    visibility: {',
+    `      ambientIntensityByFloor: ${numArray(o.ambientIntensityByFloor)},`,
+    `      hemisphereIntensityByFloor: ${numArray(o.hemisphereIntensityByFloor)},`,
+    '    },',
+  ].join('\n');
 }
 
 /** Serialize a whole `ENEMY_TUNING` record to its `export const` declaration. */

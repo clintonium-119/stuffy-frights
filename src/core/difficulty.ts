@@ -99,10 +99,12 @@ export const DIFFICULTY_PRESETS: Record<DifficultyLevel, DeepPartial<GameConfig>
     },
     battery: { drainSeconds: 130, chargeRatio: 1.0 }, // charge ≈ drain time (vs base 1.2)
     player: { stamina: { drainSeconds: 8, regenSeconds: 7 } },
+    // <apo:gen vis-easy>
     visibility: {
       ambientIntensityByFloor: [0.04375, 0.075, 0.075, 0.05625],
       hemisphereIntensityByFloor: [0.01875, 0.03125, 0.03125, 0.025],
     },
+    // </apo:gen>
   },
   medium: {
     // A touch easier than the base anchor; darkness unchanged (multiplier 1).
@@ -136,10 +138,12 @@ export const DIFFICULTY_PRESETS: Record<DifficultyLevel, DeepPartial<GameConfig>
     },
     battery: { drainSeconds: 80 },
     player: { stamina: { drainSeconds: 5, regenSeconds: 10 } },
+    // <apo:gen vis-hard>
     visibility: {
       ambientIntensityByFloor: [0.02975, 0.051, 0.051, 0.03825],
       hemisphereIntensityByFloor: [0.01275, 0.02125, 0.02125, 0.017],
     },
+    // </apo:gen>
   },
   nightmare: {
     ai: {
@@ -159,10 +163,12 @@ export const DIFFICULTY_PRESETS: Record<DifficultyLevel, DeepPartial<GameConfig>
     },
     battery: { drainSeconds: 60 },
     player: { stamina: { drainSeconds: 4, regenSeconds: 12 } },
+    // <apo:gen vis-nightmare>
     visibility: {
       ambientIntensityByFloor: [0.0245, 0.042, 0.042, 0.0315],
       hemisphereIntensityByFloor: [0.0105, 0.0175, 0.0175, 0.014],
     },
+    // </apo:gen>
   },
 };
 
