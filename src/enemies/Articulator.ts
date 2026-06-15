@@ -108,15 +108,20 @@ export class Articulator {
       });
     }
 
-    // AI rig arm-walk (e.g. Little Timmy): long arms swing fore/aft in opposition.
-    // Arms extend sideways (X), so fore/aft hauling is a yaw (Y) swing; only
-    // rotation.y is touched so any baked splay (rotation.z) is kept.
+    // AI rig arm-walk: long arms swing fore/aft in opposition to each other AND
+    // in a contralateral (cross-body) gait with the legs — left leg forward pairs
+    // with right arm forward. The legs read off `gaitT * swingRate`; arms reuse
+    // that same phase so they stay locked to the stride. The two arm bones are
+    // mirror twins, so writing the SAME signed value to both yaws makes them
+    // swing in opposite fore/aft directions (opposite signs would swing them
+    // together). Arms extend sideways (X), so fore/aft hauling is a yaw (Y)
+    // swing; only rotation.y is touched so any baked splay (rotation.z) is kept.
     const arms = this.bones.arms;
     if (arms && arms.length >= 2) {
       if (f.moving) {
         const sw = Math.sin(f.gaitT * this.anim.swingRate) * this.anim.armSwing;
         arms[0].rotation.y = sw;
-        arms[1].rotation.y = -sw;
+        arms[1].rotation.y = sw;
       } else {
         arms[0].rotation.y += (0 - arms[0].rotation.y) * k;
         arms[1].rotation.y += (0 - arms[1].rotation.y) * k;

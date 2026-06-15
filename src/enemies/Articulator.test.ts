@@ -122,12 +122,15 @@ describe('Articulator leg swing', () => {
 });
 
 describe('Articulator arm swing', () => {
-  it('swings arms in opposition while moving and eases to rest', () => {
+  it('drives both arm yaws with the same signed swing while moving and eases to rest', () => {
+    // The arm bones are mirror twins in the rig, so the SAME signed yaw makes
+    // them swing in opposite fore/aft directions (contralateral gait). Bare
+    // Object3Ds here aren't mirrored, so both just take the same value.
     const arms = [new THREE.Object3D(), new THREE.Object3D()];
     const { art } = make({ arms });
     art.pose(frame({ moving: true, gaitT: (Math.PI / 2) / 2.6 }));
     expect(arms[0].rotation.y).toBeCloseTo(0.5, 5); // sin(π/2)*0.5
-    expect(arms[1].rotation.y).toBeCloseTo(-0.5, 5);
+    expect(arms[1].rotation.y).toBeCloseTo(0.5, 5);
     for (let i = 0; i < 200; i++) art.pose(frame({ moving: false }));
     expect(arms[0].rotation.y).toBeCloseTo(0, 3);
   });
