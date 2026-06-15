@@ -10,7 +10,7 @@ import { serializeRigConfigRecord, serializeEyeConfigRecord } from './configWrit
 import { saveConfigBlock } from './saveConfig';
 import { Articulator, ArticulatorBones, GaitStyle } from '../enemies/Articulator';
 import { ENEMY_TUNING, DEFAULT_ANIM, EnemyAnimTuning } from '../enemies/tuningConfig';
-import { EYE_CONFIG, EyeConfig } from '../enemies/eyeConfig';
+import { EYE_CONFIG, EyeConfig, GlowStamp } from '../enemies/eyeConfig';
 import { applyEyeGlow } from '../enemies/eyeGlow';
 import { config } from '../core/config';
 
@@ -188,7 +188,7 @@ export class RigEditor {
   private applyEyeGlowPreview(): void {
     if (!this.skinned) return;
     const mat = this.skinned.material as THREE.MeshStandardMaterial;
-    if (applyEyeGlow(mat, this.eyes)) {
+    if (applyEyeGlow(mat, this.eyes, this.skinned.geometry)) {
       mat.emissiveIntensity = config.enemyGlow.eyeIntensity;
     } else {
       // No mask built (e.g. all stamps cleared) — strip any existing glow so the
@@ -223,9 +223,58 @@ export class RigEditor {
     const hit = this.raycaster.intersectObject(this.skinned, true).find((h) => h.uv);
     if (!hit?.uv) return;
     if (!this.eyes.stamps) this.eyes.stamps = [];
-    this.eyes.stamps.push({ u: +hit.uv.x.toFixed(4), v: +hit.uv.y.toFixed(4), r: +this.brushR.toFixed(4) });
+    const stamp: GlowStamp = { u: +hit.uv.x.toFixed(4), v: +hit.uv.y.toFixed(4), r: +this.brushR.toFixed(4) };
+    // Anchor the stamp in 3D: the hit face's rest-pose centroid plus a 3D radius
+    // matching the UV brush footprint, so the glow flood can't leak across the
+    // body where dark texels stay connected into a distant UV island.
+    const anchor = this.faceRestAnchor(hit);
+    if (anchor) {
+      stamp.p = anchor.p;
+      stamp.pr = anchor.pr;
+    }
+    this.eyes.stamps.push(stamp);
     this.applyEyeGlowPreview();
     this.refreshPanel();
+  }
+
+  /**
+   * Mesh-local rest-pose anchor for a paint hit: the hit face's vertex centroid
+   * (read from the geometry position attribute, so it's the un-skinned rest pose
+   * the glow mask rasterizes against) plus a 3D radius scaled from the UV brush
+   * by the face's local UV→3D ratio, so the bound roughly matches the painted
+   * footprint. Returns null if the geometry lacks position/uv or the ratio is
+   * degenerate. Tuned a little generous (×1.4) so a feature isn't clipped.
+   */
+  private faceRestAnchor(hit: THREE.Intersection): { p: [number, number, number]; pr: number } | null {
+    const face = hit.face;
+    const geo = this.skinned?.geometry;
+    const pos = geo?.getAttribute('position');
+    const uv = geo?.getAttribute('uv');
+    if (!face || !pos || !uv) return null;
+    const a = new THREE.Vector3(pos.getX(face.a), pos.getY(face.a), pos.getZ(face.a));
+    const b = new THREE.Vector3(pos.getX(face.b), pos.getY(face.b), pos.getZ(face.b));
+    const c = new THREE.Vector3(pos.getX(face.c), pos.getY(face.c), pos.getZ(face.c));
+    const p: [number, number, number] = [
+      +((a.x + b.x + c.x) / 3).toFixed(4),
+      +((a.y + b.y + c.y) / 3).toFixed(4),
+      +((a.z + b.z + c.z) / 3).toFixed(4),
+    ];
+    // UV→3D scale: average each edge's 3D length over its UV length.
+    const uvA = new THREE.Vector2(uv.getX(face.a), uv.getY(face.a));
+    const uvB = new THREE.Vector2(uv.getX(face.b), uv.getY(face.b));
+    const uvC = new THREE.Vector2(uv.getX(face.c), uv.getY(face.c));
+    const ratios: number[] = [];
+    const edge = (p0: THREE.Vector3, p1: THREE.Vector3, t0: THREE.Vector2, t1: THREE.Vector2): void => {
+      const du = t0.distanceTo(t1);
+      if (du > 1e-6) ratios.push(p0.distanceTo(p1) / du);
+    };
+    edge(a, b, uvA, uvB);
+    edge(b, c, uvB, uvC);
+    edge(c, a, uvC, uvA);
+    if (!ratios.length) return null;
+    const scale = ratios.reduce((s, r) => s + r, 0) / ratios.length;
+    const pr = +(this.brushR * scale * 1.4).toFixed(4);
+    return pr > 0 ? { p, pr } : null;
   }
 
   /** Re-rig the skinned mesh + rebuild the articulation driver (no UI redraw). */

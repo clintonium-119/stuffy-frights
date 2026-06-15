@@ -106,8 +106,15 @@ export async function buildMeshBody(enemyId: string, targetHeight?: number): Pro
   const eyeCfg = EYE_CONFIG[enemyId];
   const glowMats = new Set<THREE.MeshStandardMaterial>();
   if (eyeCfg) {
+    // Map each material to its mesh geometry so 3D-anchored glow stamps can gate
+    // the flood by mesh-local position (rest pose). Built after rigging so the
+    // skinned mesh's geometry is the one in the scene.
+    const geoByMat = new Map<THREE.Material, THREE.BufferGeometry>();
+    scene.traverse((o) => {
+      if (o instanceof THREE.Mesh) geoByMat.set(o.material as THREE.Material, o.geometry as THREE.BufferGeometry);
+    });
     for (const m of mats) {
-      if (m.map && applyEyeGlow(m, eyeCfg)) glowMats.add(m);
+      if (m.map && applyEyeGlow(m, eyeCfg, geoByMat.get(m) ?? null)) glowMats.add(m);
     }
   }
 
