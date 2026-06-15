@@ -360,14 +360,14 @@ export class AudioEngine {
     const sp = this.spatial(pos);
     if (!sp) return;
     switch (kind) {
-      case 'knuckle': // Charles: heavy double knuckle thump
+      case 'knuckle': // Little Timmy: heavy double knuckle thump
         this.thump(sp.gain, 140, 0.16, 0.8);
         setTimeout(() => {
           const sp2 = this.spatial(pos);
           if (sp2) this.thump(sp2.gain, 120, 0.12, 0.5);
         }, 110);
         break;
-      case 'fwump': // Poo: rubbery soft landing
+      case 'fwump': // Pou: rubbery soft landing
         this.thump(sp.gain, 240, 0.18, 0.65);
         this.tone(sp.gain, 130, 0.14, 0.18, 'sine', 70);
         break;

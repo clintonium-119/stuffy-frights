@@ -121,7 +121,7 @@ export function rigMesh(mesh: THREE.Mesh, config: RigConfig, opts: RigOptions = 
   // --- 4. top-4 per vertex from the smoothed weld-group weights ---
   // Only fill min(4, nB) slots — with fewer than 4 bones the extra slots must be
   // zero, not a duplicated bone, or the per-vertex weights sum past 1 and the
-  // rest pose inflates/distorts (the 2-bone models, pou + fuggler, hit this).
+  // rest pose inflates/distorts (the 2-bone Pou rig hits this).
   const k4 = Math.min(4, nB);
   const si = new Uint16Array(count * 4);
   const sw = new Float32Array(count * 4);

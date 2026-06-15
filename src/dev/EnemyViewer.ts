@@ -3,9 +3,9 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { RGBELoader } from 'three/examples/jsm/loaders/RGBELoader.js';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { EnemyBase } from '../enemies/EnemyBase';
-import { Poo } from '../enemies/Poo';
+import { Pou } from '../enemies/Pou';
 import { Fuggie } from '../enemies/Fuggie';
-import { Charles } from '../enemies/Charles';
+import { LittleTimmy } from '../enemies/LittleTimmy';
 import { NewYama } from '../enemies/NewYama';
 import { config } from '../core/config';
 import { initMaterials } from '../world/materialLibrary';
@@ -14,22 +14,6 @@ import { RigEditor } from './RigEditor';
 import { ENEMY_TUNING, EnemyTuning, EnemyAnimTuning, EnemyGameplayTuning } from '../enemies/tuningConfig';
 import { serializeTuningRecord } from './configWriter';
 import { saveConfigBlock } from './saveConfig';
-
-/** Viewer enemy key → GLB model name (for the rig editor). */
-const KEY_TO_MODEL: Record<EnemyKey, string> = {
-  poo: 'pou',
-  fuggie: 'fuggler',
-  charles: 'gorilla',
-  newyama: 'llama',
-};
-
-/** Viewer enemy key → enemy id (the ENEMY_TUNING key). */
-const KEY_TO_ID: Record<EnemyKey, string> = {
-  poo: 'poo',
-  fuggie: 'fuggie',
-  charles: 'charles',
-  newyama: 'newYama',
-};
 
 /** Editable anim-slider rows: [label, key, min, max, step]. */
 const ANIM_SLIDERS: Array<[string, keyof EnemyAnimTuning, number, number, number]> = [
@@ -59,30 +43,26 @@ const REF_URLS = import.meta.glob('../../assets/enemies/*.jpg', {
   query: '?url',
   import: 'default',
 }) as Record<string, string>;
-const REF_PREFIX: Record<EnemyKey, string> = {
-  poo: 'pou',
-  fuggie: 'fuggler',
-  charles: 'gorilla',
-  newyama: 'llama',
-};
+// Reference photos are named by the canonical key (e.g. `pou_front.jpg`).
 function refUrl(key: EnemyKey, angle: string): string | null {
-  const file = angle === 'iso' ? `${REF_PREFIX[key]}.jpg` : `${REF_PREFIX[key]}_${angle}.jpg`;
+  const file = angle === 'iso' ? `${key}.jpg` : `${key}_${angle}.jpg`;
   const hit = Object.entries(REF_URLS).find(([p]) => p.endsWith('/' + file));
   return hit ? hit[1] : null;
 }
 
 const FACTORY: Record<EnemyKey, () => EnemyBase> = {
-  poo: () => new Poo(),
+  pou: () => new Pou(),
   fuggie: () => new Fuggie(),
-  charles: () => new Charles(),
-  newyama: () => new NewYama(),
+  littleTimmy: () => new LittleTimmy(),
+  newYama: () => new NewYama(),
 };
 
+/** Human-readable display name per enemy. */
 const LABEL: Record<EnemyKey, string> = {
-  poo: 'Pou / pou',
-  fuggie: 'Fuggie / fuggler',
-  charles: 'Little Timmy / gorilla',
-  newyama: 'NewYama / llama',
+  pou: 'Pou',
+  fuggie: 'Fuggie',
+  littleTimmy: 'Little Timmy',
+  newYama: 'New Yama',
 };
 
 type Mode = 'idle' | 'walk';
@@ -113,7 +93,7 @@ export class EnemyViewer {
   private enemy: EnemyBase | null = null;
   private frameDist = 2.6;
   private preset = 'front';
-  private currentKey: EnemyKey = 'newyama';
+  private currentKey: EnemyKey = 'newYama';
   private readonly refImg = document.createElement('img');
   private refOn = false;
   private refOpacity = 0.5;
@@ -261,7 +241,7 @@ export class EnemyViewer {
     this.currentKey = key;
     this.rigEditor = new RigEditor(
       this.scene,
-      KEY_TO_MODEL[key],
+      key,
       this.camera,
       this.renderer.domElement,
       this.controls,
@@ -295,11 +275,11 @@ export class EnemyViewer {
   }
 
   private currentAnim(): EnemyAnimTuning {
-    return this.tuning[KEY_TO_ID[this.currentKey]].anim;
+    return this.tuning[this.currentKey].anim;
   }
 
   private currentGameplay(): EnemyGameplayTuning {
-    return this.tuning[KEY_TO_ID[this.currentKey]].gameplay;
+    return this.tuning[this.currentKey].gameplay;
   }
 
   /** Fixed top-left panel: live animation + characteristics sliders. */
@@ -512,7 +492,7 @@ export class EnemyViewer {
       bar.appendChild(s);
     };
 
-    for (const k of ENEMY_KEYS) mk(LABEL[k].split(' / ')[0], () => this.setEnemy(k));
+    for (const k of ENEMY_KEYS) mk(LABEL[k], () => this.setEnemy(k));
     sep();
     mk('rig edit', () => this.enterRigEdit(this.currentKey));
     sep();

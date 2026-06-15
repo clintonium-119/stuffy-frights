@@ -3,8 +3,8 @@ import { config } from '../core/config';
 import { Rng } from '../core/rng';
 import { House, cellToWorld, floorY, isWalkable, worldToCell } from '../world/layoutTypes';
 import { EnemyBase } from '../enemies/EnemyBase';
-import { Charles } from '../enemies/Charles';
-import { Poo } from '../enemies/Poo';
+import { LittleTimmy } from '../enemies/LittleTimmy';
+import { Pou } from '../enemies/Pou';
 import { NewYama } from '../enemies/NewYama';
 import { Fuggie } from '../enemies/Fuggie';
 import { EnemyBrain, BrainContext } from './EnemyBrain';
@@ -16,8 +16,8 @@ export interface Resident {
 }
 
 /**
- * Spawns the four stuffies at their layout markers (Poo basement,
- * New Yama main, Fuggie upstairs, Charles attic) and manages fairness +
+ * Spawns the four stuffies at their layout markers (Pou basement,
+ * New Yama main, Fuggie upstairs, Little Timmy attic) and manages fairness +
  * pacing: a passive grace window at run start, rare floor migrations so
  * the house never feels fully mapped-safe, an anti-camp rule that pushes
  * loiterers away from exits and the key, intensity ramp after key pickup,
@@ -47,14 +47,14 @@ export class Director {
   ) {
     const builders: Record<string, () => EnemyBase> = factory
       ? {
-          charles: () => factory('charles'),
-          poo: () => factory('poo'),
+          littleTimmy: () => factory('littleTimmy'),
+          pou: () => factory('pou'),
           newYama: () => factory('newYama'),
           fuggie: () => factory('fuggie'),
         }
       : {
-          charles: () => new Charles(),
-          poo: () => new Poo(),
+          littleTimmy: () => new LittleTimmy(),
+          pou: () => new Pou(),
           newYama: () => new NewYama(),
           fuggie: () => new Fuggie(),
         };

@@ -4,8 +4,8 @@ import { RIG_CONFIG } from './rigConfig';
 describe('RIG_CONFIG', () => {
   const models = Object.keys(RIG_CONFIG);
 
-  it('covers the four enemy models', () => {
-    expect(models.sort()).toEqual(['fuggler', 'gorilla', 'llama', 'pou']);
+  it('covers the four enemies', () => {
+    expect(models.sort()).toEqual(['fuggie', 'littleTimmy', 'newYama', 'pou']);
   });
 
   for (const [model, bones] of Object.entries(RIG_CONFIG)) {
@@ -39,14 +39,14 @@ describe('RIG_CONFIG', () => {
     });
   }
 
-  it('gorilla has both arms', () => {
-    const names = RIG_CONFIG.gorilla.map((b) => b.name);
+  it('littleTimmy has both arms', () => {
+    const names = RIG_CONFIG.littleTimmy.map((b) => b.name);
     expect(names).toContain('armL');
     expect(names).toContain('armR');
   });
 
-  it('llama has four legs', () => {
-    const names = RIG_CONFIG.llama.map((b) => b.name);
+  it('newYama has four legs', () => {
+    const names = RIG_CONFIG.newYama.map((b) => b.name);
     expect(names).toEqual(expect.arrayContaining(['legFL', 'legFR', 'legHL', 'legHR']));
   });
 });

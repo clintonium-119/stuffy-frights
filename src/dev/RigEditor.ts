@@ -11,20 +11,12 @@ import { saveConfigBlock } from './saveConfig';
 import { Articulator, ArticulatorBones, GaitStyle } from '../enemies/Articulator';
 import { ENEMY_TUNING, DEFAULT_ANIM, EnemyAnimTuning } from '../enemies/tuningConfig';
 
-/** Per-model gait style (mirrors EnemyBase's GAIT, keyed by GLB model name). */
+/** Per-enemy gait style (mirrors EnemyBase's GAIT, keyed by the canonical key). */
 const MODEL_GAIT: Record<string, GaitStyle> = {
   pou: 'hop',
-  fuggler: 'shuffle',
-  gorilla: 'haul',
-  llama: 'trot',
-};
-
-/** GLB model name → enemy id (for the per-enemy tuning lookup). */
-const MODEL_ID: Record<string, string> = {
-  pou: 'poo',
-  fuggler: 'fuggie',
-  gorilla: 'charles',
-  llama: 'newYama',
+  fuggie: 'shuffle',
+  littleTimmy: 'haul',
+  newYama: 'trot',
 };
 
 /** Look context the viewer pushes into the rig editor each frame. */
@@ -59,7 +51,7 @@ export class RigEditor {
   private readonly scaleToH = 1.5;
   // Live playback: the shared articulation driver runs the real gait / gaze on
   // the editor's own bones so rig edits are seen against the motion that
-  // exposes the defects (e.g. the llama crouch-look ear lag).
+  // exposes the defects (e.g. the New Yama crouch-look ear lag).
   private articulator: Articulator | null = null;
   private gaitT = 0;
   // Editable per-enemy animation tuning (clone → mutated by the anim sliders;
@@ -81,7 +73,7 @@ export class RigEditor {
     animTuning?: EnemyAnimTuning
   ) {
     this.config = structuredClone(RIG_CONFIG[model] ?? [{ name: 'root', pivot: [0.5, 0.5, 0.5] }]);
-    this.tuningAnim = animTuning ?? structuredClone(ENEMY_TUNING[MODEL_ID[model] ?? '']?.anim ?? DEFAULT_ANIM);
+    this.tuningAnim = animTuning ?? structuredClone(ENEMY_TUNING[model]?.anim ?? DEFAULT_ANIM);
     this.scene.add(this.group);
     this.group.add(this.anim);
     this.group.add(this.gizmos);

@@ -2,34 +2,29 @@ import { describe, it, expect } from 'vitest';
 import { parseViewerRoute, ENEMY_KEYS } from './enemyViewerRoute';
 
 describe('parseViewerRoute', () => {
-  it('resolves every alias to its canonical enemy key', () => {
-    const cases: Record<string, string> = {
-      poo: 'poo',
-      pou: 'poo',
-      fuggie: 'fuggie',
-      fuggler: 'fuggie',
-      charles: 'charles',
-      gorilla: 'charles',
-      timmy: 'charles',
-      newyama: 'newyama',
-      yama: 'newyama',
-      llama: 'newyama',
-    };
-    for (const [alias, key] of Object.entries(cases)) {
-      expect(parseViewerRoute(alias)?.enemy).toBe(key);
-    }
+  it('resolves each canonical key (case-insensitively)', () => {
+    expect(parseViewerRoute('pou')?.enemy).toBe('pou');
+    expect(parseViewerRoute('fuggie')?.enemy).toBe('fuggie');
+    expect(parseViewerRoute('littletimmy')?.enemy).toBe('littleTimmy');
+    expect(parseViewerRoute('newyama')?.enemy).toBe('newYama');
   });
 
   it('accepts hash, search-param, and path forms', () => {
-    expect(parseViewerRoute('#llama')?.enemy).toBe('newyama');
-    expect(parseViewerRoute('#viewer/gorilla')?.enemy).toBe('charles');
-    expect(parseViewerRoute('?enemy=pou')?.enemy).toBe('poo');
-    expect(parseViewerRoute('?foo=1&enemy=fuggler')?.enemy).toBe('fuggie');
+    expect(parseViewerRoute('#newYama')?.enemy).toBe('newYama');
+    expect(parseViewerRoute('#viewer/littleTimmy')?.enemy).toBe('littleTimmy');
+    expect(parseViewerRoute('?enemy=pou')?.enemy).toBe('pou');
+    expect(parseViewerRoute('?foo=1&enemy=fuggie')?.enemy).toBe('fuggie');
   });
 
   it('is case-insensitive', () => {
-    expect(parseViewerRoute('#LLAMA')?.enemy).toBe('newyama');
-    expect(parseViewerRoute('Gorilla')?.enemy).toBe('charles');
+    expect(parseViewerRoute('#NEWYAMA')?.enemy).toBe('newYama');
+    expect(parseViewerRoute('LittleTimmy')?.enemy).toBe('littleTimmy');
+  });
+
+  it('no longer accepts the old aliases or names', () => {
+    for (const old of ['poo', 'charles', 'gorilla', 'llama', 'timmy', 'yama', 'fuggler']) {
+      expect(parseViewerRoute(old)).toBeNull();
+    }
   });
 
   it('returns null for absent or unknown routes', () => {
@@ -41,6 +36,6 @@ describe('parseViewerRoute', () => {
   });
 
   it('exposes the four canonical keys in order', () => {
-    expect(ENEMY_KEYS).toEqual(['poo', 'fuggie', 'charles', 'newyama']);
+    expect(ENEMY_KEYS).toEqual(['pou', 'fuggie', 'littleTimmy', 'newYama']);
   });
 });

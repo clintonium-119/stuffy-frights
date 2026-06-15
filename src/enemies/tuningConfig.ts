@@ -1,7 +1,7 @@
 /**
  * Per-enemy tuning: the look + motion knobs that used to be hardcoded in the
  * articulation driver, surfaced as data so they can be dialed in live in the dev
- * viewer and saved back here. Keyed by enemy id (`poo`, `fuggie`, `charles`,
+ * viewer and saved back here. Keyed by enemy id (`pou`, `fuggie`, `littleTimmy`,
  * `newYama`). Defaults reproduce the prior hardcoded constants exactly, so an
  * un-tuned enemy is byte-for-byte unchanged.
  *
@@ -15,7 +15,7 @@ export interface EnemyAnimTuning {
   swingRate: number;
   /** Leg-bone swing amplitude (radians). */
   legSwing: number;
-  /** Arm-bone swing amplitude (radians, gorilla-style haul). */
+  /** Arm-bone swing amplitude (radians, arm-walk haul). */
   armSwing: number;
   /** Head gaze clamp half-cones (radians). */
   headYaw: number;
@@ -79,9 +79,9 @@ export const DEFAULT_ANIM: EnemyAnimTuning = {
 
 // <apo:gen enemyTuning>
 export const ENEMY_TUNING: Record<string, EnemyTuning> = {
-  poo: { anim: { swingRate: 2.6, legSwing: 0.45, armSwing: 0.5, headYaw: 0.7, headPitch: 0.7, bobRate: 3, bob: 0.18, squash: 0.28, rock: 0 }, height: 0.914, gameplay: { speedMult: 1, visionMult: 1, hearingMult: 1, threatMult: 1, scaleMult: 1 } },
+  pou: { anim: { swingRate: 2.6, legSwing: 0.45, armSwing: 0.5, headYaw: 0.7, headPitch: 0.7, bobRate: 3, bob: 0.18, squash: 0.28, rock: 0 }, height: 0.914, gameplay: { speedMult: 1, visionMult: 1, hearingMult: 1, threatMult: 1, scaleMult: 1 } },
   fuggie: { anim: { swingRate: 2.6, legSwing: 0.45, armSwing: 0.5, headYaw: 0.7, headPitch: 0.7, bobRate: 3.6, bob: 0.05, squash: 0, rock: 0.07 }, height: 1.544, gameplay: { speedMult: 1, visionMult: 1, hearingMult: 1, threatMult: 1, scaleMult: 1 } },
-  charles: { anim: { swingRate: 2.6, legSwing: 0.45, armSwing: 0.5, headYaw: 0.7, headPitch: 0.7, bobRate: 2.6, bob: 0.03, squash: 0, rock: 0 }, height: 1.64, gameplay: { speedMult: 1, visionMult: 1, hearingMult: 1, threatMult: 1, scaleMult: 1 } },
+  littleTimmy: { anim: { swingRate: 2.6, legSwing: 0.45, armSwing: 0.5, headYaw: 0.7, headPitch: 0.7, bobRate: 2.6, bob: 0.03, squash: 0, rock: 0 }, height: 1.64, gameplay: { speedMult: 1, visionMult: 1, hearingMult: 1, threatMult: 1, scaleMult: 1 } },
   newYama: { anim: { swingRate: 2.6, legSwing: 0.22, armSwing: 0.5, headYaw: 0.7, headPitch: 0.7, bobRate: 2.7, bob: 0.03, squash: 0, rock: 0 }, height: 1.945, gameplay: { speedMult: 1, visionMult: 1, hearingMult: 1, threatMult: 1, scaleMult: 1 } },
 };
 // </apo:gen>

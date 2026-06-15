@@ -4,8 +4,8 @@ import { DIFFICULTY_ORDER, DIFFICULTY_META, DEFAULT_DIFFICULTY } from '../core/d
 
 describe('ENEMY_NAMES display names', () => {
   it('renders the Gorilla Tag plush as Little Timmy and the blob as Pou', () => {
-    expect(ENEMY_NAMES.charles).toBe('LITTLE TIMMY');
-    expect(ENEMY_NAMES.poo).toBe('POU');
+    expect(ENEMY_NAMES.littleTimmy).toBe('LITTLE TIMMY');
+    expect(ENEMY_NAMES.pou).toBe('POU');
   });
 
   it('leaves New Yama and Fuggie unchanged', () => {

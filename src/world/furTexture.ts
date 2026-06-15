@@ -30,7 +30,7 @@ export interface FurStyle {
   size?: number;
   /** UV repeat for the resulting textures. Default [1, 1]. */
   repeat?: [number, number];
-  /** Optional colour blotches painted under the fibres (e.g. fuggler mottle). */
+  /** Optional colour blotches painted under the fibres (e.g. Fuggie mottle). */
   mottle?: { color: string; count: number; size?: number }[];
 }
 

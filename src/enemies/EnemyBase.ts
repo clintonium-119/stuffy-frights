@@ -8,14 +8,14 @@ export type Mood = 'calm' | 'menacing';
 /**
  * Body-level locomotion style per enemy id. 'hop' = bounce + squash-stretch
  * (Pou), 'shuffle' = short-limb waddle + bob (Fuggie), 'trot' = subtle bob while
- * the four legs swing (NewYama), 'haul' = subtle rock while the arms swing
- * (Charles). Limbed gaits also swing their rig bones.
+ * the four legs swing (New Yama), 'haul' = subtle rock while the arms swing
+ * (Little Timmy). Limbed gaits also swing their rig bones.
  */
 const GAIT: Record<string, GaitStyle> = {
-  poo: 'hop',
+  pou: 'hop',
   fuggie: 'shuffle',
   newYama: 'trot',
-  charles: 'haul',
+  littleTimmy: 'haul',
 };
 
 /**

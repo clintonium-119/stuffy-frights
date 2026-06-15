@@ -1,6 +1,5 @@
 import * as THREE from 'three';
 import { loadGLB, modelUrl } from '../world/ModelLoader';
-import { ENEMY_MODEL } from './projectionConfig';
 import { rigMesh } from './Skinning';
 import { RIG_CONFIG } from './rigConfig';
 import { ENEMY_TUNING } from './tuningConfig';
@@ -23,21 +22,21 @@ export interface MeshBody {
 // Yaw (radians) to face each Meshy mesh forward (+Z, the enemy's lead
 // direction). As exported they already face +Z, so this is 0; baked into a
 // per-instance geometry clone so the rig's +Z-front weights line up. Tune per
-// model if one comes in rotated.
+// enemy if one comes in rotated. Keyed by the canonical enemy id (= GLB name).
 const FACE_YAW: Record<string, number> = {
   pou: 0,
-  fuggler: 0,
-  gorilla: 0,
-  llama: 0,
+  fuggie: 0,
+  littleTimmy: 0,
+  newYama: 0,
 };
 
 export async function buildMeshBody(enemyId: string, targetHeight?: number): Promise<MeshBody | null> {
-  const model = ENEMY_MODEL[enemyId];
-  if (!model) return null;
+  // The enemy id IS the GLB file name and the rig-config key (no model layer).
+  if (!RIG_CONFIG[enemyId]) return null;
   // Authored body height lives in the per-enemy tuning (was ENEMY_HEIGHT here).
   const th = targetHeight ?? ENEMY_TUNING[enemyId]?.height ?? 1.5;
-  const scene = await loadGLB(modelUrl(model));
-  const yaw = FACE_YAW[model] ?? 0;
+  const scene = await loadGLB(modelUrl(enemyId));
+  const yaw = FACE_YAW[enemyId] ?? 0;
 
   // Per-instance geometry/material clones — loadGLB shares them across clones,
   // so mutating in place would compound the rotation / leak the menacing tint.
@@ -58,7 +57,7 @@ export async function buildMeshBody(enemyId: string, targetHeight?: number): Pro
   // Rig the main mesh (skeleton + skin weights) so the articulation can drive
   // it. Meshy exports a single mesh, so this rigs the whole body.
   let bones: Record<string, THREE.Bone> = {};
-  const config = RIG_CONFIG[model];
+  const config = RIG_CONFIG[enemyId];
   if (config) {
     let mainMesh: THREE.Mesh | null = null;
     scene.traverse((o) => {

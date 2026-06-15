@@ -30,7 +30,7 @@ export type HidingKind = 'wardrobe' | 'underBed' | 'cabinet' | 'boxFort' | 'clos
 
 export type ExitId = 'A' | 'B' | 'C';
 
-export type EnemyId = 'charles' | 'poo' | 'newYama' | 'fuggie';
+export type EnemyId = 'littleTimmy' | 'pou' | 'newYama' | 'fuggie';
 
 export interface Stair {
   /** Cells of the run, low end first, on both floors at the same coords. */

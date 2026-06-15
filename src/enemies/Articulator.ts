@@ -5,7 +5,7 @@ import { EnemyAnimTuning } from './tuningConfig';
 /**
  * Body-level locomotion style per enemy. 'hop' = bounce + squash-stretch (Pou),
  * 'shuffle' = short-limb waddle + bob (Fuggie), 'trot' = subtle bob while four
- * legs swing (NewYama), 'haul' = subtle rock while arms swing (Charles).
+ * legs swing (New Yama), 'haul' = subtle rock while arms swing (Little Timmy).
  */
 export type GaitStyle = 'hop' | 'shuffle' | 'trot' | 'haul';
 
@@ -108,7 +108,7 @@ export class Articulator {
       });
     }
 
-    // AI rig arm-walk (e.g. the gorilla): long arms swing fore/aft in opposition.
+    // AI rig arm-walk (e.g. Little Timmy): long arms swing fore/aft in opposition.
     // Arms extend sideways (X), so fore/aft hauling is a yaw (Y) swing; only
     // rotation.y is touched so any baked splay (rotation.z) is kept.
     const arms = this.bones.arms;

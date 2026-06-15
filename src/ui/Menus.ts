@@ -11,8 +11,8 @@ export const DIFFICULTY_FONTS: Record<DifficultyLevel, string> = {
 
 /** Internal enemy id → player-facing display name (game-over screen). */
 export const ENEMY_NAMES: Record<string, string> = {
-  charles: 'LITTLE TIMMY',
-  poo: 'POU',
+  littleTimmy: 'LITTLE TIMMY',
+  pou: 'POU',
   newYama: 'NEW YAMA',
   fuggie: 'FUGGIE',
 };

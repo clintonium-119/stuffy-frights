@@ -107,10 +107,10 @@ const HIDING_KINDS: Record<string, HidingKind> = {
 
 /** Enemy per spawn cell, keyed by "floor:x,z". */
 const ENEMY_AT: Record<string, EnemyId> = {
-  '0:2,6': 'poo',
+  '0:2,6': 'pou',
   '1:11,3': 'newYama',
   '2:3,3': 'fuggie',
-  '3:6,5': 'charles',
+  '3:6,5': 'littleTimmy',
 };
 
 function charToKind(ch: string): CellKind {

@@ -98,7 +98,7 @@ describe('serializeRigConfigRecord', () => {
 
   it('round-trips through the marked region', () => {
     const fixture: Record<string, RigConfig> = {
-      llama: [{ name: 'root', pivot: [0.5, 0.5, 0.5] }],
+      newYama: [{ name: 'root', pivot: [0.5, 0.5, 0.5] }],
     };
     const file = [
       '// <apo:gen rigConfig>',
@@ -108,7 +108,7 @@ describe('serializeRigConfigRecord', () => {
       '// </apo:gen>',
     ].join('\n');
     const out = replaceMarkedRegion(file, 'rigConfig', serializeRigConfigRecord(fixture));
-    expect(out).toContain('llama: [');
+    expect(out).toContain('newYama: [');
     expect(out).not.toContain('STALE');
   });
 });
@@ -129,16 +129,16 @@ describe('serializeTuningRecord', () => {
   const tuning: EnemyTuning = { anim, height: 0.914, gameplay };
 
   it('emits the ENEMY_TUNING declaration with unquoted keys + trimmed numbers', () => {
-    const out = serializeTuningRecord({ poo: tuning });
+    const out = serializeTuningRecord({ pou: tuning });
     expect(out).toContain('export const ENEMY_TUNING: Record<string, EnemyTuning> = {');
-    expect(out).toContain('poo: { anim: { swingRate: 2.6, legSwing: 0.45');
+    expect(out).toContain('pou: { anim: { swingRate: 2.6, legSwing: 0.45');
     expect(out).toContain('height: 0.914');
     expect(out).toContain('gameplay: { speedMult: 1.05');
     expect(out).toContain('scaleMult: 1.1 } },');
   });
 
   it('round-trips deep-equal through the marked region', () => {
-    const record: Record<string, EnemyTuning> = { poo: tuning, newYama: tuning };
+    const record: Record<string, EnemyTuning> = { pou: tuning, newYama: tuning };
     const file = ['// <apo:gen enemyTuning>', 'export const ENEMY_TUNING = { STALE: 1 };', '// </apo:gen>'].join('\n');
     const body = serializeTuningRecord(record);
     const out = replaceMarkedRegion(file, 'enemyTuning', body);
@@ -147,9 +147,9 @@ describe('serializeTuningRecord', () => {
     const literal = body.slice(body.indexOf('{'), body.lastIndexOf('}') + 1);
     // eslint-disable-next-line no-new-func
     const parsed = new Function(`return ${literal}`)() as Record<string, EnemyTuning>;
-    expect(parsed.poo.anim).toEqual(anim);
-    expect(parsed.poo.height).toBe(0.914);
-    expect(parsed.poo.gameplay).toEqual(gameplay);
+    expect(parsed.pou.anim).toEqual(anim);
+    expect(parsed.pou.height).toBe(0.914);
+    expect(parsed.pou.gameplay).toEqual(gameplay);
     expect(parsed.newYama.gameplay.scaleMult).toBe(1.1);
   });
 });
