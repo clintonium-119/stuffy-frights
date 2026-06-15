@@ -4,6 +4,8 @@ import { rigMesh } from '../enemies/Skinning';
 import { RIG_CONFIG } from '../enemies/rigConfig';
 import { RigConfig, BoneConfig } from '../enemies/rigWeights';
 import { clampBox, serializeRig, worldFromNorm, Vec3 } from './rigEditorMath';
+import { serializeRigConfigRecord } from './configWriter';
+import { saveConfigBlock } from './saveConfig';
 
 /**
  * Dev rig edit mode. Loads a model GLB, rigs it with an EDITABLE copy of its
@@ -223,16 +225,33 @@ export class RigEditor {
       this.panel.appendChild(row);
     });
 
+    // Save the edited rig straight to rigConfig.ts via the dev write endpoint:
+    // merge this model's edited bones back into the full record, serialize, write.
+    const save = document.createElement('button');
+    save.textContent = 'save to source';
+    save.style.cssText = 'width:100%;margin-top:8px;padding:5px;background:#2a6;color:#fff;border:0;border-radius:5px;cursor:pointer';
+    save.onclick = () => {
+      const merged = { ...RIG_CONFIG, [this.model]: this.config };
+      const body = serializeRigConfigRecord(merged);
+      save.textContent = 'saving…';
+      void saveConfigBlock('src/enemies/rigConfig.ts', 'rigConfig', body).then((r) => {
+        save.textContent = r.ok ? 'saved ✓' : `save failed: ${r.error ?? ''}`;
+        setTimeout(() => (save.textContent = 'save to source'), 1600);
+      });
+    };
+    this.panel.appendChild(save);
+
+    // Fallback when the dev endpoint is unavailable: copy this model's literal.
     const copy = document.createElement('button');
-    copy.textContent = 'copy rigConfig';
-    copy.style.cssText = 'width:100%;margin-top:8px;padding:5px;background:#2a6;color:#fff;border:0;border-radius:5px;cursor:pointer';
+    copy.textContent = 'copy (fallback)';
+    copy.style.cssText = 'width:100%;margin-top:4px;padding:4px;background:#345;color:#cde;border:0;border-radius:5px;cursor:pointer';
     copy.onclick = () => {
       const text = serializeRig(this.model, this.config);
       void navigator.clipboard?.writeText(text);
       // eslint-disable-next-line no-console
       console.log(text);
       copy.textContent = 'copied! (see console)';
-      setTimeout(() => (copy.textContent = 'copy rigConfig'), 1200);
+      setTimeout(() => (copy.textContent = 'copy (fallback)'), 1200);
     };
     this.panel.appendChild(copy);
   }
