@@ -477,9 +477,10 @@ jumpscare.onGameOver = (enemyId) => {
 };
 for (const enemy of enemies) {
   enemy.onCatch = () => {
-    if (!gs.transition('caught')) return;
+    if (!gs.transition('caught')) return false; // already caught/jumpscaring — don't disable this enemy
     map.close();
     jumpscare.trigger(enemy, engine.camera);
+    return true;
   };
   enemy.onGaitBeat = (kind) => audio.gaitBeat(kind, enemy.position);
 }

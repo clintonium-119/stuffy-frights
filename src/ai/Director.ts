@@ -135,6 +135,7 @@ export class Director {
       const wp = this.markerWorld(spawn.pos);
       r.enemy.position.copy(wp);
       r.enemy.floorIndex = spawn.pos.floor;
+      r.enemy.catchEnabled = true; // fresh run: every enemy can catch again
       r.brain.reset();
       r.brain.passive = true; // grace
       this.migrationTimers.push(config.ai.migrationInterval * (0.6 + this.rng.next() * 0.8));

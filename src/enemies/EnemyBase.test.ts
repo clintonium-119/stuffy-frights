@@ -1,8 +1,15 @@
 import { describe, it, expect } from 'vitest';
 import * as THREE from 'three';
-import { resolveMood, Mood } from './EnemyBase';
+import { resolveMood, Mood, EnemyBase } from './EnemyBase';
 import { Jumpscare, JumpscareTarget } from './Jumpscare';
 import { config } from '../core/config';
+
+/** Minimal concrete EnemyBase for testing update()/catch (no GLB load). */
+class TestEnemy extends EnemyBase {
+  constructor() {
+    super('test');
+  }
+}
 
 const HOLD = config.enemy.expressionHold;
 const R = config.enemy.threatRadius;
@@ -46,6 +53,47 @@ describe('resolveMood', () => {
       state = resolveMood(R + 5, false, state.mood, state.heldFor, DT);
     }
     expect(state.mood).toBe('calm');
+  });
+});
+
+describe('contact catch', () => {
+  const atPlayer = new THREE.Vector3(0, 0, 0); // enemy sits on the player → in range
+
+  it('catches once and disables when onCatch accepts', () => {
+    const e = new TestEnemy();
+    let calls = 0;
+    e.onCatch = () => {
+      calls++;
+      return true;
+    };
+    e.update(DT, atPlayer, true);
+    expect(calls).toBe(1);
+    expect(e.catchEnabled).toBe(false);
+  });
+
+  it('keeps catchEnabled when onCatch rejects, so it can still catch later', () => {
+    const e = new TestEnemy();
+    let calls = 0;
+    e.onCatch = () => {
+      calls++;
+      return false; // game state refused the catch (e.g. already jumpscaring)
+    };
+    e.update(DT, atPlayer, true);
+    expect(e.catchEnabled).toBe(true); // NOT permanently disabled
+    e.update(DT, atPlayer, true);
+    expect(calls).toBe(2); // still attempts on the next frame
+  });
+
+  it('does not attempt a catch when the player is not catchable', () => {
+    const e = new TestEnemy();
+    let calls = 0;
+    e.onCatch = () => {
+      calls++;
+      return true;
+    };
+    e.update(DT, atPlayer, false);
+    expect(calls).toBe(0);
+    expect(e.catchEnabled).toBe(true);
   });
 });
 

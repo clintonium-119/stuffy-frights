@@ -57,7 +57,13 @@ export abstract class EnemyBase {
   /** AI floor tracking. */
   floorIndex = 0;
   mood: Mood = 'calm';
-  onCatch: (() => void) | null = null;
+  /**
+   * Contact-catch handler. Returns `false` if the catch was NOT accepted (e.g.
+   * the game state can't transition to caught — another enemy already triggered
+   * the jumpscare this frame), so the enemy keeps `catchEnabled` and can still
+   * catch on a later frame. Returning truthy / void means the catch took.
+   */
+  onCatch: (() => boolean | void) | null = null;
   /** Audio hook: gait beats (footfall/hop/giggle) with intensity. */
   onGaitBeat: ((kind: string) => void) | null = null;
   /** Suppresses catching during jumpscare/game-over. */
@@ -337,14 +343,18 @@ export abstract class EnemyBase {
       this.group.scale.copy(this.baseScale);
     }
 
-    // Catch on contact.
+    // Catch on contact. Only consume catchEnabled when the catch is ACCEPTED —
+    // if onCatch returns false (e.g. the game already entered the jumpscare from
+    // another enemy this frame), keep catchEnabled so this enemy can still catch
+    // later. Consuming it unconditionally permanently disabled the enemy, so it
+    // could sit inside the player without ever catching.
     if (
       this.catchEnabled &&
       playerCatchable &&
       distance <= config.enemy.contactRadius + 0.35 // + player radius
     ) {
-      this.catchEnabled = false;
-      this.onCatch?.();
+      const took = this.onCatch ? this.onCatch() : false;
+      if (took !== false) this.catchEnabled = false;
     }
   }
 }
