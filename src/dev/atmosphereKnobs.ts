@@ -56,14 +56,20 @@ export const ATMO_KNOB_GROUPS: AtmoKnobGroup[] = [
     ],
   },
   {
-    title: 'storm',
+    // The storm visuals (rain look + lightning flash) — config.weather.
+    title: 'weather',
     knobs: [
-      // Visuals live on config.weather; the rain/music/thunder mix on config.audio.
       { label: 'rain intensity', group: 'weather', key: 'rainIntensity', min: 0, max: 1, step: 0.05, scope: 'global', kind: 'number' },
       { label: 'strike interval (s)', group: 'weather', key: 'strikeIntervalMean', min: 0, max: 60, step: 0.5, scope: 'global', kind: 'number' },
       { label: 'strike jitter (s)', group: 'weather', key: 'strikeIntervalJitter', min: 0, max: 30, step: 0.5, scope: 'global', kind: 'number' },
       { label: 'flash intensity', group: 'weather', key: 'flashIntensity', min: 0, max: 30, step: 0.5, scope: 'global', kind: 'number' },
       { label: 'flash decay (s)', group: 'weather', key: 'flashDecaySeconds', min: 0, max: 2, step: 0.05, scope: 'global', kind: 'number' },
+    ],
+  },
+  {
+    // The full audio mix — rain bed, music swell, thunder — config.audio.
+    title: 'audio',
+    knobs: [
       { label: 'rain max gain', group: 'audio', key: 'rainMaxGain', min: 0, max: 1, step: 0.01, scope: 'global', kind: 'number' },
       { label: 'rain min gain', group: 'audio', key: 'rainMinGain', min: 0, max: 1, step: 0.01, scope: 'global', kind: 'number' },
       { label: 'rain window falloff', group: 'audio', key: 'rainWindowFalloff', min: 0, max: 30, step: 0.5, scope: 'global', kind: 'number' },
