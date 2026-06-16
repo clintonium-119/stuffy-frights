@@ -894,11 +894,11 @@ engine.addUpdatable({
     let anyChasing = false;
     for (const r of director.residents) {
       r.brain.update(dt, snapshot);
-      // Procedural gaze: aware stuffies turn their head to track the player
-      // (and look down when the player is crouched/hidden low). Unaware =
-      // neutral, so a patrolling stuffy doesn't creepily stare.
+      // Procedural gaze: aware stuffies make eye contact, tracking the player's
+      // eye point — so crouching to hide drops their gaze down with you. Unaware
+      // = neutral, so a patrolling stuffy doesn't creepily stare.
       const gaze = r.brain.state === 'chase' ? 1 : r.brain.state === 'investigate' ? 0.6 : 0;
-      r.enemy.setLookContext(gaze > 0 ? player.position : null, gaze);
+      r.enemy.setLookContext(gaze > 0 ? player.eyePosition : null, gaze);
       r.enemy.update(dt, player.position, catchable);
       if (r.enemy.floorIndex === player.floorIndex) {
         nearest = Math.min(nearest, r.enemy.position.distanceTo(player.position));

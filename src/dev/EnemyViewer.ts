@@ -105,8 +105,11 @@ export class EnemyViewer {
   private readonly studioLights: Array<{ light: THREE.Light; base: number }> = [];
   private envTexture: THREE.Texture | null = null;
   private turntable = false;
-  private lookAtCamera = false;
-  private crouchTarget = false;
+  // Eye-contact test: when on, the head tracks a simulated player eye point in
+  // the camera's direction; `playerCrouched` drops that point to crouched eye
+  // height, reproducing the in-game crouch-to-hide gaze drop.
+  private lookAtPlayer = false;
+  private playerCrouched = false;
   private onStairs = false;
   private last = 0;
   private readonly walkTarget = new THREE.Vector3();
@@ -516,16 +519,15 @@ export class EnemyViewer {
       }
       e.isChasing = this.menacing;
 
-      // Look target: camera (eye contact) or a low crouched-player point.
-      const lookPos =
-        this.crouchTarget
-          ? new THREE.Vector3(this.target.x, 0.25, this.target.z + 1.5)
-          : this.camera.position.clone();
+      // Eye-contact target: a player eye point in the camera's horizontal
+      // direction, at standing or crouched eye height — matching the game's
+      // gaze (PlayerController.eyePosition).
+      const lookPos = this.playerEyeTarget();
       // Feed the articulation look-context if the build supports it.
       const look = (e as unknown as {
         setLookContext?: (target: THREE.Vector3 | null, intensity: number) => void;
       }).setLookContext;
-      if (look) look.call(e, lookPos, this.lookAtCamera || this.crouchTarget ? 1 : 0);
+      if (look) look.call(e, lookPos, this.lookAtPlayer ? 1 : 0);
 
       // Mood is driven only by the `menacing` toggle here — keep the simulated
       // player far so proximity doesn't force menacing in the studio.
@@ -538,22 +540,26 @@ export class EnemyViewer {
       if (this.turntable) this.holder.rotation.y += dt * 0.6;
     }
     // Rig edit mode: drive the editor's own bones with the shared articulation
-    // so rig changes are seen against the real idle / walk / crouch-look motion.
+    // so rig changes are seen against the real idle / walk / eye-contact motion.
     if (this.rigEditor) {
       const moving = this.mode === 'walk';
-      let lookTarget: THREE.Vector3 | null = null;
-      let lookIntensity = 0;
-      if (this.crouchTarget) {
-        lookTarget = new THREE.Vector3(this.target.x, 0.25, this.target.z + 1.5);
-        lookIntensity = 1;
-      } else if (this.lookAtCamera) {
-        lookTarget = this.camera.position.clone();
-        lookIntensity = 1;
-      }
-      this.rigEditor.tick(dt, { moving, lookTarget, lookIntensity });
+      const lookTarget = this.lookAtPlayer ? this.playerEyeTarget() : null;
+      this.rigEditor.tick(dt, { moving, lookTarget, lookIntensity: lookTarget ? 1 : 0 });
     }
     this.controls.update();
     this.renderer.render(this.scene, this.camera);
+  }
+
+  /**
+   * Simulated player eye point: the orbit camera's horizontal direction at
+   * standing or crouched eye height (config.player), mirroring the game's
+   * eye-contact target. Orbit to aim the gaze; toggle crouch to drop it.
+   */
+  private playerEyeTarget(): THREE.Vector3 {
+    const eyeY = this.playerCrouched
+      ? config.player.eyeHeightCrouched
+      : config.player.eyeHeightStanding;
+    return new THREE.Vector3(this.camera.position.x, eyeY, this.camera.position.z);
   }
 
   private onResize(): void {
@@ -616,8 +622,8 @@ export class EnemyViewer {
     toggle('menacing', () => this.menacing, (v) => (this.menacing = v));
     toggle('dark', () => this.dark, (v) => this.setDark(v));
     toggle('turntable', () => this.turntable, (v) => (this.turntable = v));
-    toggle('look@cam', () => this.lookAtCamera, (v) => (this.lookAtCamera = v));
-    toggle('crouch-look', () => this.crouchTarget, (v) => (this.crouchTarget = v));
+    toggle('look@player', () => this.lookAtPlayer, (v) => (this.lookAtPlayer = v));
+    toggle('crouched', () => this.playerCrouched, (v) => (this.playerCrouched = v));
     toggle('stairs', () => this.onStairs, (v) => this.setStairs(v));
     sep();
     toggle('ref', () => this.refOn, (v) => {

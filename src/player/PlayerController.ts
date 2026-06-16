@@ -94,6 +94,15 @@ export class PlayerController {
     return this.isCrouched ? config.player.eyeHeightCrouched + 0.15 : config.player.eyeHeightStanding + 0.2;
   }
 
+  /**
+   * World-space eye point — what an aware stuffy makes eye contact with.
+   * `position` is the body base on the floor; the camera sits at eye height
+   * (and the headset owns it in XR), so it's the live eye position either way.
+   */
+  get eyePosition(): THREE.Vector3 {
+    return this.camera.position;
+  }
+
   update(dt: number): void {
     const p = config.player;
     const intent = this.controls.intent;
