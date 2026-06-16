@@ -1017,7 +1017,9 @@ engine.onFrame = (dt) => {
 engine.start();
 
 // ----------------------------------------------------------- dev harness
-if (import.meta.env.DEV) {
+// Gated on `import.meta.hot` (dev server only) so it's stripped from the
+// production build — `import.meta.env.DEV` resolves truthy here and would ship.
+if (import.meta.hot) {
   const params = new URLSearchParams(location.search);
   const anyDev = ['pose', 'warp', 'scare', 'report', 'showcase', 'scenario'].some((k) =>
     params.has(k)

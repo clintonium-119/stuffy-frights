@@ -40,7 +40,7 @@ const STORAGE_KEY = 'sf-dev-overlay';
  * Build and mount the in-game dev tuning overlay: a fixed, collapsible panel
  * toggled by the backtick key (hidden by default), with one collapsible section
  * per concern that later phases populate. Cheat-flag + open-section state is
- * restored from / saved to localStorage. Mounted only under `import.meta.env.DEV`
+ * restored from / saved to localStorage. Mounted only under `import.meta.hot`
  * via a dynamic import, so none of this reaches the production bundle.
  */
 export function mountDevOverlay(ctx: DevOverlayCtx): void {
