@@ -91,9 +91,12 @@ export class EnemyBrain {
   /** Hesitation think-pause (s) + double-take re-score countdown (s). */
   private pauseTimer = 0;
   private rescoreTimer = 0;
-  /** Forced look (double-take / future peek): a held gaze below the sight tier. */
+  /** Forced look (double-take / peek): a held gaze below the sight tier. */
   private forcedGaze: THREE.Vector3 | null = null;
   private forcedGazeTimer = 0;
+  /** Expanding-search bookkeeping: spots already checked + how many cold-ends so far. */
+  private readonly checkedSpots = new Set<HidingSpot>();
+  private coldEnds = 0;
   /** Director pacing knobs. */
   passive = false; // grace period / mercy window
   speedFactor = 1;
@@ -162,6 +165,8 @@ export class EnemyBrain {
     this.rescoreTimer = 0;
     this.forcedGaze = null;
     this.forcedGazeTimer = 0;
+    this.checkedSpots.clear();
+    this.coldEnds = 0;
     Object.assign(this._attention, createAttention());
   }
 
@@ -332,7 +337,16 @@ export class EnemyBrain {
         }
         if (seen) {
           if (this.repathTimer <= 0) {
-            this.pathTo(player.position);
+            // Cut off the escape: aim ahead of a fleeing player (speed-gated so
+            // it never out-positions a still or slow target). Stays beatable —
+            // chaseSpeed < playerSprint is unchanged.
+            const aim = interceptPoint(
+              player.position,
+              this._attention.lastSeenVel,
+              config.ai.interceptLead,
+              config.ai.interceptMinSpeed
+            );
+            this.pathTo(aim);
             this.repathTimer = 0.4;
           }
         } else {
@@ -372,32 +386,48 @@ export class EnemyBrain {
             // giveup → fall through to the memory / lose-interest logic below
           }
           if (this.now - this.memory.lastSeenAt > config.ai.memorySeconds) {
-            // Reached the trail's end. A hidden player nearby gets a
-            // probabilistic check (unwitnessed).
-            if (player.hidden && this.ctx.hiding.active) {
-              const spot = this.ctx.hiding.active;
-              if (
-                this.enemy.position.distanceTo(spot.position) < 6 &&
-                !searchClaims.has(spot)
-              ) {
-                this.searchTarget = spot;
-                this.searchResolved = false;
-                searchClaims.add(spot);
-                this.transition('searchHiding');
-                this.pathTo(spot.position);
-                break;
-              }
+            // Trail's end. Check plausible hiding spots near the last-known
+            // position first, sweeping wider each time a check comes up empty.
+            const lkp = this.memory.lastSeenPos ?? this._attention.lastKnownPos;
+            const radius = config.ai.searchRadius + config.ai.searchRadiusGrowth * this.coldEnds;
+            const spot = lkp ? this.nearestUncheckedSpot(lkp, radius) : null;
+            if (spot) {
+              this.searchTarget = spot;
+              this.searchResolved = false;
+              searchClaims.add(spot);
+              this.coldEnds += 1;
+              this.transition('searchHiding');
+              this.beginPeek(spot.position); // cautious peek before committing
+              this.pathTo(spot.position);
+              break;
             }
+            // Nothing to check: drift to the projected last-known position, but
+            // stay on edge — re-arm the awareness ratchet so it doesn't snap back
+            // to calm patrol (de-escalates search → suspicious → patrol).
             this.memory.lastNoisePos = this.memory.lastSeenPos;
             this.ctx.onChaseLost?.(this.enemy);
+            this.lastAlertAt = this.now;
             this.transition('investigate');
-            if (this.memory.lastSeenPos) this.pathTo(this.memory.lastSeenPos);
+            const guess = projectLkp(
+              this._attention.lastKnownPos,
+              this._attention.lastSeenVel,
+              config.ai.lkpLeadSeconds
+            );
+            if (guess) this.pathTo(guess);
             break;
           }
-          // Recent memory: keep pressing the last seen position.
-          if (this.repathTimer <= 0 && this.memory.lastSeenPos) {
-            this.pathTo(this.memory.lastSeenPos);
-            this.repathTimer = 0.4;
+          // Recent memory: press toward where the player was heading, not the
+          // live position (no cheating) — the last-known point projected forward.
+          if (this.repathTimer <= 0) {
+            const guess = projectLkp(
+              this._attention.lastKnownPos,
+              this._attention.lastSeenVel,
+              config.ai.lkpLeadSeconds
+            );
+            if (guess) {
+              this.pathTo(guess);
+              this.repathTimer = 0.4;
+            }
           }
         }
         this.follower.drive(this.enemy, this.speed(config.ai.chaseSpeed));
@@ -408,6 +438,11 @@ export class EnemyBrain {
         const spot = this.searchTarget;
         if (!spot) {
           this.transition('loseInterest');
+          break;
+        }
+        // Cautious peek: hold still and look at the spot before committing.
+        if (this.pauseTimer > 0) {
+          this.enemy.setMoveTarget(null, 0);
           break;
         }
         this.follower.drive(this.enemy, this.speed(config.ai.investigateSpeed));
@@ -428,7 +463,10 @@ export class EnemyBrain {
             this.memory.forgetWitnessed();
             this.transition('chase');
           } else {
-            // Nothing (found or missed) — linger then move on.
+            // Nothing here — remember it's checked so the sweep widens elsewhere,
+            // and stay on edge (ratchet) rather than relaxing straight away.
+            this.checkedSpots.add(spot);
+            this.lastAlertAt = this.now;
             this.memory.forgetWitnessed();
             this.transition('loseInterest');
           }
@@ -485,6 +523,9 @@ export class EnemyBrain {
       // Eye contact: track the player's eye point at full strength.
       this.lastSeenEye = (player.eyePosition ?? player.position).clone();
       this.gazeLostFor = 0;
+      // Re-acquired: forget the prior search sweep.
+      this.checkedSpots.clear();
+      this.coldEnds = 0;
       a.gazeTarget = this.lastSeenEye;
       a.gazeIntensity = 1;
     } else {
@@ -645,6 +686,29 @@ export class EnemyBrain {
     });
   }
 
+  /** Nearest hiding spot within `radius` of a point that this enemy hasn't yet
+   *  checked this sweep and that no other enemy has claimed. */
+  private nearestUncheckedSpot(at: THREE.Vector3, radius: number): HidingSpot | null {
+    let best: HidingSpot | null = null;
+    let bestD = radius;
+    for (const spot of this.ctx.hiding.all) {
+      if (this.checkedSpots.has(spot) || searchClaims.has(spot)) continue;
+      const d = spot.position.distanceTo(at);
+      if (d < bestD) {
+        bestD = d;
+        best = spot;
+      }
+    }
+    return best;
+  }
+
+  /** Cautious peek: hold a glance toward a point and stand still briefly. */
+  private beginPeek(at: THREE.Vector3): void {
+    this.forcedGaze = new THREE.Vector3(at.x, this.enemy.position.y + 1, at.z);
+    this.forcedGazeTimer = config.ai.peekHoldSeconds;
+    this.pauseTimer = config.ai.peekHoldSeconds;
+  }
+
   private nearestSpot(at: THREE.Vector3): HidingSpot | null {
     let best: HidingSpot | null = null;
     let bestD = 4; // the witnessed entry must be near an actual spot
@@ -715,6 +779,39 @@ export function stepAwareness(
 /** Stable per-node key for visit bookkeeping. */
 function nodeKey(n: NavNodeId): string {
   return `${n.floor}:${n.x},${n.z}`;
+}
+
+/**
+ * Project the last-known position one step along the last-seen velocity — where
+ * a pursuer guesses the player went, rather than cheating toward the live
+ * position. Returns the bare position when velocity is unknown, null when there
+ * is no last-known position.
+ */
+export function projectLkp(
+  pos: THREE.Vector3 | null,
+  vel: THREE.Vector3 | null,
+  lead: number
+): THREE.Vector3 | null {
+  if (!pos) return null;
+  if (!vel) return pos.clone();
+  return new THREE.Vector3(pos.x + vel.x * lead, pos.y, pos.z + vel.z * lead);
+}
+
+/**
+ * A cutoff point ahead of a moving player, for intercepting an escape instead of
+ * chasing the tail. Returns the player position unchanged when the tracked speed
+ * is below `minSpeed` (no reliable heading) or `lead` is 0.
+ */
+export function interceptPoint(
+  playerPos: THREE.Vector3,
+  vel: THREE.Vector3 | null,
+  lead: number,
+  minSpeed: number
+): THREE.Vector3 {
+  if (!vel || lead <= 0) return playerPos.clone();
+  const speed = Math.hypot(vel.x, vel.z);
+  if (speed < minSpeed) return playerPos.clone();
+  return new THREE.Vector3(playerPos.x + vel.x * lead, playerPos.y, playerPos.z + vel.z * lead);
 }
 
 /** Test hook: clear cross-run claims. */

@@ -9,6 +9,8 @@ import {
   awarenessBand,
   stepAwareness,
   headScanOffset,
+  projectLkp,
+  interceptPoint,
 } from './EnemyBrain';
 import { NavGraph } from './NavGraph';
 import { canSee, movementNoiseRadius, PlayerSnapshot } from './Perception';
@@ -682,6 +684,82 @@ describe('hearing throttle', () => {
     // After a full cadence interval it recomputes (a fresh result object).
     for (let i = 0; i < config.ai.soundRecomputeTicks; i++) brain.update(DT, noisy);
     expect(brain.attention.heardDir).not.toBe(cached);
+  });
+});
+
+describe('pursuit intelligence', () => {
+  beforeEach(() => clearSearchClaims());
+
+  it('projectLkp leads along the velocity, falls back without it', () => {
+    const pos = new THREE.Vector3(10, 3.5, 10);
+    const lead = projectLkp(pos, new THREE.Vector3(2, 0, 0), 0.5)!;
+    expect(lead.x).toBeCloseTo(11, 5); // 10 + 2*0.5
+    expect(projectLkp(pos, null, 0.5)!.equals(pos)).toBe(true);
+    expect(projectLkp(null, new THREE.Vector3(1, 0, 0), 0.5)).toBeNull();
+  });
+
+  it('interceptPoint cuts ahead of a fast player, but not a slow/still one', () => {
+    const p = new THREE.Vector3(10, 3.5, 10);
+    const fast = interceptPoint(p, new THREE.Vector3(3, 0, 0), 0.5, 1.5);
+    expect(fast.x).toBeCloseTo(11.5, 5); // 10 + 3*0.5
+    const slow = interceptPoint(p, new THREE.Vector3(0.5, 0, 0), 0.5, 1.5);
+    expect(slow.equals(p)).toBe(true); // below minSpeed → no cutoff
+    expect(interceptPoint(p, new THREE.Vector3(3, 0, 0), 0, 1.5).equals(p)).toBe(true); // lead 0
+  });
+
+  it('expanding search: a cold chase checks a hiding spot near the last-known position', () => {
+    const { hiding } = makeHiding(); // spot ≈ (9, 19)
+    const body = stubBody(9, 3.5, 21.5);
+    const brain = brainWith(body, hiding, new Rng(1));
+    pumpUntilChase(brain, snapshot({ position: new THREE.Vector3(9, 3.5, 23), lightOn: true }));
+    // Player vanishes (same floor, far, not hidden, silent): LKP ≈ (9,23), the
+    // wardrobe at (9,19) is within the search radius → the enemy goes to check it.
+    const gone = snapshot({ position: new THREE.Vector3(40, 3.5, 40), floor: 1 });
+    const states = new Set<string>();
+    for (let i = 0; i < 12 / DT; i++) {
+      brain.update(DT, gone);
+      states.add(brain.state);
+      if (brain.state === 'patrol') break;
+    }
+    expect(states.has('searchHiding')).toBe(true);
+  });
+
+  it('peeking: entering a search holds a glance toward the spot before committing', () => {
+    const { hiding, worldPos } = makeHiding();
+    const body = stubBody(9, 3.5, 21.5);
+    const brain = brainWith(body, hiding, new Rng(1));
+    pumpUntilChase(brain, snapshot({ position: new THREE.Vector3(9, 3.5, 23), lightOn: true }));
+    const gone = snapshot({ position: new THREE.Vector3(40, 3.5, 40), floor: 1 });
+    let peeked = false;
+    for (let i = 0; i < 12 / DT; i++) {
+      brain.update(DT, gone);
+      if (brain.state === 'searchHiding') {
+        const g = brain.attention.gazeTarget;
+        if (g && Math.hypot(g.x - worldPos.x, g.z - worldPos.z) < 1.5) {
+          peeked = true;
+          break;
+        }
+      }
+    }
+    expect(peeked).toBe(true);
+  });
+
+  it('ratcheted de-escalation: a lost chase stays on edge (no instant reset to calm)', () => {
+    const { hiding } = makeHiding();
+    const body = stubBody(15, 3.5, 19); // LKP will be far from the (9,19) spot → no search
+    const brain = brainWith(body, hiding, new Rng(1));
+    pumpUntilChase(brain, snapshot({ position: new THREE.Vector3(15, 3.5, 23), lightOn: true }));
+    const gone = snapshot({ position: new THREE.Vector3(5, 3.5, 5), floor: 1 });
+    // Run past the memory window so the chase goes cold and re-arms the ratchet.
+    let sawSuspiciousAfterCold = false;
+    for (let i = 0; i < (config.ai.memorySeconds + 0.5) / DT; i++) brain.update(DT, gone);
+    for (let i = 0; i < 10; i++) {
+      brain.update(DT, gone);
+      if (brain.attention.awareness >= config.ai.awarenessSuspicious) sawSuspiciousAfterCold = true;
+    }
+    expect(brain.state).not.toBe('chase');
+    expect(brain.state).not.toBe('patrol'); // hasn't snapped back to calm yet
+    expect(sawSuspiciousAfterCold).toBe(true); // held in the suspicious band
   });
 });
 

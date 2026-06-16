@@ -119,6 +119,13 @@ export interface GameConfig {
     patrolRescoreSeconds: number; // how often patrol reconsiders its target (s)
     patrolOvertakeMargin: number; // utility a new target must beat the current by to switch
     doubleTakeGazeTime: number; // s the head holds the double-take glance
+    // Pursuit intelligence.
+    lkpLeadSeconds: number; // how far ahead of the last-known position to aim along last-seen velocity
+    interceptLead: number; // seconds ahead of the player to cut off while chasing (0 disables)
+    interceptMinSpeed: number; // only cut off when the player's tracked speed exceeds this (m/s)
+    searchRadius: number; // initial radius (m) around the LKP to check hiding spots
+    searchRadiusGrowth: number; // extra radius (m) per failed search (expanding sweep)
+    peekHoldSeconds: number; // how long the head peeks a spot before the body commits
     /** Seconds spent looking around at an investigation point. */
     investigateLinger: number;
     /** Seconds idling after losing interest before resuming patrol. */
@@ -362,6 +369,12 @@ export const config: GameConfig = {
     patrolRescoreSeconds: 0.6,
     patrolOvertakeMargin: 0.35,
     doubleTakeGazeTime: 0.5,
+    lkpLeadSeconds: 0.6,
+    interceptLead: 0.5,
+    interceptMinSpeed: 1.5,
+    searchRadius: 6,
+    searchRadiusGrowth: 4,
+    peekHoldSeconds: 0.6,
     investigateLinger: 2,
     loseInterestSeconds: 1.5,
     searchProbLightOn: 0.75,
