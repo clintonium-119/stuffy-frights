@@ -407,16 +407,24 @@ export class EnemyViewer {
     });
   }
 
-  /** Global menacing eye-glow controls (config.enemyGlow): live preview + save. */
-  private appendEyeGlowControls(): void {
-    this.animPanel.appendChild(this.heading('eye glow (global)'));
-    this.animPanel.appendChild(
+  /**
+   * Global menacing eye-glow controls (config.enemyGlow): its own dialog below
+   * the tuning panel — live preview + save. These are a global config, not the
+   * per-enemy tuning the panel above edits.
+   */
+  private refreshGlowPanel(): void {
+    this.glowPanel.innerHTML = '';
+    const title = document.createElement('div');
+    title.innerHTML = '<b>eye glow (global)</b>';
+    title.style.marginBottom = '6px';
+    this.glowPanel.appendChild(title);
+    this.glowPanel.appendChild(
       this.sliderRow('intensity', config.enemyGlow.eyeIntensity, 0, 2, 0.05, (v) => {
         config.enemyGlow.eyeIntensity = v;
         this.applyEyeGlowPreview();
       })
     );
-    this.animPanel.appendChild(
+    this.glowPanel.appendChild(
       this.colorRow('colour', config.enemyGlow.eyeColor, (hex) => {
         config.enemyGlow.eyeColor = hex;
         this.applyEyeGlowPreview();
@@ -433,7 +441,7 @@ export class EnemyViewer {
         setTimeout(() => (save.textContent = 'save glow'), 1600);
       });
     };
-    this.animPanel.appendChild(save);
+    this.glowPanel.appendChild(save);
   }
 
   /** Save the whole edited tuning record back to tuningConfig.ts via the endpoint. */

@@ -5,7 +5,7 @@ import { loadGLB, modelUrl } from '../world/ModelLoader';
 import { rigMesh } from '../enemies/Skinning';
 import { RIG_CONFIG } from '../enemies/rigConfig';
 import { RigConfig, BoneConfig } from '../enemies/rigWeights';
-import { clampBox, clamp01, normFromWorld, serializeRig, worldFromNorm, Vec3 } from './rigEditorMath';
+import { clampBox, clamp01, normFromWorld, worldFromNorm, Vec3 } from './rigEditorMath';
 import { serializeRigConfigRecord, serializeEyeConfigRecord } from './configWriter';
 import { saveConfigBlock } from './saveConfig';
 import { Articulator, ArticulatorBones, GaitStyle } from '../enemies/Articulator';
@@ -42,7 +42,11 @@ export class RigEditor {
   private group = new THREE.Group();
   private anim = new THREE.Group(); // gait-bobbed wrapper holding the skinned mesh
   private gizmos = new THREE.Group();
+  // Right column: the rig-edit panel with the glow-paint tool stacked below it
+  // as its own dialog (it edits eyeConfig.ts, separate from the rig).
+  private rightColumn = document.createElement('div');
   private panel = document.createElement('div');
+  private glowPanel = document.createElement('div');
   private config: RigConfig;
   private geom: THREE.BufferGeometry | null = null;
   private mat: THREE.Material | null = null;
@@ -373,10 +377,14 @@ export class RigEditor {
 
   // ---- panel ----
   private buildPanel(): void {
-    this.panel.style.cssText =
-      'position:fixed;top:8px;right:8px;width:250px;background:#0b0e12ee;color:#cdd;' +
-      'font:11px ui-monospace,monospace;padding:10px;border-radius:8px;z-index:20;max-height:94vh;overflow:auto';
-    document.body.appendChild(this.panel);
+    this.rightColumn.style.cssText =
+      'position:fixed;top:8px;right:8px;width:250px;display:flex;flex-direction:column;gap:8px;' +
+      'z-index:20;max-height:94vh;overflow:auto';
+    const box = 'background:#0b0e12ee;color:#cdd;font:11px ui-monospace,monospace;padding:10px;border-radius:8px';
+    this.panel.style.cssText = box;
+    this.glowPanel.style.cssText = box;
+    this.rightColumn.append(this.panel, this.glowPanel);
+    document.body.appendChild(this.rightColumn);
     this.refreshPanel();
   }
 
@@ -404,6 +412,7 @@ export class RigEditor {
   private refreshPanel(): void {
     const b = this.config[this.selected] as BoneConfig | undefined;
     this.panel.innerHTML = '';
+    this.glowPanel.innerHTML = '';
     const title = document.createElement('div');
     title.innerHTML = `<b>rig edit — ${this.model}</b>`;
     title.style.marginBottom = '6px';
@@ -510,65 +519,8 @@ export class RigEditor {
       this.panel.appendChild(row);
     });
 
-    // --- glow paint tool (separate config: eyeConfig.ts) ---
-    mk('glow — turn on "dark"; click mesh to paint');
-    // Paint tool: stamp glow discs by clicking the mesh.
-    const stamps = this.eyes.stamps ?? [];
-    const paintBtn = document.createElement('button');
-    paintBtn.textContent = this.paintMode ? `painting — click mesh (${stamps.length})` : `paint glow (${stamps.length} stamps)`;
-    paintBtn.style.cssText =
-      `width:100%;margin-top:6px;padding:4px;border:0;border-radius:4px;cursor:pointer;color:#fde;` +
-      `background:${this.paintMode ? '#c63' : '#28303a'}`;
-    paintBtn.onclick = () => {
-      this.paintMode = !this.paintMode;
-      // Detach the move gizmo while painting so it can't swallow clicks.
-      if (this.paintMode) this.tc?.detach();
-      else this.positionHandle();
-      this.refreshPanel();
-    };
-    this.panel.appendChild(paintBtn);
-    this.panel.appendChild(
-      this.num('brush', this.brushR, 0.005, (v) => (this.brushR = Math.max(0.01, v)))
-    );
-    const stampRow = document.createElement('div');
-    stampRow.style.cssText = 'display:flex;gap:4px;margin:2px 0';
-    const undo = document.createElement('button');
-    undo.textContent = 'undo stamp';
-    undo.disabled = stamps.length === 0;
-    const clear = document.createElement('button');
-    clear.textContent = 'clear';
-    clear.disabled = stamps.length === 0;
-    for (const b of [undo, clear]) {
-      b.style.cssText =
-        `flex:1;padding:3px;border:0;border-radius:4px;color:#cde;background:#28303a;` +
-        `cursor:${b.disabled ? 'default' : 'pointer'};opacity:${b.disabled ? 0.4 : 1}`;
-    }
-    undo.onclick = () => {
-      this.eyes.stamps?.pop();
-      this.applyEyeGlowPreview();
-      this.refreshPanel();
-    };
-    clear.onclick = () => {
-      this.eyes.stamps = [];
-      this.applyEyeGlowPreview();
-      this.refreshPanel();
-    };
-    stampRow.append(undo, clear);
-    this.panel.appendChild(stampRow);
-
-    const saveEyes = document.createElement('button');
-    saveEyes.textContent = 'save glow to source';
-    saveEyes.style.cssText = 'width:100%;margin-top:6px;padding:5px;background:#a44;color:#fff;border:0;border-radius:5px;cursor:pointer';
-    saveEyes.onclick = () => {
-      const merged = { ...EYE_CONFIG, [this.model]: this.eyes };
-      const body = serializeEyeConfigRecord(merged);
-      saveEyes.textContent = 'saving…';
-      void saveConfigBlock('src/enemies/eyeConfig.ts', 'eyeConfig', body).then((r) => {
-        saveEyes.textContent = r.ok ? 'saved ✓' : `save failed: ${r.error ?? ''}`;
-        setTimeout(() => (saveEyes.textContent = 'save glow to source'), 1600);
-      });
-    };
-    this.panel.appendChild(saveEyes);
+    // --- glow paint tool — its own dialog below the rig panel (eyeConfig.ts) ---
+    this.buildGlowPanel();
 
     // Save the edited rig straight to rigConfig.ts via the dev write endpoint:
     // merge this model's edited bones back into the full record, serialize, write.
@@ -585,20 +537,80 @@ export class RigEditor {
       });
     };
     this.panel.appendChild(save);
+  }
 
-    // Fallback when the dev endpoint is unavailable: copy this model's literal.
-    const copy = document.createElement('button');
-    copy.textContent = 'copy (fallback)';
-    copy.style.cssText = 'width:100%;margin-top:4px;padding:4px;background:#345;color:#cde;border:0;border-radius:5px;cursor:pointer';
-    copy.onclick = () => {
-      const text = serializeRig(this.model, this.config);
-      void navigator.clipboard?.writeText(text);
-      // eslint-disable-next-line no-console
-      console.log(text);
-      copy.textContent = 'copied! (see console)';
-      setTimeout(() => (copy.textContent = 'copy (fallback)'), 1200);
+  /**
+   * Glow-paint dialog (eyeConfig.ts) stacked below the rig panel: toggle paint
+   * mode, set the brush, undo/clear stamps, and write to source. Kept separate
+   * from the rig controls since it edits a different config. Rebuilt by
+   * `refreshPanel` so the stamp count + paint-mode label stay live.
+   */
+  private buildGlowPanel(): void {
+    const title = document.createElement('div');
+    title.innerHTML = `<b>glow paint — ${this.model}</b>`;
+    title.style.marginBottom = '6px';
+    this.glowPanel.appendChild(title);
+    const hint = document.createElement('div');
+    hint.textContent = 'turn on "dark"; click mesh to paint';
+    hint.style.cssText = 'margin:0 0 4px;color:#8af';
+    this.glowPanel.appendChild(hint);
+
+    const stamps = this.eyes.stamps ?? [];
+    const paintBtn = document.createElement('button');
+    paintBtn.textContent = this.paintMode ? `painting — click mesh (${stamps.length})` : `paint glow (${stamps.length} stamps)`;
+    paintBtn.style.cssText =
+      `width:100%;padding:4px;border:0;border-radius:4px;cursor:pointer;color:#fde;` +
+      `background:${this.paintMode ? '#c63' : '#28303a'}`;
+    paintBtn.onclick = () => {
+      this.paintMode = !this.paintMode;
+      // Detach the move gizmo while painting so it can't swallow clicks.
+      if (this.paintMode) this.tc?.detach();
+      else this.positionHandle();
+      this.refreshPanel();
     };
-    this.panel.appendChild(copy);
+    this.glowPanel.appendChild(paintBtn);
+    this.glowPanel.appendChild(
+      this.num('brush', this.brushR, 0.005, (v) => (this.brushR = Math.max(0.01, v)))
+    );
+    const stampRow = document.createElement('div');
+    stampRow.style.cssText = 'display:flex;gap:4px;margin:2px 0';
+    const undo = document.createElement('button');
+    undo.textContent = 'undo stamp';
+    undo.disabled = stamps.length === 0;
+    const clear = document.createElement('button');
+    clear.textContent = 'clear';
+    clear.disabled = stamps.length === 0;
+    for (const btn of [undo, clear]) {
+      btn.style.cssText =
+        `flex:1;padding:3px;border:0;border-radius:4px;color:#cde;background:#28303a;` +
+        `cursor:${btn.disabled ? 'default' : 'pointer'};opacity:${btn.disabled ? 0.4 : 1}`;
+    }
+    undo.onclick = () => {
+      this.eyes.stamps?.pop();
+      this.applyEyeGlowPreview();
+      this.refreshPanel();
+    };
+    clear.onclick = () => {
+      this.eyes.stamps = [];
+      this.applyEyeGlowPreview();
+      this.refreshPanel();
+    };
+    stampRow.append(undo, clear);
+    this.glowPanel.appendChild(stampRow);
+
+    const saveEyes = document.createElement('button');
+    saveEyes.textContent = 'save glow to source';
+    saveEyes.style.cssText = 'width:100%;margin-top:6px;padding:5px;background:#2a6;color:#fff;border:0;border-radius:5px;cursor:pointer';
+    saveEyes.onclick = () => {
+      const merged = { ...EYE_CONFIG, [this.model]: this.eyes };
+      const body = serializeEyeConfigRecord(merged);
+      saveEyes.textContent = 'saving…';
+      void saveConfigBlock('src/enemies/eyeConfig.ts', 'eyeConfig', body).then((r) => {
+        saveEyes.textContent = r.ok ? 'saved ✓' : `save failed: ${r.error ?? ''}`;
+        setTimeout(() => (saveEyes.textContent = 'save glow to source'), 1600);
+      });
+    };
+    this.glowPanel.appendChild(saveEyes);
   }
 
   dispose(): void {
@@ -614,6 +626,6 @@ export class RigEditor {
     if (this.orbit) this.orbit.enabled = true;
     this.scene.remove(this.group);
     this.skinned?.skeleton.dispose();
-    this.panel.remove();
+    this.rightColumn.remove();
   }
 }
