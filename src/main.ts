@@ -882,6 +882,7 @@ engine.addUpdatable({
     const catchable = hiding.active === null && !jumpscare.running;
     const snapshot: PlayerSnapshot = {
       position: player.position,
+      eyePosition: player.eyePosition,
       floor: player.floorIndex,
       lightOn: flashlight.isOn,
       crouched: player.isCrouched,
@@ -894,11 +895,10 @@ engine.addUpdatable({
     let anyChasing = false;
     for (const r of director.residents) {
       r.brain.update(dt, snapshot);
-      // Procedural gaze: aware stuffies make eye contact, tracking the player's
-      // eye point — so crouching to hide drops their gaze down with you. Unaware
-      // = neutral, so a patrolling stuffy doesn't creepily stare.
-      const gaze = r.brain.state === 'chase' ? 1 : r.brain.state === 'investigate' ? 0.6 : 0;
-      r.enemy.setLookContext(gaze > 0 ? player.eyePosition : null, gaze);
+      // Procedural gaze: the brain owns it, gated on actual line-of-sight — the
+      // head only tracks the player while genuinely seen, then lingers briefly
+      // on the last-seen spot. No staring through walls on hearing or memory.
+      r.enemy.setLookContext(r.brain.attention.gazeTarget, r.brain.attention.gazeIntensity);
       r.enemy.update(dt, player.position, catchable);
       if (r.enemy.floorIndex === player.floorIndex) {
         nearest = Math.min(nearest, r.enemy.position.distanceTo(player.position));

@@ -5,6 +5,8 @@ import { House, isWalkable, worldToCell } from '../world/layoutTypes';
 /** What an enemy needs to know about the player to perceive them. */
 export interface PlayerSnapshot {
   position: THREE.Vector3;
+  /** World-space eye point for eye-contact gaze; falls back to `position`. */
+  eyePosition?: THREE.Vector3;
   floor: number;
   lightOn: boolean;
   crouched: boolean;

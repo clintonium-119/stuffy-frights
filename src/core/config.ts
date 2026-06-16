@@ -88,6 +88,8 @@ export interface GameConfig {
     chaseSpeed: number;
     /** Seconds of lost sight before the chase degrades to investigate. */
     memorySeconds: number;
+    /** Seconds the head keeps looking at the last-seen spot after sight breaks. */
+    gazeLingerSeconds: number;
     /** Seconds spent looking around at an investigation point. */
     investigateLinger: number;
     /** Seconds idling after losing interest before resuming patrol. */
@@ -304,6 +306,7 @@ export const config: GameConfig = {
     investigateSpeed: 2.7,
     chaseSpeed: 4.5,
     memorySeconds: 2.5, // short: breaking line of sight is a real escape
+    gazeLingerSeconds: 0.8, // brief "where did it go" look at the last-seen spot
     investigateLinger: 2,
     loseInterestSeconds: 1.5,
     searchProbLightOn: 0.75,

@@ -5,6 +5,7 @@ import { House, cellToWorld, floorY } from '../world/layoutTypes';
 import { HidingSpot, HidingSystem } from '../systems/HidingSpot';
 import { NavGraph, PathFollower } from './NavGraph';
 import { PerceptionMemory, PlayerSnapshot, canSee, movementNoiseRadius } from './Perception';
+import { EnemyAttention, createAttention } from './EnemyAttention';
 import { EnemyTuning } from '../enemies/tuningConfig';
 
 /** What the brain needs from its body (EnemyBase satisfies this; tests stub it). */
@@ -60,6 +61,14 @@ export interface BrainContext {
 export class EnemyBrain {
   state: BrainState = 'patrol';
   readonly memory = new PerceptionMemory();
+  /** Consolidated perception/intention seam the renderer + later AI read. */
+  private readonly _attention = createAttention();
+  /** Previous sighting, for the velocity estimate fed into the attention struct. */
+  private prevSeenPos: THREE.Vector3 | null = null;
+  private prevSeenAt = -Infinity;
+  /** Gaze linger after sight breaks: where it last looked + how long ago. */
+  private lastSeenEye: THREE.Vector3 | null = null;
+  private gazeLostFor = 0;
   /** Director pacing knobs. */
   passive = false; // grace period / mercy window
   speedFactor = 1;
@@ -88,6 +97,11 @@ export class EnemyBrain {
     this.homeFloor = homeFloor;
   }
 
+  /** Read-only view of the consolidated perception/intention state. */
+  get attention(): Readonly<EnemyAttention> {
+    return this._attention;
+  }
+
   /** Restore to a fresh-run patrol state (Director.restart drives this). */
   reset(): void {
     if (this.searchTarget) {
@@ -109,6 +123,11 @@ export class EnemyBrain {
     this.forcedDestination = null;
     this.crossFloorDecision = 'undecided';
     this.enemy.isChasing = false;
+    this.prevSeenPos = null;
+    this.prevSeenAt = -Infinity;
+    this.lastSeenEye = null;
+    this.gazeLostFor = 0;
+    Object.assign(this._attention, createAttention());
   }
 
   /** Witness hooks — called by the world when concealment happens in view. */
@@ -179,6 +198,7 @@ export class EnemyBrain {
         this.enemy.tuning?.gameplay.visionMult ?? 1
       );
     if (seen) this.memory.recordSeen(player.position, this.now);
+    this.updateAttention(dt, seen, player);
 
     // Continuous movement noise.
     if (!this.passive && player.noiseLevel > 0 && player.floor === this.enemy.floorIndex) {
@@ -379,6 +399,45 @@ export class EnemyBrain {
     }
   }
 
+  /**
+   * Fold this tick's sight result into the consolidated attention struct.
+   * Sight gates the head-gaze (eye contact while seen, a brief decaying linger
+   * on the last-seen spot after), so the enemy never stares through walls.
+   */
+  private updateAttention(dt: number, seen: boolean, player: PlayerSnapshot): void {
+    const a = this._attention;
+    a.seen = seen;
+    if (seen) {
+      if (this.prevSeenPos) {
+        const gap = this.now - this.prevSeenAt;
+        if (gap > 1e-4) {
+          a.lastSeenVel = player.position.clone().sub(this.prevSeenPos).divideScalar(gap);
+        }
+      }
+      a.lastKnownPos = player.position.clone();
+      a.lastSeenAt = this.now;
+      this.prevSeenPos = player.position.clone();
+      this.prevSeenAt = this.now;
+      // Eye contact: track the player's eye point at full strength.
+      this.lastSeenEye = (player.eyePosition ?? player.position).clone();
+      this.gazeLostFor = 0;
+      a.gazeTarget = this.lastSeenEye;
+      a.gazeIntensity = 1;
+    } else {
+      // Lost sight: hold the last-seen eye point and fade out over the linger.
+      this.gazeLostFor += dt;
+      const intensity = gazeLingerIntensity(this.gazeLostFor, config.ai.gazeLingerSeconds);
+      if (intensity > 0 && this.lastSeenEye) {
+        a.gazeTarget = this.lastSeenEye;
+        a.gazeIntensity = intensity;
+      } else {
+        a.gazeTarget = null;
+        a.gazeIntensity = 0;
+        this.lastSeenEye = null;
+      }
+    }
+  }
+
   private nearestSpot(at: THREE.Vector3): HidingSpot | null {
     let best: HidingSpot | null = null;
     let bestD = 4; // the witnessed entry must be near an actual spot
@@ -391,6 +450,16 @@ export class EnemyBrain {
     }
     return best;
   }
+}
+
+/**
+ * Gaze strength during the post-sight linger: a linear ramp from 1 down to 0
+ * over `lingerSeconds`. `elapsed` is seconds since sight broke. Returns 0 once
+ * the linger is spent (or immediately if linger is non-positive).
+ */
+export function gazeLingerIntensity(elapsed: number, lingerSeconds: number): number {
+  if (lingerSeconds <= 0) return 0;
+  return Math.max(0, 1 - elapsed / lingerSeconds);
 }
 
 /** Test hook: clear cross-run claims. */
