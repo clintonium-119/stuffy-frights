@@ -44,6 +44,7 @@ import { AudioEngine } from './audio/AudioEngine';
 import { SettingsStore } from './core/Settings';
 import { applyDifficulty, DIFFICULTY_META, DIFFICULTY_ORDER, type DifficultyLevel } from './core/difficulty';
 import { parseDevStart } from './core/devStart';
+import { devFlags } from './dev/devFlags';
 
 // Apply the persisted difficulty into `config` BEFORE any system reads it — every
 // importer shares the same config object, so this one in-place merge sets the
@@ -376,6 +377,17 @@ const hud = new HUD(ui);
 const menus = new Menus(ui);
 const map = new MapOverlay(house, ui);
 const vrMap = new VRMap(map.mapCanvas);
+
+// Dev-only in-game tuning overlay (` to toggle). Gated on `import.meta.hot`
+// (the dev server only — replaced with `undefined` in the build), so the whole
+// panel chunk is tree-shaken out of production. (`import.meta.env.DEV` is not a
+// reliable gate in this project's build — it resolves truthy there.)
+if (import.meta.hot) {
+  void import('./dev/DevOverlay').then(({ mountDevOverlay }) =>
+    mountDevOverlay({ config, devFlags, player, director, map, applyDifficulty })
+  );
+}
+
 const audio = new AudioEngine();
 // Thunder follows each lightning flash after a realistic delay.
 weather.onLightning = () => {
