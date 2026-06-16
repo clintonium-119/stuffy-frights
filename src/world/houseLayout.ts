@@ -6,6 +6,7 @@ import {
   FloorIndex,
   HidingKind,
   House,
+  WindowDef,
   isWalkable,
 } from './layoutTypes';
 import { legacyGridToEdges, computeRoomIds, edgeBetween, blocksMovement } from './edges';
@@ -217,6 +218,7 @@ export function parseLayout(): House {
     edgesV: [],
     edgesH: [],
     roomId: [],
+    windows: [],
     width,
     depth,
     playerSpawn: { floor: 1, x: 0, z: 0 },
@@ -360,7 +362,41 @@ export function parseLayout(): House {
   // room). Single source of truth for room membership; see edges.ts.
   house.roomId = computeRoomIds(edges, house.grids, house.width, house.depth);
 
+  // Windows as model data (the renderer reads only this). The legacy house
+  // synthesizes them from its exterior walls; the authored mansion supplies them
+  // directly. Transitional — removed with the legacy ASCII house.
+  house.windows = legacyWindows(house);
+
   return house;
+}
+
+/** Above-ground legacy floors that carry exterior windows (main + upstairs). */
+const LEGACY_WINDOW_FLOORS = [1, 2];
+
+/**
+ * Synthesize the legacy house's windows from its exterior front/back walls
+ * (every fourth cell, where the perimeter wall ring meets an interior room),
+ * producing `WindowDef`s on the boundary edges the renderer consumes. Mirrors
+ * the old in-renderer exterior scan; dropped once windows are authored directly.
+ */
+function legacyWindows(house: House): WindowDef[] {
+  const out: WindowDef[] = [];
+  for (const floor of LEGACY_WINDOW_FLOORS) {
+    if (floor >= house.grids.length) continue;
+    const grid = house.grids[floor];
+    const zb = house.depth - 2;
+    for (let x = 2; x < house.width - 2; x += 4) {
+      // Front wall: ring at z=0, room at z=1 — window on their shared edge.
+      if (grid[0][x] === 'wall' && isWalkable(grid[1][x])) {
+        out.push({ floor, x, z: 0, edge: 'h' });
+      }
+      // Back wall: room at depth-2, ring at depth-1.
+      if (grid[house.depth - 1][x] === 'wall' && isWalkable(grid[zb][x])) {
+        out.push({ floor, x, z: zb, edge: 'h' });
+      }
+    }
+  }
+  return out;
 }
 
 export interface Neighbor {

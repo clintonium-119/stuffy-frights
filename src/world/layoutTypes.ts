@@ -76,6 +76,20 @@ export interface ExitDef {
   id: ExitId;
 }
 
+/**
+ * A window carried on a cell boundary (an exterior wall edge). `edge:'v'` is the
+ * boundary between (x,z) and (x+1,z); `edge:'h'` between (x,z) and (x,z+1). The
+ * renderer faces the pane toward whichever adjacent cell is walkable (the room
+ * side). The authored mansion supplies these directly; the legacy house
+ * synthesizes them from its exterior walls (see `houseLayout`).
+ */
+export interface WindowDef {
+  floor: FloorIndex;
+  x: number;
+  z: number;
+  edge: 'v' | 'h';
+}
+
 export interface House {
   /** grids[floor][z][x] */
   grids: CellKind[][][];
@@ -109,6 +123,8 @@ export interface House {
   stairs: Stair[];
   vents: Vent[];
   chutes: Chute[];
+  /** Windows carried on exterior wall edges; rendered as unlit night views. */
+  windows: WindowDef[];
   /**
    * `"floor:x,z"` keys for stair cells that are NOT valid nav nodes: every stair
    * cell except the run's entrance (low-end on the lower floor) and landing

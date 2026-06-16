@@ -34,6 +34,7 @@ function makeHouse(grids: CellKind[][][], edgesV: EdgeState[][][], edgesH: EdgeS
     stairs: [],
     vents: [],
     chutes: [],
+    windows: [],
     navBlockedStairCells: new Set<string>(),
   };
 }

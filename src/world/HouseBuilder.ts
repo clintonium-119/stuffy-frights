@@ -5,10 +5,16 @@ import {
   FLOOR_SPACING,
   WALL_HEIGHT,
   House,
+  CellKind,
+  EdgeState,
+  Stair,
+  Chute,
   cellToWorld,
   floorY,
   worldToCell,
+  isWalkable,
 } from './layoutTypes';
+import { UPSCALE } from './houseLayout';
 import { PROP_PLACEMENTS, buildProp, hidingHostKind } from './Props';
 import { pbrMaterial } from './materialLibrary';
 import { config } from '../core/config';
@@ -17,6 +23,10 @@ const SLAB_THICKNESS = 0.25;
 const VENT_CLEARANCE = 1.1; // crawl height under a bored wall
 const DOOR_HEADER = 2.2; // lintel underside
 const STEP_RISE = 0.25;
+/** Thin wall thickness, centred on the cell boundary so both adjacent cells keep
+ *  full floor area. Runs are extended half this at each end so perpendicular runs
+ *  overlap at corners (no gap, no coplanar z-fighting). */
+const WALL_THICKNESS = 0.15;
 /** World metres per PBR texture tile. Tiling is baked into per-mesh UVs so one
  *  shared material tiles correctly across merged runs of any size. */
 const TILE = 2.5;
@@ -164,6 +174,101 @@ function makeMaterials(): FloorMaterials[] {
   ];
 }
 
+/**
+ * A merged run of collinear, same-state renderable edges (`wall | door |
+ * secret`). `axis:'v'` runs along Z on the vertical boundary east of column `b`
+ * (between columns `b` and `b+1`); `axis:'h'` runs along X on the horizontal
+ * boundary south of row `b`. `i0..i1` is the inclusive cell-index span along the
+ * run (z for `v`, x for `h`).
+ */
+export interface EdgeRun {
+  axis: 'v' | 'h';
+  b: number;
+  i0: number;
+  i1: number;
+  state: EdgeState;
+}
+
+const RENDERABLE_EDGE = (e: EdgeState): boolean =>
+  e === 'wall' || e === 'door' || e === 'secret';
+
+/**
+ * Merge a floor's renderable edges (`wall`/`door`/`secret`) into collinear
+ * same-state runs for thin geometry. Only edges that border at least one
+ * walkable cell are emitted: the authored mansion has no wall cells, so every
+ * such edge already faces floor; the transitional legacy house has block-thick
+ * wall regions whose interior edges face no walkable cell and are skipped,
+ * leaving just the room-facing faces. A run breaks where the edge state changes
+ * or an edge isn't renderable (so a wall→door→wall line splits into three runs).
+ */
+export function edgeRuns(
+  edgesV: EdgeState[][],
+  edgesH: EdgeState[][],
+  grid: CellKind[][],
+  width: number,
+  depth: number
+): EdgeRun[] {
+  const runs: EdgeRun[] = [];
+  // Vertical boundaries (between columns x and x+1): merge along z.
+  for (let x = 0; x < width - 1; x++) {
+    let cur: EdgeState = 'none';
+    let start = -1;
+    for (let z = 0; z <= depth; z++) {
+      const e =
+        z < depth && (isWalkable(grid[z][x]) || isWalkable(grid[z][x + 1]))
+          ? edgesV[z][x]
+          : 'none';
+      const on = RENDERABLE_EDGE(e);
+      if (start >= 0 && (!on || e !== cur)) {
+        runs.push({ axis: 'v', b: x, i0: start, i1: z - 1, state: cur });
+        start = -1;
+      }
+      if (on && start < 0) {
+        cur = e;
+        start = z;
+      }
+    }
+  }
+  // Horizontal boundaries (between rows z and z+1): merge along x.
+  for (let z = 0; z < depth - 1; z++) {
+    let cur: EdgeState = 'none';
+    let start = -1;
+    for (let x = 0; x <= width; x++) {
+      const e =
+        x < width && (isWalkable(grid[z][x]) || isWalkable(grid[z + 1][x]))
+          ? edgesH[z][x]
+          : 'none';
+      const on = RENDERABLE_EDGE(e);
+      if (start >= 0 && (!on || e !== cur)) {
+        runs.push({ axis: 'h', b: z, i0: start, i1: x - 1, state: cur });
+        start = -1;
+      }
+      if (on && start < 0) {
+        cur = e;
+        start = x;
+      }
+    }
+  }
+  return runs;
+}
+
+/**
+ * Cells whose floor slab is punched out, one set per floor (`"x,z"` keys). A
+ * stair run opens the UPPER floor's slab (the stairwell opening you can see and
+ * fall through); a chute mouth opens its own floor's slab. Sized to the house's
+ * floor count, so it scales to any number of levels.
+ */
+export function slabHoleSet(floorCount: number, stairs: Stair[], chutes: Chute[]): Set<string>[] {
+  const holes: Set<string>[] = Array.from({ length: floorCount }, () => new Set<string>());
+  for (const stair of stairs) {
+    for (const c of stair.cells) holes[stair.upper].add(`${c.x},${c.z}`);
+  }
+  for (const chute of chutes) {
+    holes[chute.from.floor].add(`${chute.from.x},${chute.from.z}`);
+  }
+  return holes;
+}
+
 export interface BuiltWorld {
   group: THREE.Group;
   colliders: ColliderSet;
@@ -209,19 +314,15 @@ export class HouseBuilder {
 
     // ---- Slab holes per floor (stair runs open the UPPER floor's slab;
     // chute mouths open their own floor's slab).
-    const slabHoles: Set<string>[] = house.grids.map(() => new Set<string>());
-    for (const stair of house.stairs) {
-      for (const c of stair.cells) slabHoles[stair.upper].add(`${c.x},${c.z}`);
-    }
-    for (const chute of house.chutes) {
-      slabHoles[chute.from.floor].add(`${chute.from.x},${chute.from.z}`);
-    }
+    const slabHoles = slabHoleSet(house.grids.length, house.stairs, house.chutes);
 
     house.grids.forEach((grid, f) => {
       const y0 = floorY(f);
       const floorGroup = new THREE.Group();
       floorGroup.name = `floor-${f}`;
-      const m = mats[f];
+      // Floors beyond the named legacy themes reuse the topmost (attic) theme,
+      // so any floor count renders without an out-of-range material.
+      const m = mats[Math.min(f, mats.length - 1)];
 
       // ---- Floor slabs: merge horizontal runs of non-void, non-hole cells.
       for (let z = 0; z < house.depth; z++) {
@@ -270,55 +371,56 @@ export class HouseBuilder {
         }
       }
 
-      // ---- Walls: merge horizontal runs of plain wall cells. Door, vent and
-      // lone cells handled separately.
-      for (let z = 0; z < house.depth; z++) {
-        let runStart = -1;
-        for (let x = 0; x <= house.width; x++) {
-          const isWall = x < house.width && grid[z][x] === 'wall';
-          if (isWall && runStart < 0) runStart = x;
-          if (!isWall && runStart >= 0) {
-            const x0 = runStart * CELL_SIZE;
-            const x1 = x * CELL_SIZE;
-            const z0 = z * CELL_SIZE;
-            const z1 = (z + 1) * CELL_SIZE;
-            const mesh = new THREE.Mesh(
-              tileBox(new THREE.BoxGeometry(x1 - x0, WALL_HEIGHT, z1 - z0), (x1 - x0) / TILE, WALL_HEIGHT / TILE),
-              m.wall
-            );
-            mesh.position.set((x0 + x1) / 2, y0 + WALL_HEIGHT / 2, (z0 + z1) / 2);
-            mesh.castShadow = mesh.receiveShadow = true;
-            floorGroup.add(mesh);
-            colliders.add(aabb(x0, y0, z0, x1, y0 + WALL_HEIGHT, z1));
-            runStart = -1;
-          }
+      // ---- Walls / doors / secret doors: thin segments on the cell edges
+      // (walls-as-edges), collinear same-state runs merged into one slab each,
+      // centred on the boundary. A `wall`/`secret` run is a full-height slab (a
+      // secret door is flush wall material — indistinguishable until discovered);
+      // a `door` run is just the header above the opening, leaving the doorway
+      // clear below. Runs are extended half a thickness at each end so
+      // perpendicular runs join cleanly at corners.
+      const t = WALL_THICKNESS;
+      for (const run of edgeRuns(house.edgesV[f], house.edgesH[f], grid, house.width, house.depth)) {
+        let cx: number, cz: number, w: number, d: number, len: number;
+        if (run.axis === 'v') {
+          const bx = (run.b + 1) * CELL_SIZE; // boundary plane
+          const za = run.i0 * CELL_SIZE - t / 2;
+          const zb = (run.i1 + 1) * CELL_SIZE + t / 2;
+          len = (run.i1 - run.i0 + 1) * CELL_SIZE;
+          cx = bx;
+          cz = (za + zb) / 2;
+          w = t;
+          d = zb - za;
+        } else {
+          const bz = (run.b + 1) * CELL_SIZE;
+          const xa = run.i0 * CELL_SIZE - t / 2;
+          const xb = (run.i1 + 1) * CELL_SIZE + t / 2;
+          len = (run.i1 - run.i0 + 1) * CELL_SIZE;
+          cx = (xa + xb) / 2;
+          cz = bz;
+          w = xb - xa;
+          d = t;
         }
+        // Doors render only the header; walls/secret span the full height.
+        const yBase = run.state === 'door' ? y0 + DOOR_HEADER : y0;
+        const height = run.state === 'door' ? WALL_HEIGHT - DOOR_HEADER : WALL_HEIGHT;
+        const mesh = new THREE.Mesh(
+          tileBox(new THREE.BoxGeometry(w, height, d), len / TILE, height / TILE),
+          m.wall
+        );
+        mesh.position.set(cx, yBase + height / 2, cz);
+        mesh.castShadow = mesh.receiveShadow = true;
+        floorGroup.add(mesh);
+        colliders.add(aabb(cx - w / 2, yBase, cz - d / 2, cx + w / 2, yBase + height, cz + d / 2));
       }
 
-      // ---- Door lintels and vent bores (cells inside wall lines).
+      // ---- Vent bores (cells inside wall lines). Doors are rendered as `door`
+      // edge headers above (walls-as-edges); only the crawl-vent geometry is
+      // cell-based, since a vent is a 1-cell tunnel through a wall.
       for (let z = 0; z < house.depth; z++) {
         for (let x = 0; x < house.width; x++) {
           const kind = grid[z][x];
           const { x: wx, z: wz } = cellToWorld(x, z);
-          if (kind === 'door') {
-            const lintel = new THREE.Mesh(
-              tileBox(new THREE.BoxGeometry(CELL_SIZE, WALL_HEIGHT - DOOR_HEADER, CELL_SIZE), CELL_SIZE / TILE, (WALL_HEIGHT - DOOR_HEADER) / TILE),
-              m.wall
-            );
-            lintel.position.set(wx, y0 + DOOR_HEADER + (WALL_HEIGHT - DOOR_HEADER) / 2, wz);
-            lintel.castShadow = true;
-            floorGroup.add(lintel);
-            colliders.add(
-              aabb(
-                x * CELL_SIZE,
-                y0 + DOOR_HEADER,
-                z * CELL_SIZE,
-                (x + 1) * CELL_SIZE,
-                y0 + WALL_HEIGHT,
-                (z + 1) * CELL_SIZE
-              )
-            );
-          } else if (kind === 'vent') {
+          if (kind === 'vent') {
             // Wall above the crawl gap; grate look comes from the prop pass.
             const upper = new THREE.Mesh(
               tileBox(new THREE.BoxGeometry(CELL_SIZE, WALL_HEIGHT - VENT_CLEARANCE, CELL_SIZE), CELL_SIZE / TILE, (WALL_HEIGHT - VENT_CLEARANCE) / TILE),
@@ -341,51 +443,64 @@ export class HouseBuilder {
         }
       }
 
-      // ---- Windows on exterior walls (main + upstairs): a separate UNLIT "night
-      // view" — a dark, opaque pane that ignores the interior flashlight and
-      // occludes the wall behind, so it reads as looking out at a rainy night
-      // (not a translucent panel on a lit wall). Rain streaks scroll in front;
-      // the view blazes on a lightning flash (colour, not lighting).
-      if (f === 1 || f === 2) {
-        for (let x = 2; x < house.width - 2; x += 4) {
-          for (const [z, dz] of [
-            [0, 1],
-            [house.depth - 1, -1],
-          ] as const) {
-            if (grid[z][x] !== 'wall') continue;
-            const { x: wx, z: wz } = cellToWorld(x, z);
-            // Each window owns its own unlit material so it can flash independently.
-            const paneMat = new THREE.MeshBasicMaterial({ color: WINDOW_NIGHT.clone() });
-            const pane = new THREE.Mesh(new THREE.PlaneGeometry(1.0, 1.2), paneMat);
-            pane.position.set(wx, y0 + 1.7, wz + dz * (CELL_SIZE / 2 + 0.02)); // hides the wall
-            if (dz < 0) pane.rotation.y = Math.PI;
-            floorGroup.add(pane);
-            windowPanes.push(pane);
-            windowWorldPositions.push(pane.position.clone());
-            // Faint skyline silhouette between the dark sky and the rain — the
-            // distant outside, backlit when lightning flashes the sky behind it.
-            const skyline = new THREE.Mesh(new THREE.PlaneGeometry(1.0, 1.2), skylineMat);
-            skyline.position.set(wx, y0 + 1.7, wz + dz * (CELL_SIZE / 2 + 0.035));
-            if (dz < 0) skyline.rotation.y = Math.PI;
-            floorGroup.add(skyline);
-            // Rain in front of the dark view — streaks against the night.
-            const rain = new THREE.Mesh(new THREE.PlaneGeometry(1.0, 1.2), rainMat);
-            rain.position.set(wx, y0 + 1.7, wz + dz * (CELL_SIZE / 2 + 0.05));
-            if (dz < 0) rain.rotation.y = Math.PI;
-            floorGroup.add(rain);
-            // A short-range flash light just inside the room — lightning spills
-            // in through THIS window only, lighting the area by the glass and
-            // falling off fast (windowless rooms stay dark on a strike).
-            const flashLight = new THREE.PointLight(0xcfe0ff, 0, 7, 2.2);
-            flashLight.position.set(wx, y0 + 1.7, wz + dz * (CELL_SIZE / 2 + 1.2));
-            floorGroup.add(flashLight);
-            windowLights.push(flashLight);
-          }
-        }
-      }
-
       group.add(floorGroup);
     });
+
+    // ---- Windows (data-driven, any floor): a separate UNLIT "night view" — a
+    // dark, opaque pane that ignores the interior flashlight and occludes the
+    // wall behind, so it reads as looking out at a rainy night (not a translucent
+    // panel on a lit wall). Rain streaks scroll in front; the view blazes on a
+    // lightning flash (colour, not lighting). Each window sits on an exterior
+    // wall edge and faces whichever side is walkable (the room). See `house.windows`.
+    const WIN_W = 1.0;
+    const WIN_H = 1.2;
+    for (const win of house.windows) {
+      const grid = house.grids[win.floor];
+      if (!grid) continue;
+      const y = floorY(win.floor) + 1.7;
+      // Boundary plane (bx,bz) + inward unit normal (nx,nz) toward the room.
+      let bx: number, bz: number, nx: number, nz: number, rotY: number;
+      if (win.edge === 'h') {
+        const roomOnPlus = isWalkable(grid[win.z + 1]?.[win.x] ?? 'void');
+        bx = (win.x + 0.5) * CELL_SIZE;
+        bz = (win.z + 1) * CELL_SIZE;
+        nx = 0;
+        nz = roomOnPlus ? 1 : -1;
+        rotY = roomOnPlus ? 0 : Math.PI;
+      } else {
+        const roomOnPlus = isWalkable(grid[win.z]?.[win.x + 1] ?? 'void');
+        bx = (win.x + 1) * CELL_SIZE;
+        bz = (win.z + 0.5) * CELL_SIZE;
+        nx = roomOnPlus ? 1 : -1;
+        nz = 0;
+        rotY = roomOnPlus ? Math.PI / 2 : -Math.PI / 2;
+      }
+      // Each window owns its own unlit material so it can flash independently.
+      const paneMat = new THREE.MeshBasicMaterial({ color: WINDOW_NIGHT.clone() });
+      const pane = new THREE.Mesh(new THREE.PlaneGeometry(WIN_W, WIN_H), paneMat);
+      pane.position.set(bx + nx * 0.02, y, bz + nz * 0.02); // hides the wall
+      pane.rotation.y = rotY;
+      group.add(pane);
+      windowPanes.push(pane);
+      windowWorldPositions.push(pane.position.clone());
+      // Faint skyline silhouette between the dark sky and the rain — the distant
+      // outside, backlit when lightning flashes the sky behind it.
+      const skyline = new THREE.Mesh(new THREE.PlaneGeometry(WIN_W, WIN_H), skylineMat);
+      skyline.position.set(bx + nx * 0.035, y, bz + nz * 0.035);
+      skyline.rotation.y = rotY;
+      group.add(skyline);
+      // Rain in front of the dark view — streaks against the night.
+      const rain = new THREE.Mesh(new THREE.PlaneGeometry(WIN_W, WIN_H), rainMat);
+      rain.position.set(bx + nx * 0.05, y, bz + nz * 0.05);
+      rain.rotation.y = rotY;
+      group.add(rain);
+      // A short-range flash light just inside the room — lightning spills in
+      // through THIS window only, falling off fast (windowless rooms stay dark).
+      const flashLight = new THREE.PointLight(0xcfe0ff, 0, 7, 2.2);
+      flashLight.position.set(bx + nx * 1.2, y, bz + nz * 1.2);
+      group.add(flashLight);
+      windowLights.push(flashLight);
+    }
 
     // ---- Stairs: the run's first cell is a flat landing at the lower floor
     // level (so the climb is enterable from its side cells); the remaining
@@ -538,10 +653,12 @@ export class HouseBuilder {
       { x: 4.5, z: 8, size: 0.9 },
       { x: 10.5, z: 11, size: 1.2 },
     ];
+    // Coords below are authored against the legacy 2 m grid; scale by UPSCALE to
+    // land at the same physical spots on the upscaled engine grid.
     for (const s of webSpots) {
       const web = new THREE.Mesh(new THREE.PlaneGeometry(s.size, s.size), webMat);
-      const wx = s.x * CELL_SIZE;
-      const wz = s.z * CELL_SIZE;
+      const wx = s.x * UPSCALE * CELL_SIZE;
+      const wz = s.z * UPSCALE * CELL_SIZE;
       // Face the room center, tucked high and tilted down like a hanging web.
       web.position.set(wx, ceil - 0.5, wz);
       web.rotation.y = Math.atan2(centerX - wx, centerZ - wz);
@@ -557,10 +674,11 @@ export class HouseBuilder {
       { floor: 2, x: 10, z: 13.4 }, // playroom window
     ];
     for (const m of moonPositions) {
+      if (m.floor >= house.grids.length) continue; // skip floors this house lacks
       // Faint cool pool — just enough to make a window a dim orientation beacon,
       // not enough to light the room. The flashlight is the only real light.
       const light = new THREE.PointLight(0x4a5d8a, 0.6, 7, 1.8);
-      const { x, z } = cellToWorld(m.x, Math.round(m.z));
+      const { x, z } = cellToWorld(m.x * UPSCALE, Math.round(m.z * UPSCALE));
       light.position.set(x, floorY(m.floor) + 2.0, m.z < 7 ? z + 1 : z - 1);
       group.add(light);
     }
@@ -575,7 +693,8 @@ export class HouseBuilder {
       { floor: 3, x: 7, z: 6 },
     ];
     for (const spot of fixtureSpots) {
-      const { x, z } = cellToWorld(spot.x, spot.z);
+      if (spot.floor >= house.grids.length) continue; // skip floors this house lacks
+      const { x, z } = cellToWorld(spot.x * UPSCALE, spot.z * UPSCALE);
       const y = floorY(spot.floor) + WALL_HEIGHT - 0.35;
       const bulbMat = new THREE.MeshStandardMaterial({
         color: 0x886622,
@@ -636,7 +755,7 @@ export class HouseBuilder {
         return new THREE.Vector3(x, floorY(pos.floor) + height, z);
       },
       floorIndexOfY(y: number) {
-        return Math.max(0, Math.min(3, Math.round(y / FLOOR_SPACING)));
+        return Math.max(0, Math.min(house.grids.length - 1, Math.round(y / FLOOR_SPACING)));
       },
       openCloset(pos) {
         const d = closetDoors.get(`${pos.floor}:${pos.x},${pos.z}`);
