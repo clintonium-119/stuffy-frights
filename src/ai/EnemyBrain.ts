@@ -491,6 +491,23 @@ export class EnemyBrain {
       a.awareness = Math.max(a.awareness, config.ai.awarenessSuspicious);
     }
     a.level = awarenessBand(a.awareness, config.ai.awarenessSuspicious, config.ai.awarenessAlert);
+
+    // Gaze priority: sight (set above, intensity > 0) wins; otherwise glance
+    // toward a heard sound when alerted/suspicious; otherwise idly scan around.
+    if (a.gazeIntensity <= 0) {
+      const p = this.enemy.position;
+      if (a.heardDir && a.heardDir.lengthSq() > 1e-6 && a.level !== 'unaware') {
+        a.gazeTarget = new THREE.Vector3(p.x + a.heardDir.x * 4, p.y + 1, p.z + a.heardDir.z * 4);
+        a.gazeIntensity = config.ai.glanceIntensity;
+      } else if (a.level === 'unaware') {
+        // Idle look-around: sweep the head about the body facing.
+        const yaw =
+          this.enemy.group.rotation.y +
+          headScanOffset(this.now, config.ai.headScanRate, config.ai.headScanArc);
+        a.gazeTarget = new THREE.Vector3(p.x + Math.sin(yaw) * 4, p.y + 1, p.z + Math.cos(yaw) * 4);
+        a.gazeIntensity = config.ai.headScanIntensity;
+      }
+    }
   }
 
   /**
@@ -541,6 +558,15 @@ export class EnemyBrain {
 export function gazeLingerIntensity(elapsed: number, lingerSeconds: number): number {
   if (lingerSeconds <= 0) return 0;
   return Math.max(0, 1 - elapsed / lingerSeconds);
+}
+
+/**
+ * Idle head-scan yaw offset (radians, relative to the body facing) at sim time
+ * `t`: a smooth sine sweep within ±`arc` at angular speed `rate`. Decoupled
+ * from locomotion — the body keeps walking while the head looks around.
+ */
+export function headScanOffset(t: number, rate: number, arc: number): number {
+  return Math.sin(t * rate) * arc;
 }
 
 /** Map an awareness value to its band given the suspicious / alert thresholds. */

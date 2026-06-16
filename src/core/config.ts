@@ -101,6 +101,11 @@ export interface GameConfig {
     hearingStimCap: number; // hearing alone tops out here (< alert), so sound never chases
     soundDoorCost: number; // extra path-cost (≈ cells) a sound loses passing a door
     soundRecomputeTicks: number; // ticks between pathed-hearing BFS recomputes (cached between)
+    // Attention / head behaviors.
+    headScanArc: number; // half-arc (rad) the head sweeps while idly looking around
+    headScanRate: number; // idle head-scan sweep speed (rad/s phase)
+    headScanIntensity: number; // gaze strength of the idle scan [0..1]
+    glanceIntensity: number; // gaze strength when glancing toward a heard sound [0..1]
     /** Seconds spent looking around at an investigation point. */
     investigateLinger: number;
     /** Seconds idling after losing interest before resuming patrol. */
@@ -328,6 +333,10 @@ export const config: GameConfig = {
     hearingStimCap: 0.7, // below awarenessAlert: hearing investigates, never chases
     soundDoorCost: 2, // a door muffles sound by ~4 m of travel (CELL_SIZE = 2)
     soundRecomputeTicks: 6, // recompute pathed hearing ~10×/s, reuse the cache between
+    headScanArc: 0.7, // ~40° each way
+    headScanRate: 1.1,
+    headScanIntensity: 0.5, // a gentle look-around, not a locked stare
+    glanceIntensity: 0.85, // a sharper turn toward a heard sound
     investigateLinger: 2,
     loseInterestSeconds: 1.5,
     searchProbLightOn: 0.75,

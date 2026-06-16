@@ -8,6 +8,7 @@ import {
   gazeLingerIntensity,
   awarenessBand,
   stepAwareness,
+  headScanOffset,
 } from './EnemyBrain';
 import { NavGraph } from './NavGraph';
 import { canSee, movementNoiseRadius, PlayerSnapshot } from './Perception';
@@ -446,43 +447,49 @@ describe('gaze gating', () => {
     expect(brain.attention.gazeTarget?.equals(eye)).toBe(true);
   });
 
-  it('gaze decays monotonically to 0 over the linger after sight breaks', () => {
+  it('sight gaze decays monotonically while locked on the last-seen spot, then releases', () => {
     const { hiding } = makeHiding();
     const body = stubBody(15, 3.5, 19);
     const brain = brainWith(body, hiding, new Rng(1));
-    brain.update(DT, snapshot({ position: new THREE.Vector3(15, 3.5, 22), lightOn: true }));
+    const seen = snapshot({ position: new THREE.Vector3(15, 3.5, 22), lightOn: true });
+    brain.update(DT, seen);
     expect(brain.attention.gazeIntensity).toBe(1);
+    const eye = seen.position; // no eyePosition → gaze targets position
+    expect(brain.attention.gazeTarget?.equals(eye)).toBe(true);
     const gone = snapshot({ position: new THREE.Vector3(5, 0, 5), floor: 0 });
-    let prev = brain.attention.gazeIntensity;
-    let reachedZero = false;
-    const steps = Math.ceil(config.ai.gazeLingerSeconds / DT) + 5;
-    for (let i = 0; i < steps; i++) {
+    let prev = 1;
+    let released = false;
+    for (let i = 0; i < Math.ceil(config.ai.gazeLingerSeconds / DT) + 5; i++) {
       brain.update(DT, gone);
-      const cur = brain.attention.gazeIntensity;
-      expect(cur).toBeLessThanOrEqual(prev + 1e-9); // never rises
-      prev = cur;
-      if (cur === 0) {
-        reachedZero = true;
+      const t = brain.attention.gazeTarget;
+      if (t && t.equals(eye)) {
+        expect(brain.attention.gazeIntensity).toBeLessThanOrEqual(prev + 1e-9); // never rises
+        prev = brain.attention.gazeIntensity;
+      } else {
+        released = true; // sight lock dropped; head moved off the last-seen spot
         break;
       }
     }
-    expect(reachedZero).toBe(true);
+    expect(released).toBe(true);
+    expect(prev).toBeLessThan(1); // it decayed before releasing
   });
 
-  it('releases the gaze target to null once the linger is spent', () => {
+  it('after the sight linger an unaware enemy resumes idle looking-around', () => {
     const { hiding } = makeHiding();
     const body = stubBody(15, 3.5, 19);
     const brain = brainWith(body, hiding, new Rng(1));
-    brain.update(DT, snapshot({ position: new THREE.Vector3(15, 3.5, 22), lightOn: true }));
+    const seen = snapshot({ position: new THREE.Vector3(15, 3.5, 22), lightOn: true });
+    brain.update(DT, seen);
     const gone = snapshot({ position: new THREE.Vector3(5, 0, 5), floor: 0 });
     for (let i = 0; i < Math.ceil(config.ai.gazeLingerSeconds / DT) + 5; i++) {
       brain.update(DT, gone);
     }
-    expect(brain.attention.gazeIntensity).toBe(0);
-    expect(brain.attention.gazeTarget).toBeNull();
+    // No longer sight-locked on the last-seen spot; head is idly scanning.
+    expect(brain.attention.gazeTarget?.equals(seen.position)).toBe(false);
+    expect(brain.attention.gazeIntensity).toBe(config.ai.headScanIntensity);
   });
 
-  it('never gazes at a player it has only heard (no line of sight)', () => {
+  it('never sight-locks a player it has only heard (no line of sight)', () => {
     const { hiding } = makeHiding();
     const body = stubBody(15, 3.5, 19);
     const brain = brainWith(body, hiding, new Rng(1));
@@ -492,8 +499,9 @@ describe('gaze gating', () => {
     const heard = snapshot({ position: new THREE.Vector3(15, 3.5, 5) });
     brain.update(DT, heard);
     expect(brain.attention.seen).toBe(false);
-    expect(brain.attention.gazeIntensity).toBe(0);
-    expect(brain.attention.gazeTarget).toBeNull();
+    // It may glance/scan, but it never tracks the player at full sight strength.
+    expect(brain.attention.gazeIntensity).toBeLessThan(1);
+    expect(brain.attention.gazeTarget?.equals(heard.position)).not.toBe(true);
   });
 });
 
@@ -560,6 +568,51 @@ describe('graduated awareness', () => {
     // Well past the ratchet → free to decay below suspicious.
     for (let i = 0; i < (config.ai.awarenessAlertRatchet + 1) / DT; i++) brain.update(DT, gone);
     expect(brain.attention.awareness).toBeLessThan(config.ai.awarenessSuspicious);
+  });
+});
+
+describe('attention behaviors', () => {
+  beforeEach(() => clearSearchClaims());
+
+  it('headScanOffset is a bounded sine sweep within ±arc', () => {
+    expect(headScanOffset(0, 1.1, 0.7)).toBeCloseTo(0, 6);
+    for (let t = 0; t < 20; t += 0.13) {
+      expect(Math.abs(headScanOffset(t, 1.1, 0.7))).toBeLessThanOrEqual(0.7 + 1e-9);
+    }
+  });
+
+  it('idle: an unaware enemy idly scans (head sweeps, low intensity)', () => {
+    const { hiding } = makeHiding();
+    const body = stubBody(15, 3.5, 19);
+    const brain = brainWith(body, hiding, new Rng(1));
+    brain.update(DT, snapshot({ position: new THREE.Vector3(5, 0, 5), floor: 0 })); // nothing sensed
+    expect(brain.attention.level).toBe('unaware');
+    expect(brain.attention.gazeIntensity).toBe(config.ai.headScanIntensity);
+    expect(brain.attention.gazeTarget).not.toBeNull();
+  });
+
+  it('glance: a heard-but-unseen sound turns the head toward it (below sight strength)', () => {
+    const { hiding } = makeHiding();
+    const body = stubBody(15, 3.5, 19);
+    const brain = brainWith(body, hiding, new Rng(1));
+    // Hidden, noisy, on an open path ahead (+z): heard, never seen.
+    const noisy = snapshot({ position: new THREE.Vector3(15, 3.5, 22), noiseLevel: 3, hidden: true });
+    for (let i = 0; i < 30; i++) brain.update(DT, noisy);
+    expect(brain.attention.seen).toBe(false);
+    expect(brain.attention.level).toBe('suspicious');
+    expect(brain.attention.gazeIntensity).toBe(config.ai.glanceIntensity);
+    // Gaze points toward the sound (ahead, +z from the enemy at z=19).
+    expect(brain.attention.gazeTarget!.z).toBeGreaterThan(body.position.z);
+  });
+
+  it('priority: sight overrides both glance and idle scan', () => {
+    const { hiding } = makeHiding();
+    const body = stubBody(15, 3.5, 19);
+    const brain = brainWith(body, hiding, new Rng(1));
+    // Seen AND noisy: sight wins at full strength.
+    brain.update(DT, snapshot({ position: new THREE.Vector3(15, 3.5, 22), lightOn: true, noiseLevel: 3 }));
+    expect(brain.attention.seen).toBe(true);
+    expect(brain.attention.gazeIntensity).toBe(1);
   });
 });
 
