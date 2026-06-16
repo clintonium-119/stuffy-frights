@@ -214,6 +214,11 @@ export class NavGraph {
     return null;
   }
 
+  /** All walkable nodes on a floor (patrol-candidate pool for utility scoring). */
+  nodesOnFloor(floor: number): NavNodeId[] {
+    return [...this.cells.values()].filter((c) => c.floor === floor);
+  }
+
   randomNodeOnFloor(floor: number, rng: { next(): number }): NavNodeId | null {
     const onFloor = [...this.cells.values()].filter((c) => c.floor === floor);
     if (onFloor.length === 0) return null;

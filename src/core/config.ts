@@ -106,6 +106,19 @@ export interface GameConfig {
     headScanRate: number; // idle head-scan sweep speed (rad/s phase)
     headScanIntensity: number; // gaze strength of the idle scan [0..1]
     glanceIntensity: number; // gaze strength when glancing toward a heard sound [0..1]
+    // Non-linear patrol: utility-scored target selection + hesitation + double-take.
+    patrolRecency: number; // weight on revisiting long-unvisited nodes
+    patrolCuriosity: number; // weight on exploring farther nodes
+    patrolJitter: number; // weight on the seeded random tie-break
+    patrolRecencyFull: number; // s for a visited node's recency score to recover to 1
+    patrolDistanceRef: number; // m at which the distance term saturates to 1
+    patrolTopN: number; // weighted-random selection pool size (never strict argmax)
+    patrolPauseChance: number; // probability of a think-pause at a patrol waypoint
+    patrolPauseMin: number; // shortest think-pause (s)
+    patrolPauseMax: number; // longest think-pause (s)
+    patrolRescoreSeconds: number; // how often patrol reconsiders its target (s)
+    patrolOvertakeMargin: number; // utility a new target must beat the current by to switch
+    doubleTakeGazeTime: number; // s the head holds the double-take glance
     /** Seconds spent looking around at an investigation point. */
     investigateLinger: number;
     /** Seconds idling after losing interest before resuming patrol. */
@@ -337,6 +350,18 @@ export const config: GameConfig = {
     headScanRate: 1.1,
     headScanIntensity: 0.5, // a gentle look-around, not a locked stare
     glanceIntensity: 0.85, // a sharper turn toward a heard sound
+    patrolRecency: 1.0,
+    patrolCuriosity: 0.6,
+    patrolJitter: 0.3,
+    patrolRecencyFull: 25,
+    patrolDistanceRef: 12,
+    patrolTopN: 4,
+    patrolPauseChance: 0.4,
+    patrolPauseMin: 0.6,
+    patrolPauseMax: 1.8,
+    patrolRescoreSeconds: 0.6,
+    patrolOvertakeMargin: 0.35,
+    doubleTakeGazeTime: 0.5,
     investigateLinger: 2,
     loseInterestSeconds: 1.5,
     searchProbLightOn: 0.75,

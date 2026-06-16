@@ -616,6 +616,54 @@ describe('attention behaviors', () => {
   });
 });
 
+describe('non-linear patrol', () => {
+  beforeEach(() => clearSearchClaims());
+
+  // Drive a long patrol with nothing sensed; capture the move targets issued.
+  function patrolTargets(ticks: number): { targets: (THREE.Vector3 | null)[] } {
+    const { hiding } = makeHiding();
+    const body = stubBody(15, 3.5, 19);
+    const targets: (THREE.Vector3 | null)[] = [];
+    const base = body.setMoveTarget.bind(body);
+    body.setMoveTarget = (t, s = 0) => {
+      targets.push(t ? t.clone() : null);
+      base(t, s);
+    };
+    const brain = brainWith(body, hiding, new Rng(3));
+    const nothing = snapshot({ position: new THREE.Vector3(5, 0, 5), floor: 0 });
+    for (let i = 0; i < ticks; i++) brain.update(DT, nothing);
+    return { targets };
+  }
+
+  it('wanders to several distinct destinations (not a fixed loop)', () => {
+    const { targets } = patrolTargets(2400);
+    const distinct = new Set(
+      targets.filter(Boolean).map((t) => `${Math.round(t!.x)},${Math.round(t!.z)}`)
+    );
+    expect(distinct.size).toBeGreaterThan(2);
+  });
+
+  it('hesitates: a think-pause holds the body still (null move target) at a waypoint', () => {
+    const prev = config.ai.patrolPauseChance;
+    config.ai.patrolPauseChance = 1; // force a pause at the first waypoint reached
+    try {
+      const { targets } = patrolTargets(1200);
+      expect(targets.some((t) => t === null)).toBe(true);
+    } finally {
+      config.ai.patrolPauseChance = prev;
+    }
+  });
+
+  it('stays in patrol the whole time when nothing is sensed', () => {
+    const { hiding } = makeHiding();
+    const body = stubBody(15, 3.5, 19);
+    const brain = brainWith(body, hiding, new Rng(3));
+    const nothing = snapshot({ position: new THREE.Vector3(5, 0, 5), floor: 0 });
+    for (let i = 0; i < 600; i++) brain.update(DT, nothing);
+    expect(brain.state).toBe('patrol');
+  });
+});
+
 describe('hearing throttle', () => {
   beforeEach(() => clearSearchClaims());
 

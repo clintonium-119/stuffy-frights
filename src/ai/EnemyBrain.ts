@@ -3,10 +3,18 @@ import { config } from '../core/config';
 import { Rng } from '../core/rng';
 import { CELL_SIZE, House, cellToWorld, floorY } from '../world/layoutTypes';
 import { HidingSpot, HidingSystem } from '../systems/HidingSpot';
-import { NavGraph, PathFollower } from './NavGraph';
+import { NavGraph, NavNodeId, PathFollower } from './NavGraph';
 import { PerceptionMemory, PlayerSnapshot, canSee, movementNoiseRadius } from './Perception';
 import { AwarenessLevel, EnemyAttention, createAttention } from './EnemyAttention';
 import { SoundResult, propagateSound } from './SoundPropagation';
+import {
+  PatrolCandidate,
+  PatrolWeights,
+  bestPatrolCandidate,
+  overtakes,
+  scorePatrolCandidate,
+  selectPatrolTarget,
+} from './PatrolUtility';
 import { EnemyTuning } from '../enemies/tuningConfig';
 
 /** What the brain needs from its body (EnemyBase satisfies this; tests stub it). */
@@ -77,6 +85,15 @@ export class EnemyBrain {
   private lastHearing: SoundResult = { audible: false, intensity: 0, arrivalDir: null };
   /** Ticks since the hearing BFS last ran (throttle: recompute every N ticks). */
   private hearingAge = Infinity;
+  /** Non-linear patrol: current target node + per-node last-visit times. */
+  private patrolTarget: NavNodeId | null = null;
+  private readonly visitTimes = new Map<string, number>();
+  /** Hesitation think-pause (s) + double-take re-score countdown (s). */
+  private pauseTimer = 0;
+  private rescoreTimer = 0;
+  /** Forced look (double-take / future peek): a held gaze below the sight tier. */
+  private forcedGaze: THREE.Vector3 | null = null;
+  private forcedGazeTimer = 0;
   /** Director pacing knobs. */
   passive = false; // grace period / mercy window
   speedFactor = 1;
@@ -139,6 +156,12 @@ export class EnemyBrain {
     this.lastAlertAt = -Infinity;
     this.lastHearing = { audible: false, intensity: 0, arrivalDir: null };
     this.hearingAge = Infinity;
+    this.patrolTarget = null;
+    this.visitTimes.clear();
+    this.pauseTimer = 0;
+    this.rescoreTimer = 0;
+    this.forcedGaze = null;
+    this.forcedGazeTimer = 0;
     Object.assign(this._attention, createAttention());
   }
 
@@ -197,8 +220,11 @@ export class EnemyBrain {
     this.now += dt;
     this.stateTimer += dt;
     this.repathTimer -= dt;
+    this.rescoreTimer -= dt;
     if (this.lungeTimer > 0) this.lungeTimer -= dt;
     if (this.lungeCooldown > 0) this.lungeCooldown -= dt;
+    if (this.pauseTimer > 0) this.pauseTimer -= dt;
+    if (this.forcedGazeTimer > 0) this.forcedGazeTimer -= dt;
 
     const seen =
       !this.passive &&
@@ -243,12 +269,26 @@ export class EnemyBrain {
           this.pathTo(this.forcedDestination);
           this.forcedDestination = null;
         }
+        // Hesitation: stand and "think" for the rest of a think-pause.
+        if (this.pauseTimer > 0) {
+          this.enemy.setMoveTarget(null, 0);
+          break;
+        }
         if (this.follower.done) {
-          const node = this.ctx.nav.randomNodeOnFloor(this.homeFloor, this.ctx.rng);
-          if (node) {
-            const w = cellToWorld(node.x, node.z);
-            this.pathTo(new THREE.Vector3(w.x, floorY(node.floor), w.z));
+          // Reached a waypoint: record the visit, maybe pause to think, then pick
+          // the next target by utility (weighted-random over the top-N) so the
+          // route never settles into a predictable loop.
+          if (this.patrolTarget) this.visitTimes.set(nodeKey(this.patrolTarget), this.now);
+          if (this.ctx.rng.chance(config.ai.patrolPauseChance)) {
+            this.pauseTimer =
+              config.ai.patrolPauseMin +
+              this.ctx.rng.next() * (config.ai.patrolPauseMax - config.ai.patrolPauseMin);
+            this.enemy.setMoveTarget(null, 0);
+            break;
           }
+          this.pickPatrolTarget();
+        } else {
+          this.maybeDoubleTake();
         }
         this.follower.drive(this.enemy, this.speed(config.ai.patrolSpeed));
         break;
@@ -496,7 +536,11 @@ export class EnemyBrain {
     // toward a heard sound when alerted/suspicious; otherwise idly scan around.
     if (a.gazeIntensity <= 0) {
       const p = this.enemy.position;
-      if (a.heardDir && a.heardDir.lengthSq() > 1e-6 && a.level !== 'unaware') {
+      if (this.forcedGazeTimer > 0 && this.forcedGaze) {
+        // A held look (double-take / peek) outranks ambient glance + idle scan.
+        a.gazeTarget = this.forcedGaze;
+        a.gazeIntensity = config.ai.glanceIntensity;
+      } else if (a.heardDir && a.heardDir.lengthSq() > 1e-6 && a.level !== 'unaware') {
         a.gazeTarget = new THREE.Vector3(p.x + a.heardDir.x * 4, p.y + 1, p.z + a.heardDir.z * 4);
         a.gazeIntensity = config.ai.glanceIntensity;
       } else if (a.level === 'unaware') {
@@ -533,6 +577,71 @@ export class EnemyBrain {
     return propagateSound(this.ctx.nav, this.ctx.house, this.enemy.position, pos, {
       maxCost: radiusMeters / CELL_SIZE,
       doorCost: config.ai.soundDoorCost,
+    });
+  }
+
+  private patrolWeights(): PatrolWeights {
+    return {
+      recency: config.ai.patrolRecency,
+      curiosity: config.ai.patrolCuriosity,
+      jitter: config.ai.patrolJitter,
+      recencyFull: config.ai.patrolRecencyFull,
+      distanceRef: config.ai.patrolDistanceRef,
+      topN: config.ai.patrolTopN,
+    };
+  }
+
+  /** Pick the next patrol target by utility (weighted-random over the top-N). */
+  private pickPatrolTarget(): void {
+    const next = selectPatrolTarget(
+      this.patrolCandidates(),
+      this.enemy.position,
+      this.now,
+      this.patrolWeights(),
+      this.ctx.rng
+    );
+    if (next) {
+      this.patrolTarget = next.node;
+      this.pathTo(next.world);
+    }
+  }
+
+  /**
+   * Change of mind: every `patrolRescoreSeconds`, re-score candidates; if some
+   * node now clearly (but only marginally, by `patrolOvertakeMargin`) beats the
+   * current target's un-jittered utility, abort, snap a glance to it, and repath
+   * — a believable second-guess rather than robotic commitment.
+   */
+  private maybeDoubleTake(): void {
+    if (this.rescoreTimer > 0 || !this.patrolTarget) return;
+    this.rescoreTimer = config.ai.patrolRescoreSeconds;
+    const w = this.patrolWeights();
+    const cands = this.patrolCandidates();
+    const best = bestPatrolCandidate(cands, this.enemy.position, this.now, w);
+    if (!best || nodeKey(best.candidate.node) === nodeKey(this.patrolTarget)) return;
+    const cur = cands.find((c) => nodeKey(c.node) === nodeKey(this.patrolTarget!));
+    const curScore = cur ? scorePatrolCandidate(cur, this.enemy.position, this.now, w, 0) : -Infinity;
+    if (overtakes(best.score, curScore, config.ai.patrolOvertakeMargin)) {
+      this.patrolTarget = best.candidate.node;
+      this.pathTo(best.candidate.world);
+      this.forcedGaze = new THREE.Vector3(
+        best.candidate.world.x,
+        this.enemy.position.y + 1,
+        best.candidate.world.z
+      );
+      this.forcedGazeTimer = config.ai.doubleTakeGazeTime;
+    }
+  }
+
+  /** All walkable nodes on the home floor as scoring candidates with visit times. */
+  private patrolCandidates(): PatrolCandidate[] {
+    return this.ctx.nav.nodesOnFloor(this.homeFloor).map((n) => {
+      const w = cellToWorld(n.x, n.z);
+      return {
+        node: n,
+        world: new THREE.Vector3(w.x, floorY(n.floor), w.z),
+        lastVisitAt: this.visitTimes.get(nodeKey(n)) ?? -Infinity,
+      };
     });
   }
 
@@ -601,6 +710,11 @@ export function stepAwareness(
     return Math.min(drive, current + riseRate * dt);
   }
   return Math.max(drive, current - decayRate * dt);
+}
+
+/** Stable per-node key for visit bookkeeping. */
+function nodeKey(n: NavNodeId): string {
+  return `${n.floor}:${n.x},${n.z}`;
 }
 
 /** Test hook: clear cross-run claims. */
