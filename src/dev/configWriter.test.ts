@@ -6,6 +6,7 @@ import {
   serializeTuningRecord,
   serializeEyeConfigRecord,
   serializeVisibility,
+  serializeEnemyGlow,
   serializeDifficultyVisibility,
 } from './configWriter';
 import { config } from '../core/config';
@@ -216,5 +217,23 @@ describe('serializeDifficultyVisibility', () => {
     // eslint-disable-next-line no-new-func
     const parsed = new Function(`return {${body}}`)() as { visibility: typeof o };
     expect(parsed.visibility).toEqual(o);
+  });
+});
+
+describe('serializeEnemyGlow', () => {
+  it('emits hex eyeColor + round-trips the live config.enemyGlow', () => {
+    const out = serializeEnemyGlow(config.enemyGlow);
+    expect(out).toContain('eyeColor: 0x');
+    expect(out).toContain('eyeIntensity:');
+    // eslint-disable-next-line no-new-func
+    const parsed = new Function(`return {${out}}`)() as { enemyGlow: typeof config.enemyGlow };
+    expect(parsed.enemyGlow).toEqual(config.enemyGlow);
+  });
+
+  it('round-trips through the marked region', () => {
+    const file = ['// <apo:gen enemyGlow>', '  enemyGlow: { STALE: 1 },', '// </apo:gen>'].join('\n');
+    const out = replaceMarkedRegion(file, 'enemyGlow', serializeEnemyGlow(config.enemyGlow));
+    expect(out).not.toContain('STALE');
+    expect(out).toContain('eyeIntensity:');
   });
 });

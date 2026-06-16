@@ -12,7 +12,7 @@ import { initMaterials } from '../world/materialLibrary';
 import { EnemyKey, ENEMY_KEYS } from './enemyViewerRoute';
 import { RigEditor } from './RigEditor';
 import { ENEMY_TUNING, EnemyTuning, EnemyAnimTuning, EnemyGameplayTuning } from '../enemies/tuningConfig';
-import { serializeTuningRecord } from './configWriter';
+import { serializeTuningRecord, serializeEnemyGlow } from './configWriter';
 import { saveConfigBlock } from './saveConfig';
 
 /** Editable anim-slider rows: [label, key, min, max, step]. */
@@ -371,6 +371,61 @@ export class EnemyViewer {
     }
 
     this.appendAnimSaveButton();
+    this.appendEyeGlowControls();
+  }
+
+  /** A labelled colour input bound to a hex-number value. */
+  private colorRow(label: string, hex: number, on: (v: number) => void): HTMLElement {
+    const row = document.createElement('label');
+    row.style.cssText = 'display:flex;justify-content:space-between;align-items:center;gap:6px;margin:2px 0';
+    const inp = document.createElement('input');
+    inp.type = 'color';
+    inp.value = `#${hex.toString(16).padStart(6, '0')}`;
+    inp.oninput = () => on(parseInt(inp.value.slice(1), 16));
+    row.append(Object.assign(document.createElement('span'), { textContent: label, style: 'flex:1' }), inp);
+    return row;
+  }
+
+  /** Live-apply the global eye-glow params to the current enemy's glow materials. */
+  private applyEyeGlowPreview(): void {
+    if (!this.enemy) return;
+    this.enemy.group.traverse((o) => {
+      if (!(o instanceof THREE.Mesh)) return;
+      const mat = o.material as THREE.MeshStandardMaterial;
+      if (mat && mat.emissiveMap) {
+        mat.emissive.setHex(config.enemyGlow.eyeColor);
+        mat.emissiveIntensity = config.enemyGlow.eyeIntensity;
+      }
+    });
+  }
+
+  /** Global menacing eye-glow controls (config.enemyGlow): live preview + save. */
+  private appendEyeGlowControls(): void {
+    this.animPanel.appendChild(this.heading('eye glow (global)'));
+    this.animPanel.appendChild(
+      this.sliderRow('intensity', config.enemyGlow.eyeIntensity, 0, 2, 0.05, (v) => {
+        config.enemyGlow.eyeIntensity = v;
+        this.applyEyeGlowPreview();
+      })
+    );
+    this.animPanel.appendChild(
+      this.colorRow('colour', config.enemyGlow.eyeColor, (hex) => {
+        config.enemyGlow.eyeColor = hex;
+        this.applyEyeGlowPreview();
+      })
+    );
+    const save = document.createElement('button');
+    save.textContent = 'save glow';
+    save.style.cssText =
+      'width:100%;margin-top:6px;padding:5px;background:#2a6;color:#fff;border:0;border-radius:5px;cursor:pointer';
+    save.onclick = () => {
+      save.textContent = 'saving…';
+      void saveConfigBlock('src/core/config.ts', 'enemyGlow', serializeEnemyGlow(config.enemyGlow)).then((r) => {
+        save.textContent = r.ok ? 'saved ✓' : `save failed: ${r.error ?? ''}`;
+        setTimeout(() => (save.textContent = 'save glow'), 1600);
+      });
+    };
+    this.animPanel.appendChild(save);
   }
 
   /** Save the whole edited tuning record back to tuningConfig.ts via the endpoint. */

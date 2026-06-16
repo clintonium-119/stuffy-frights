@@ -334,11 +334,16 @@ export const config: GameConfig = {
     jumpscareBlackout: 0.5,
   },
 
+  // Menacing eye glow. eyeIntensity is the emissive strength on the eye texels
+  // (ACES tone-mapping pushes hot emissive toward white, so keep it modest);
+  // edit live + save in the enemies editor's "eye glow" controls.
+  // <apo:gen enemyGlow>
   enemyGlow: {
     eyeColor: 0xff0800,
-    eyeIntensity: 1.1,
+    eyeIntensity: 0.3,
     eyeDarkThreshold: 0.25,
   },
+  // </apo:gen>
 
   passage: {
     ventFoldSeconds: 0.6,

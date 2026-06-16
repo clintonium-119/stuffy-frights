@@ -137,6 +137,17 @@ export function serializeDifficultyVisibility(o: DifficultyVisibility): string {
   ].join('\n');
 }
 
+/** Serialize the `enemyGlow` block of config.ts (colour as `0x…` hex). */
+export function serializeEnemyGlow(g: GameConfig['enemyGlow']): string {
+  return [
+    '  enemyGlow: {',
+    `    eyeColor: ${hexColor(g.eyeColor)},`,
+    `    eyeIntensity: ${String(g.eyeIntensity)},`,
+    `    eyeDarkThreshold: ${String(g.eyeDarkThreshold)},`,
+    '  },',
+  ].join('\n');
+}
+
 /** Serialize a whole `ENEMY_TUNING` record to its `export const` declaration. */
 export function serializeTuningRecord(record: Record<string, EnemyTuning>): string {
   const entries = Object.entries(record)
