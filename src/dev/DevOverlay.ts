@@ -12,6 +12,7 @@ import {
   deserializeDevState,
 } from './devPanel';
 import { buildAiSection } from './aiSection';
+import { buildAtmosphereSection } from './atmosphereSection';
 
 /** Registers a collapsible section; section builders (per phase) receive this. */
 export type AddSection = (
@@ -88,7 +89,7 @@ export function mountDevOverlay(ctx: DevOverlayCtx): void {
 
   // Sections (one concern each). Later phases add their builders here.
   buildAiSection(addSection, ctx);
-  // buildAtmosphereSection(addSection, ctx);
+  buildAtmosphereSection(addSection, ctx);
   // buildDifficultyWarpSection(addSection, ctx, syncAllRows);
   // buildCheatsSection(addSection, ctx);
   void syncAllRows; // used by the difficulty re-sync in a later phase
