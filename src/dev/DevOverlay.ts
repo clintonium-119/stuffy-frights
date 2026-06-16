@@ -11,6 +11,13 @@ import {
   serializeDevState,
   deserializeDevState,
 } from './devPanel';
+import { buildAiSection } from './aiSection';
+
+/** Registers a collapsible section; section builders (per phase) receive this. */
+export type AddSection = (
+  title: string,
+  build: (body: HTMLElement, register: (r: SyncRow) => SyncRow) => void
+) => void;
 
 /** Live handles the overlay sections bind to. Dev-only; never used in prod. */
 export interface DevOverlayCtx {
@@ -79,14 +86,12 @@ export function mountDevOverlay(ctx: DevOverlayCtx): void {
   // Persist on any control change (checkboxes/sliders/selects) + section toggle.
   panel.addEventListener('change', save);
 
-  // Later phases attach their sections here, e.g.:
-  //   buildAiSection(addSection, ctx);
-  //   buildAtmosphereSection(addSection, ctx);
-  //   buildDifficultyWarpSection(addSection, ctx, syncAllRows);
-  //   buildCheatsSection(addSection, ctx);
-  void addSection; // referenced by later phases
-  void syncAllRows;
-  void ctx;
+  // Sections (one concern each). Later phases add their builders here.
+  buildAiSection(addSection, ctx);
+  // buildAtmosphereSection(addSection, ctx);
+  // buildDifficultyWarpSection(addSection, ctx, syncAllRows);
+  // buildCheatsSection(addSection, ctx);
+  void syncAllRows; // used by the difficulty re-sync in a later phase
 
   // Backtick toggles the panel; release pointer-lock while open so the cursor
   // can reach the controls. The keypress is consumed so game input never sees it.
