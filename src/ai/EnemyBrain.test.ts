@@ -6,6 +6,8 @@ import {
   EnemyBrain,
   clearSearchClaims,
   gazeLingerIntensity,
+  awarenessBand,
+  stepAwareness,
 } from './EnemyBrain';
 import { NavGraph } from './NavGraph';
 import { canSee, movementNoiseRadius, PlayerSnapshot } from './Perception';
@@ -68,6 +70,12 @@ function makeHiding() {
   const worldPos = new THREE.Vector3(9, 3.5, 19);
   const hiding = new HidingSystem(player, interactions, [{ def, worldPos }]);
   return { hiding, player, interactions, worldPos };
+}
+
+// Awareness adds a short reaction beat before chase; pump ticks until the
+// brain commits (or a cap), reflecting the graduated-awareness entry.
+function pumpUntilChase(brain: EnemyBrain, snap: PlayerSnapshot, maxTicks = 40): void {
+  for (let i = 0; i < maxTicks && brain.state !== 'chase'; i++) brain.update(DT, snap);
 }
 
 function brainWith(
@@ -197,9 +205,8 @@ describe('EnemyBrain transitions', () => {
     };
     body.tuning = { anim: DEFAULT_ANIM, height: 1, gameplay: { ...DEFAULT_GAMEPLAY, speedMult: 2 } };
     const brain = brainWith(body, hiding, new Rng(1));
-    for (let i = 0; i < 10; i++) {
-      brain.update(DT, snapshot({ position: new THREE.Vector3(15, 3.5, 23), lightOn: true }));
-    }
+    const seen = snapshot({ position: new THREE.Vector3(15, 3.5, 23), lightOn: true });
+    for (let i = 0; i < 40; i++) brain.update(DT, seen);
     expect(brain.state).toBe('chase');
     // Chase drives at chaseSpeed × 2 (≈9), well above the un-multiplied lunge cap.
     expect(Math.max(...speeds)).toBeGreaterThan(config.ai.lungeSpeed);
@@ -211,7 +218,7 @@ describe('EnemyBrain transitions', () => {
     const brain = brainWith(body, hiding, new Rng(1));
     brain.hearNoise(new THREE.Vector3(15, 3.5, 22), 6);
     expect(brain.state).toBe('investigate');
-    brain.update(DT, snapshot({ position: new THREE.Vector3(15, 3.5, 23), lightOn: true }));
+    pumpUntilChase(brain, snapshot({ position: new THREE.Vector3(15, 3.5, 23), lightOn: true }));
     expect(brain.state).toBe('chase');
     expect(body.isChasing).toBe(true);
   });
@@ -222,7 +229,7 @@ describe('EnemyBrain transitions', () => {
     let found = 0;
     const brain = brainWith(body, hiding, new Rng(1), () => found++);
     // See the player first (chase), then they hide in view.
-    brain.update(DT, snapshot({ position: new THREE.Vector3(9, 3.5, 23), lightOn: true }));
+    pumpUntilChase(brain, snapshot({ position: new THREE.Vector3(9, 3.5, 23), lightOn: true }));
     expect(brain.state).toBe('chase');
     player.teleport(8, 3.5, 19);
     interactions.update(player.position, { x: 1, y: 0, z: 0 });
@@ -258,7 +265,7 @@ describe('EnemyBrain transitions', () => {
     const { hiding } = makeHiding();
     const body = stubBody(15, 3.5, 19);
     const brain = brainWith(body, hiding, new Rng(1));
-    brain.update(DT, snapshot({ position: new THREE.Vector3(15, 3.5, 22), lightOn: true }));
+    pumpUntilChase(brain, snapshot({ position: new THREE.Vector3(15, 3.5, 22), lightOn: true }));
     expect(brain.state).toBe('chase');
     brain.notePlayerEnteredPassage(
       new THREE.Vector3(11, 3.5, 11),
@@ -274,7 +281,7 @@ describe('EnemyBrain transitions', () => {
     const { hiding } = makeHiding();
     const body = stubBody(15, 3.5, 19);
     const brain = brainWith(body, hiding, new Rng(1));
-    brain.update(DT, snapshot({ position: new THREE.Vector3(15, 3.5, 22), lightOn: true }));
+    pumpUntilChase(brain, snapshot({ position: new THREE.Vector3(15, 3.5, 22), lightOn: true }));
     brain.notePlayerEnteredPassage(
       new THREE.Vector3(11, 3.5, 11),
       new THREE.Vector3(13, 3.5, 11),
@@ -289,16 +296,17 @@ describe('EnemyBrain transitions', () => {
     const { hiding } = makeHiding();
     const body = stubBody(15, 3.5, 19);
     const brain = brainWith(body, hiding, new Rng(1));
-    brain.update(DT, snapshot({ position: new THREE.Vector3(15, 3.5, 23), lightOn: true }));
+    pumpUntilChase(brain, snapshot({ position: new THREE.Vector3(15, 3.5, 23), lightOn: true }));
     expect(brain.state).toBe('chase');
-    const gone = snapshot({ position: new THREE.Vector3(5, 0, 5), floor: 0 });
-    const seen = new Set<string>();
+    // Same floor but far + walled off: sight lost without the cross-floor gamble.
+    const gone = snapshot({ position: new THREE.Vector3(5, 3.5, 5), floor: 1 });
+    const seenStates = new Set<string>();
     for (let i = 0; i < 30 / DT; i++) {
       brain.update(DT, gone);
-      seen.add(brain.state);
+      seenStates.add(brain.state);
       if (brain.state === 'patrol') break;
     }
-    expect(seen.has('investigate')).toBe(true);
+    expect(seenStates.has('investigate')).toBe(true);
     expect(brain.state).toBe('patrol');
   });
 
@@ -309,7 +317,7 @@ describe('EnemyBrain transitions', () => {
     // Player just ahead and slightly off cell-center — the kind of spot where
     // a path that stops at the cell center would leave a gap.
     const player = snapshot({ position: new THREE.Vector3(15.7, 3.5, 21.2), lightOn: true });
-    brain.update(DT, player);
+    pumpUntilChase(brain, player);
     expect(brain.state).toBe('chase');
     for (let i = 0; i < 2 / DT; i++) brain.update(DT, player);
     const gap = Math.hypot(
@@ -325,7 +333,7 @@ describe('EnemyBrain transitions', () => {
     const brain = brainWith(body, hiding, new Rng(1));
     // Player within lunge range and in view.
     const player = snapshot({ position: new THREE.Vector3(15, 3.5, 20.5), lightOn: true });
-    brain.update(DT, player); // patrol → chase (no move on the transition step)
+    pumpUntilChase(brain, player); // reaction beat → chase
     expect(brain.state).toBe('chase');
     const before = body.position.clone();
     brain.update(DT, player); // final approach within lungeRange → pounce burst
@@ -340,13 +348,18 @@ describe('EnemyBrain transitions', () => {
     const { hiding } = makeHiding();
     const body = stubBody(15, 3.5, 19);
     const brain = brainWith(body, hiding, new Rng(1));
-    brain.update(DT, snapshot({ position: new THREE.Vector3(15, 3.5, 23), lightOn: true }));
+    pumpUntilChase(brain, snapshot({ position: new THREE.Vector3(15, 3.5, 23), lightOn: true }));
     expect(brain.state).toBe('chase');
-    // Player gone (different floor, no noise). Should reach patrol within the
-    // tuned window: memory + investigateLinger + loseInterest (+ slack).
-    const gone = snapshot({ position: new THREE.Vector3(5, 0, 5), floor: 0, noiseLevel: 0 });
+    // Player gone (same floor, far + walled off, no noise). Should reach patrol
+    // within the tuned window: memory + investigateLinger + loseInterest +
+    // awareness decay through the alert ratchet (+ slack).
+    const gone = snapshot({ position: new THREE.Vector3(5, 3.5, 5), floor: 1, noiseLevel: 0 });
     const window =
-      config.ai.memorySeconds + config.ai.investigateLinger + config.ai.loseInterestSeconds + 1;
+      config.ai.memorySeconds +
+      config.ai.investigateLinger +
+      config.ai.loseInterestSeconds +
+      config.ai.awarenessAlertRatchet +
+      1;
     let reached = -1;
     for (let i = 0; i < window / DT; i++) {
       brain.update(DT, gone);
@@ -482,6 +495,72 @@ describe('gaze gating', () => {
   });
 });
 
+describe('graduated awareness', () => {
+  beforeEach(() => clearSearchClaims());
+
+  it('awarenessBand maps value to the right band', () => {
+    expect(awarenessBand(0.1, 0.4, 0.8)).toBe('unaware');
+    expect(awarenessBand(0.5, 0.4, 0.8)).toBe('suspicious');
+    expect(awarenessBand(0.9, 0.4, 0.8)).toBe('alert');
+  });
+
+  it('stepAwareness holds during the reaction delay, then rises at the capped rate', () => {
+    // Held only 0.05s < 0.08s delay → no rise yet.
+    expect(stepAwareness(0, 1, 0.05, DT, 0.08, 7, 1.2)).toBe(0);
+    // Past the delay → rises by riseRate*dt.
+    const risen = stepAwareness(0, 1, 0.1, DT, 0.08, 7, 1.2);
+    expect(risen).toBeCloseTo(7 * DT, 5);
+    // Never overshoots the drive.
+    expect(stepAwareness(0.99, 1, 1, DT, 0.08, 7, 1.2)).toBe(1);
+  });
+
+  it('stepAwareness decays gradually toward the (lower) drive', () => {
+    const decayed = stepAwareness(1, 0, 0, DT, 0.08, 7, 1.2);
+    expect(decayed).toBeCloseTo(1 - 1.2 * DT, 5);
+    expect(decayed).toBeLessThan(1);
+    expect(stepAwareness(0.01, 0, 0, DT, 0.08, 7, 1.2)).toBe(0); // clamps at the drive
+  });
+
+  it('sight dominates: a clear sighting reaches alert (chase) after a brief beat', () => {
+    const { hiding } = makeHiding();
+    const body = stubBody(15, 3.5, 19);
+    const brain = brainWith(body, hiding, new Rng(1));
+    const seen = snapshot({ position: new THREE.Vector3(15, 3.5, 22), lightOn: true });
+    brain.update(DT, seen);
+    expect(brain.attention.awareness).toBeLessThan(config.ai.awarenessAlert); // not instant
+    pumpUntilChase(brain, seen);
+    expect(brain.state).toBe('chase');
+    expect(brain.attention.level).toBe('alert');
+  });
+
+  it('hearing alone never reaches alert (investigates, never chases)', () => {
+    const { hiding } = makeHiding();
+    const body = stubBody(15, 3.5, 19);
+    const brain = brainWith(body, hiding, new Rng(1));
+    // Noisy but hidden (never seeable): isolates the hearing stimulus, which is
+    // capped below the alert threshold, no matter how long it persists.
+    const heard = snapshot({ position: new THREE.Vector3(15, 3.5, 16), noiseLevel: 3, hidden: true });
+    for (let i = 0; i < 60; i++) brain.update(DT, heard);
+    expect(brain.attention.awareness).toBeLessThanOrEqual(config.ai.hearingStimCap + 1e-6);
+    expect(brain.attention.awareness).toBeLessThan(config.ai.awarenessAlert);
+    expect(brain.state).not.toBe('chase');
+  });
+
+  it('the alert ratchet holds awareness in the suspicious band briefly after alert', () => {
+    const { hiding } = makeHiding();
+    const body = stubBody(15, 3.5, 19);
+    const brain = brainWith(body, hiding, new Rng(1));
+    pumpUntilChase(brain, snapshot({ position: new THREE.Vector3(15, 3.5, 22), lightOn: true }));
+    // Sight lost: within the ratchet window awareness can't fall below suspicious.
+    const gone = snapshot({ position: new THREE.Vector3(5, 3.5, 5), floor: 1 });
+    brain.update(DT, gone);
+    expect(brain.attention.awareness).toBeGreaterThanOrEqual(config.ai.awarenessSuspicious);
+    // Well past the ratchet → free to decay below suspicious.
+    for (let i = 0; i < (config.ai.awarenessAlertRatchet + 1) / DT; i++) brain.update(DT, gone);
+    expect(brain.attention.awareness).toBeLessThan(config.ai.awarenessSuspicious);
+  });
+});
+
 describe('cross-floor pursuit', () => {
   beforeEach(() => clearSearchClaims());
 
@@ -493,7 +572,7 @@ describe('cross-floor pursuit', () => {
       const { hiding } = makeHiding();
       const body = stubBody(15, 3.5, 19); // foyer (floor 1), facing south
       const brain = brainWith(body, hiding, new Rng(1));
-      brain.update(DT, snapshot({ position: new THREE.Vector3(15, 3.5, 23), lightOn: true }));
+      pumpUntilChase(brain, snapshot({ position: new THREE.Vector3(15, 3.5, 23), lightOn: true }));
       expect(brain.state).toBe('chase');
       // Player vanishes downstairs (floor 0): canSee is false across floors.
       const fled = snapshot({ position: new THREE.Vector3(15, 0, 13), floor: 0 });

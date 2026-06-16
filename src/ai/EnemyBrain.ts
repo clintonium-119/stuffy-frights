@@ -5,7 +5,7 @@ import { House, cellToWorld, floorY } from '../world/layoutTypes';
 import { HidingSpot, HidingSystem } from '../systems/HidingSpot';
 import { NavGraph, PathFollower } from './NavGraph';
 import { PerceptionMemory, PlayerSnapshot, canSee, movementNoiseRadius } from './Perception';
-import { EnemyAttention, createAttention } from './EnemyAttention';
+import { AwarenessLevel, EnemyAttention, createAttention } from './EnemyAttention';
 import { EnemyTuning } from '../enemies/tuningConfig';
 
 /** What the brain needs from its body (EnemyBase satisfies this; tests stub it). */
@@ -69,6 +69,9 @@ export class EnemyBrain {
   /** Gaze linger after sight breaks: where it last looked + how long ago. */
   private lastSeenEye: THREE.Vector3 | null = null;
   private gazeLostFor = 0;
+  /** Awareness integrator state: how long a rising stimulus has been held + last alert. */
+  private stimulusHeldFor = 0;
+  private lastAlertAt = -Infinity;
   /** Director pacing knobs. */
   passive = false; // grace period / mercy window
   speedFactor = 1;
@@ -127,6 +130,8 @@ export class EnemyBrain {
     this.prevSeenAt = -Infinity;
     this.lastSeenEye = null;
     this.gazeLostFor = 0;
+    this.stimulusHeldFor = 0;
+    this.lastAlertAt = -Infinity;
     Object.assign(this._attention, createAttention());
   }
 
@@ -211,10 +216,21 @@ export class EnemyBrain {
       }
     }
 
+    // Chase/investigate entry is gated on graduated awareness, not the raw
+    // instant sight test — a clear sighting crosses alert in ~0.2s (a reaction
+    // beat), hearing only reaches suspicious.
+    const aware = this._attention.awareness;
+    const alert = aware >= config.ai.awarenessAlert;
+    const suspicious = aware >= config.ai.awarenessSuspicious;
+
     switch (this.state) {
       case 'patrol': {
-        if (seen) {
+        if (alert) {
           this.transition('chase');
+          break;
+        }
+        if (suspicious) {
+          this.transition('investigate');
           break;
         }
         if (this.forcedDestination) {
@@ -233,7 +249,7 @@ export class EnemyBrain {
       }
 
       case 'investigate': {
-        if (seen) {
+        if (alert) {
           this.transition('chase');
           break;
         }
@@ -376,7 +392,7 @@ export class EnemyBrain {
 
       case 'followPassage': {
         this.follower.drive(this.enemy, this.speed(config.ai.investigateSpeed));
-        if (seen) {
+        if (alert) {
           this.memory.forgetWitnessed();
           this.transition('chase');
         } else if (this.follower.done) {
@@ -389,8 +405,10 @@ export class EnemyBrain {
 
       case 'loseInterest': {
         this.enemy.setMoveTarget(null);
-        if (seen) {
+        if (alert) {
           this.transition('chase');
+        } else if (suspicious) {
+          this.transition('investigate');
         } else if (this.stateTimer > config.ai.loseInterestSeconds) {
           this.transition('patrol');
         }
@@ -436,6 +454,39 @@ export class EnemyBrain {
         this.lastSeenEye = null;
       }
     }
+
+    // Graduated awareness pulse: dominance-select sight vs hearing, integrate
+    // with a reaction-delayed bounded rise + a gradual decay, then ratchet so a
+    // freshly-alert enemy can't drop straight back to oblivious.
+    const sightStim = seen ? (player.lightOn ? 1 : config.ai.sightStimDarkFactor) : 0;
+    const hearStim = this.hearingStimulus(player);
+    const drive = Math.max(sightStim, hearStim);
+    if (drive > a.awareness) this.stimulusHeldFor += dt;
+    else this.stimulusHeldFor = 0;
+    a.awareness = stepAwareness(
+      a.awareness,
+      drive,
+      this.stimulusHeldFor,
+      dt,
+      config.ai.awarenessRiseDelay,
+      config.ai.awarenessRiseRate,
+      config.ai.awarenessDecayRate
+    );
+    if (a.awareness >= config.ai.awarenessAlert) this.lastAlertAt = this.now;
+    if (this.now - this.lastAlertAt < config.ai.awarenessAlertRatchet) {
+      a.awareness = Math.max(a.awareness, config.ai.awarenessSuspicious);
+    }
+    a.level = awarenessBand(a.awareness, config.ai.awarenessSuspicious, config.ai.awarenessAlert);
+  }
+
+  /** Per-tick hearing stimulus [0..hearingStimCap] from the player's movement noise. */
+  private hearingStimulus(player: PlayerSnapshot): number {
+    if (this.passive || player.noiseLevel <= 0 || player.floor !== this.enemy.floorIndex) return 0;
+    const radius = movementNoiseRadius(player.noiseLevel) * (this.enemy.tuning?.gameplay.hearingMult ?? 1);
+    if (radius <= 0) return 0;
+    const dist = this.enemy.position.distanceTo(player.position);
+    if (dist >= radius) return 0;
+    return Math.min(config.ai.hearingStimCap, 1 - dist / radius);
   }
 
   private nearestSpot(at: THREE.Vector3): HidingSpot | null {
@@ -460,6 +511,40 @@ export class EnemyBrain {
 export function gazeLingerIntensity(elapsed: number, lingerSeconds: number): number {
   if (lingerSeconds <= 0) return 0;
   return Math.max(0, 1 - elapsed / lingerSeconds);
+}
+
+/** Map an awareness value to its band given the suspicious / alert thresholds. */
+export function awarenessBand(
+  awareness: number,
+  suspicious: number,
+  alert: number
+): AwarenessLevel {
+  if (awareness >= alert) return 'alert';
+  if (awareness >= suspicious) return 'suspicious';
+  return 'unaware';
+}
+
+/**
+ * One integration step of the awareness pulse. Toward a higher `drive` the
+ * value rises at `riseRate`/s, but only once the stimulus has been held for
+ * `riseDelay` seconds (the reaction beat) — never an instant snap. Toward a
+ * lower drive it decays at `decayRate`/s down to the drive (0 when the stimulus
+ * is gone). `heldFor` is seconds the rising stimulus has been continuously present.
+ */
+export function stepAwareness(
+  current: number,
+  drive: number,
+  heldFor: number,
+  dt: number,
+  riseDelay: number,
+  riseRate: number,
+  decayRate: number
+): number {
+  if (drive > current) {
+    if (heldFor < riseDelay) return current; // still within the reaction delay
+    return Math.min(drive, current + riseRate * dt);
+  }
+  return Math.max(drive, current - decayRate * dt);
 }
 
 /** Test hook: clear cross-run claims. */

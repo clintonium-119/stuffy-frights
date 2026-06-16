@@ -90,6 +90,15 @@ export interface GameConfig {
     memorySeconds: number;
     /** Seconds the head keeps looking at the last-seen spot after sight breaks. */
     gazeLingerSeconds: number;
+    /** Graduated awareness model (Thief-style pulse). */
+    awarenessSuspicious: number; // [0..1] band where the enemy investigates
+    awarenessAlert: number; // [0..1] band where the enemy commits to chase
+    awarenessRiseDelay: number; // reaction beat (s) before awareness starts climbing
+    awarenessRiseRate: number; // awareness gained per second under stimulus
+    awarenessDecayRate: number; // awareness lost per second without stimulus
+    awarenessAlertRatchet: number; // s after alert that awareness can't fall below suspicious
+    sightStimDarkFactor: number; // sight stimulus scale when the player's light is off
+    hearingStimCap: number; // hearing alone tops out here (< alert), so sound never chases
     /** Seconds spent looking around at an investigation point. */
     investigateLinger: number;
     /** Seconds idling after losing interest before resuming patrol. */
@@ -307,6 +316,14 @@ export const config: GameConfig = {
     chaseSpeed: 4.5,
     memorySeconds: 2.5, // short: breaking line of sight is a real escape
     gazeLingerSeconds: 0.8, // brief "where did it go" look at the last-seen spot
+    awarenessSuspicious: 0.4,
+    awarenessAlert: 0.8,
+    awarenessRiseDelay: 0.08, // ~0.2s total to chase with the rise rate below
+    awarenessRiseRate: 7,
+    awarenessDecayRate: 1.2,
+    awarenessAlertRatchet: 1.5,
+    sightStimDarkFactor: 0.85,
+    hearingStimCap: 0.7, // below awarenessAlert: hearing investigates, never chases
     investigateLinger: 2,
     loseInterestSeconds: 1.5,
     searchProbLightOn: 0.75,
