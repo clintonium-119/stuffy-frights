@@ -8,6 +8,13 @@ export interface GameConfig {
   /** Max fixed substeps per rendered frame (spiral-of-death guard). */
   maxSubsteps: number;
 
+  world: {
+    /** Horizontal grid pitch in meters (one cell edge). */
+    cellSize: number;
+    /** Vertical distance between floor slabs in meters. */
+    floorSpacing: number;
+  };
+
   player: {
     walkSpeed: number; // m/s
     sprintSpeed: number; // m/s
@@ -256,6 +263,11 @@ export interface GameConfig {
 export const config: GameConfig = {
   timestep: 1 / 60,
   maxSubsteps: 5,
+
+  world: {
+    cellSize: 0.5,
+    floorSpacing: 3.5,
+  },
 
   player: {
     walkSpeed: 3.0,

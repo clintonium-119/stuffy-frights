@@ -7,7 +7,14 @@ import { HidingSystem } from '../systems/HidingSpot';
 import { house } from '../world/houseLayout';
 import { Rng } from '../core/rng';
 import { config } from '../core/config';
-import { isWalkable, worldToCell } from '../world/layoutTypes';
+import { isWalkable, worldToCell, cellToWorld, floorY } from '../world/layoutTypes';
+import { UPSCALE } from '../world/houseLayout';
+
+/** Cell → world using the real engine pitch (mirrors production marker placement). */
+const markerWorld = (p: { floor: number; x: number; z: number }) => {
+  const w = cellToWorld(p.x, p.z);
+  return new THREE.Vector3(w.x, floorY(p.floor), w.z);
+};
 
 /** Canvas-free stub enemy (no init()/face baking) for headless Director tests. */
 class StubEnemy extends EnemyBase {
@@ -26,8 +33,6 @@ function makeDirector() {
   const rng = new Rng(12345);
   const hiding = { all: [], active: null } as unknown as HidingSystem;
   const scene = new THREE.Scene();
-  const markerWorld = (p: { floor: number; x: number; z: number }) =>
-    new THREE.Vector3(p.x * 2, p.floor * 3.5, p.z * 2);
   const director = new Director(
     house,
     nav,
@@ -41,11 +46,10 @@ function makeDirector() {
 }
 
 describe('Director safe spawns', () => {
-  const markerWorld = (p: { floor: number; x: number; z: number }) =>
-    new THREE.Vector3(p.x * 2, p.floor * 3.5, p.z * 2);
-  const playerCell = { x: 2, z: 2 }; // a main-floor room
+  // A main-floor room cell, upscaled from the authored (2,2) to the engine grid.
+  const playerCell = { x: 2 * UPSCALE, z: 2 * UPSCALE };
   const playerFloor = 1;
-  const playerPos = markerWorld({ floor: 1, x: 2, z: 2 });
+  const playerPos = markerWorld({ floor: 1, x: playerCell.x, z: playerCell.z });
 
   // Mirror Director.floodRoom for assertions (room = walls + doors bounded).
   function playerRoom(): Set<string> {

@@ -1,4 +1,5 @@
 import {
+  CELL_SIZE,
   CellKind,
   CellPos,
   EnemyId,
@@ -7,6 +8,83 @@ import {
   House,
   isWalkable,
 } from './layoutTypes';
+import { legacyGridToEdges, computeRoomIds } from './edges';
+
+/**
+ * The legacy ASCII grids were authored at a 2 m pitch (one cell ≈ a 2 m tile).
+ * The engine now runs on a finer pitch (`CELL_SIZE`, 0.5 m), so each authored
+ * cell is upscaled into an `UPSCALE`×`UPSCALE` block of engine cells, preserving
+ * the house's physical size and every world coordinate. Walls stay as
+ * (now-block-thick) non-walkable cells; `legacyGridToEdges` turns the
+ * floor/wall block boundaries into wall edges. A genuinely thin-walled mansion
+ * is authored directly at the engine pitch later — this only keeps the legacy
+ * house playable through the transition. When the pitch equals the authoring
+ * pitch the factor is 1 (no upscale).
+ */
+const LEGACY_CELL_SIZE = 2;
+/** Engine cells per authored cell along each axis (4 at a 0.5 m pitch). */
+export const UPSCALE = Math.max(1, Math.round(LEGACY_CELL_SIZE / CELL_SIZE));
+
+const blockCenter = (n: number, f: number): number => n * f + (f >> 1);
+
+function scaleCell<T extends { x: number; z: number }>(c: T, f: number): T {
+  return { ...c, x: blockCenter(c.x, f), z: blockCenter(c.z, f) };
+}
+
+/**
+ * Expand an axis-aligned run of adjacent cells onto the finer grid: each authored
+ * cell maps to its block center, and the cells between consecutive centers are
+ * filled so the run stays a connected path at the new pitch (a 3-cell stair at
+ * 2 m becomes a longer connected run of 0.5 m cells over the same span).
+ */
+function scaleRun(cells: { x: number; z: number }[], f: number): { x: number; z: number }[] {
+  if (cells.length === 0) return [];
+  const centers = cells.map((c) => ({ x: blockCenter(c.x, f), z: blockCenter(c.z, f) }));
+  const out = [{ ...centers[0] }];
+  for (let i = 1; i < centers.length; i++) {
+    const a = centers[i - 1];
+    const b = centers[i];
+    const dx = Math.sign(b.x - a.x);
+    const dz = Math.sign(b.z - a.z);
+    let cur = { ...a };
+    while (cur.x !== b.x || cur.z !== b.z) {
+      cur = { x: cur.x + dx, z: cur.z + dz };
+      out.push(cur);
+    }
+  }
+  return out;
+}
+
+/**
+ * Reinterpret the authored house at the engine pitch: every cell becomes an
+ * `f`×`f` block of the same kind and all cell-coordinate tables are rescaled, so
+ * world positions are unchanged. Mutates `h`. Edges, room ids and the
+ * nav-blocked stair set are derived afterwards from the upscaled grids.
+ */
+function upscaleHouse(h: House, f: number): void {
+  h.grids = h.grids.map((grid) => {
+    const ng: CellKind[][] = [];
+    for (let z = 0; z < h.depth * f; z++) {
+      const src = grid[Math.floor(z / f)];
+      const row: CellKind[] = [];
+      for (let x = 0; x < h.width * f; x++) row.push(src[Math.floor(x / f)]);
+      ng.push(row);
+    }
+    return ng;
+  });
+  h.width *= f;
+  h.depth *= f;
+  h.playerSpawn = scaleCell(h.playerSpawn, f);
+  h.playerSpawns = h.playerSpawns.map((p) => scaleCell(p, f));
+  h.enemySpawns = h.enemySpawns.map((e) => ({ ...e, pos: scaleCell(e.pos, f) }));
+  h.hidingSpots = h.hidingSpots.map((s) => ({ ...s, pos: scaleCell(s.pos, f) }));
+  h.chargingStations = h.chargingStations.map((c) => scaleCell(c, f));
+  h.keyCandidates = h.keyCandidates.map((c) => scaleCell(c, f));
+  h.exits = h.exits.map((e) => ({ ...e, pos: scaleCell(e.pos, f) }));
+  h.stairs = h.stairs.map((s) => ({ ...s, cells: scaleRun(s.cells, f) }));
+  h.vents = h.vents.map((v) => ({ ...v, cells: scaleRun(v.cells, f) }));
+  h.chutes = h.chutes.map((c) => ({ from: scaleCell(c.from, f), to: scaleCell(c.to, f) }));
+}
 
 /**
  * The house. 4 floors, 15×15 cells, hand-authored. Rooms are banded by
@@ -136,6 +214,9 @@ export function parseLayout(): House {
 
   const house: House = {
     grids: [],
+    edgesV: [],
+    edgesH: [],
+    roomId: [],
     width,
     depth,
     playerSpawn: { floor: 1, x: 0, z: 0 },
@@ -238,6 +319,11 @@ export function parseLayout(): House {
 
   if (!sawSpawn) throw new Error('no player spawn (P) in layout');
 
+  // Reinterpret the 2 m-authored house at the engine pitch (0.5 m → 4× per axis)
+  // so it keeps its physical size and world coordinates. Validation, edges and
+  // room ids below run on the upscaled grids.
+  if (UPSCALE > 1) upscaleHouse(house, UPSCALE);
+
   // Stair/vent cells must match the grids. While here, mark every stair cell
   // that is NOT a valid nav node: only the run's entrance (low-end on the lower
   // floor) and landing (high-end on the upper floor) are walkable nav nodes — the
@@ -264,6 +350,15 @@ export function parseLayout(): House {
       }
     }
   }
+
+  // Walls-as-edges (additive): synthesize edges from the legacy grids so
+  // edge-aware consumers can migrate incrementally. See edges.ts.
+  const edges = legacyGridToEdges(house.grids, house.width, house.depth);
+  house.edgesV = edges.edgesV;
+  house.edgesH = edges.edgesH;
+  // Per-cell room labels flooded over the synthesized edges (a doorway bounds a
+  // room). Single source of truth for room membership; see edges.ts.
+  house.roomId = computeRoomIds(edges, house.grids, house.width, house.depth);
 
   return house;
 }

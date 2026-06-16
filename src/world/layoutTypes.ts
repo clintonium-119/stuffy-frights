@@ -11,14 +11,24 @@
  *   'A' exit A        'B' exit B         'D' exit C
  * All marker characters are walkable floor cells.
  */
-export const CELL_SIZE = 2; // meters
-export const FLOOR_SPACING = 3.5; // meters between floor slabs
+import { config } from '../core/config';
+
+export const CELL_SIZE = config.world.cellSize; // meters (horizontal grid pitch)
+export const FLOOR_SPACING = config.world.floorSpacing; // meters between floor slabs
 export const WALL_HEIGHT = 3.0; // meters
 
-export type FloorIndex = 0 | 1 | 2 | 3;
+/**
+ * A floor index is an arbitrary non-negative integer — the house carries as many
+ * floors as its data defines (no fixed cap). `FLOOR_NAMES` supplies labels for
+ * the known legacy floors; an authored house may extend the list.
+ */
+export type FloorIndex = number;
 export const FLOOR_NAMES = ['Basement', 'Main Floor', 'Upstairs', 'Attic'] as const;
 
 export type CellKind = 'wall' | 'floor' | 'void' | 'door' | 'stair' | 'vent';
+
+/** Wall/door/secret state carried on the boundary between two cells. See `edges.ts`. */
+export type EdgeState = 'none' | 'wall' | 'door' | 'secret';
 
 export interface CellPos {
   floor: FloorIndex;
@@ -69,6 +79,22 @@ export interface ExitDef {
 export interface House {
   /** grids[floor][z][x] */
   grids: CellKind[][][];
+  /**
+   * Walls-as-edges (additive; see `edges.ts`). edgesV[floor][z][x] is the
+   * boundary between (x,z) and (x+1,z); edgesH[floor][z][x] between (x,z) and
+   * (x,z+1). For the legacy ASCII house these are synthesized from `grids`;
+   * the authored mansion supplies them directly.
+   */
+  edgesV: EdgeState[][][];
+  edgesH: EdgeState[][][];
+  /**
+   * Per-cell room label: `roomId[floor][z][x]`, unique across the whole house
+   * (`-1` for non-walkable cells). A room is the set of walkable cells connected
+   * through `none` edges — wall/door/secret edges bound it, so a doorway
+   * separates two rooms. Computed once at parse; see `computeRoomIds` in
+   * `edges.ts`.
+   */
+  roomId: number[][][];
   width: number;
   depth: number;
   /** First spawn (back-compat); the full set lives in playerSpawns. */

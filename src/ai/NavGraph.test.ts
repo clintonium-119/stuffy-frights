@@ -5,6 +5,7 @@ import { house } from '../world/houseLayout';
 import { PROP_PLACEMENTS } from '../world/Props';
 import { Rng } from '../core/rng';
 import { floorY } from '../world/layoutTypes';
+import { UPSCALE } from '../world/houseLayout';
 
 function solidCells(): Set<string> {
   const solid = new Set<string>();
@@ -50,32 +51,28 @@ describe('NavGraph on the real house', () => {
   });
 
   it('passage edges are excluded by default and shortcut when allowed', () => {
-    const around = nav.findPath({ floor: 1, x: 4, z: 5 }, { floor: 1, x: 6, z: 5 });
-    const through = nav.findPath(
-      { floor: 1, x: 4, z: 5 },
-      { floor: 1, x: 6, z: 5 },
-      { allowPassages: true }
-    );
+    // A main-floor vent bores through a wall; cells one authored-cell to each
+    // side of its mouth are in different rooms, joined only by the crawl.
+    const vent = house.vents.find((v) => v.floor === 1)!;
+    const mouth = vent.cells[0];
+    const a = { floor: 1, x: mouth.x - UPSCALE, z: mouth.z };
+    const b = { floor: 1, x: mouth.x + UPSCALE, z: mouth.z };
+    const around = nav.findPath(a, b);
+    const through = nav.findPath(a, b, { allowPassages: true });
     expect(around).not.toBeNull();
     expect(through).not.toBeNull();
     expect(through!.length).toBeLessThan(around!.length);
-    // The default path never enters the vent cell.
-    expect(around!.some((n) => n.floor === 1 && n.x === 5 && n.z === 5)).toBe(false);
+    // The default path never enters the vent mouth cell.
+    expect(around!.some((n) => n.floor === 1 && n.x === mouth.x && n.z === mouth.z)).toBe(false);
   });
 
   it('chute drops are one-way and only with passages allowed', () => {
-    const down = nav.findPath(
-      { floor: 1, x: 11, z: 7 },
-      { floor: 0, x: 10, z: 7 },
-      { allowPassages: true }
-    );
+    const chute = house.chutes.find((c) => c.from.floor === 1)!;
+    const approach = { floor: 1, x: chute.from.x + UPSCALE, z: chute.from.z };
+    const down = nav.findPath(approach, chute.to, { allowPassages: true });
     expect(down).not.toBeNull();
     // Going back UP through the chute is impossible — the route must use stairs.
-    const up = nav.findPath(
-      { floor: 0, x: 10, z: 7 },
-      { floor: 1, x: 11, z: 7 },
-      { allowPassages: true }
-    );
+    const up = nav.findPath(chute.to, approach, { allowPassages: true });
     expect(up).not.toBeNull();
     expect(up!.length).toBeGreaterThan(down!.length);
   });
