@@ -115,7 +115,11 @@ export class EnemyViewer {
   // Editable per-enemy tuning clone — its anim block drives both the live enemy
   // and the rig editor (by reference), so the anim sliders show edits live.
   private readonly tuning: Record<string, EnemyTuning> = structuredClone(ENEMY_TUNING);
+  // Left column: the tuning panel with the global eye-glow controls stacked
+  // below it as their own dialog (they're a global config, not per-enemy tuning).
+  private readonly leftColumn = document.createElement('div');
   private readonly animPanel = document.createElement('div');
+  private readonly glowPanel = document.createElement('div');
 
   constructor(canvas: HTMLCanvasElement, initial: EnemyKey) {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
@@ -302,12 +306,16 @@ export class EnemyViewer {
     return this.tuning[this.currentKey].gameplay;
   }
 
-  /** Fixed top-left panel: live animation + characteristics sliders. */
+  /** Fixed top-left column: the tuning panel + the global eye-glow panel below it. */
   private buildAnimPanel(): void {
-    this.animPanel.style.cssText =
-      'position:fixed;top:8px;left:8px;width:215px;background:#0b0e12ee;color:#cdd;' +
-      'font:11px ui-monospace,monospace;padding:10px;border-radius:8px;z-index:15;max-height:92vh;overflow:auto';
-    document.body.appendChild(this.animPanel);
+    this.leftColumn.style.cssText =
+      'position:fixed;top:8px;left:8px;width:215px;display:flex;flex-direction:column;gap:8px;' +
+      'z-index:15;max-height:96vh;overflow:auto';
+    const box = 'background:#0b0e12ee;color:#cdd;font:11px ui-monospace,monospace;padding:10px;border-radius:8px';
+    this.animPanel.style.cssText = box;
+    this.glowPanel.style.cssText = box;
+    this.leftColumn.append(this.animPanel, this.glowPanel);
+    document.body.appendChild(this.leftColumn);
     this.refreshAnimPanel();
   }
 
@@ -371,7 +379,7 @@ export class EnemyViewer {
     }
 
     this.appendAnimSaveButton();
-    this.appendEyeGlowControls();
+    this.refreshGlowPanel();
   }
 
   /** A labelled colour input bound to a hex-number value. */
@@ -507,9 +515,9 @@ export class EnemyViewer {
           : this.camera.position.clone();
       // Feed the articulation look-context if the build supports it.
       const look = (e as unknown as {
-        setLookContext?: (p: THREE.Vector3, crouch: boolean, intensity: number) => void;
+        setLookContext?: (target: THREE.Vector3 | null, intensity: number) => void;
       }).setLookContext;
-      if (look) look.call(e, lookPos, this.crouchTarget, this.lookAtCamera || this.crouchTarget ? 1 : 0);
+      if (look) look.call(e, lookPos, this.lookAtCamera || this.crouchTarget ? 1 : 0);
 
       // Mood is driven only by the `menacing` toggle here — keep the simulated
       // player far so proximity doesn't force menacing in the studio.
