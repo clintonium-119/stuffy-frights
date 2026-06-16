@@ -13,6 +13,7 @@ import {
 } from './devPanel';
 import { buildAiSection } from './aiSection';
 import { buildAtmosphereSection } from './atmosphereSection';
+import { buildDifficultyWarpSection } from './difficultyWarpSection';
 
 /** Registers a collapsible section; section builders (per phase) receive this. */
 export type AddSection = (
@@ -28,6 +29,8 @@ export interface DevOverlayCtx {
   director: Director;
   map: MapOverlay;
   applyDifficulty: (level: DifficultyLevel) => void;
+  /** The difficulty the run booted at — initial value for the selector. */
+  difficulty: DifficultyLevel;
 }
 
 const STORAGE_KEY = 'sf-dev-overlay';
@@ -90,9 +93,8 @@ export function mountDevOverlay(ctx: DevOverlayCtx): void {
   // Sections (one concern each). Later phases add their builders here.
   buildAiSection(addSection, ctx);
   buildAtmosphereSection(addSection, ctx);
-  // buildDifficultyWarpSection(addSection, ctx, syncAllRows);
+  buildDifficultyWarpSection(addSection, ctx, syncAllRows);
   // buildCheatsSection(addSection, ctx);
-  void syncAllRows; // used by the difficulty re-sync in a later phase
 
   // Backtick toggles the panel; release pointer-lock while open so the cursor
   // can reach the controls. The keypress is consumed so game input never sees it.

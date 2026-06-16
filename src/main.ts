@@ -45,6 +45,7 @@ import { SettingsStore } from './core/Settings';
 import { applyDifficulty, DIFFICULTY_META, DIFFICULTY_ORDER, type DifficultyLevel } from './core/difficulty';
 import { parseDevStart } from './core/devStart';
 import { devFlags } from './dev/devFlags';
+import { floorWarpNode } from './dev/floorWarp';
 
 // Apply the persisted difficulty into `config` BEFORE any system reads it — every
 // importer shares the same config object, so this one in-place merge sets the
@@ -384,7 +385,7 @@ const vrMap = new VRMap(map.mapCanvas);
 // reliable gate in this project's build — it resolves truthy there.)
 if (import.meta.hot) {
   void import('./dev/DevOverlay').then(({ mountDevOverlay }) =>
-    mountDevOverlay({ config, devFlags, player, director, map, applyDifficulty })
+    mountDevOverlay({ config, devFlags, player, director, map, applyDifficulty, difficulty: bootDifficulty })
   );
 }
 
@@ -825,6 +826,16 @@ engine.addUpdatable({
       input.endStep();
       controls.endStep();
       return;
+    }
+    // Dev floor warp: consume-and-clear a pending request (stripped in prod).
+    if (import.meta.hot && devFlags.warpFloor !== null) {
+      const node = floorWarpNode(nav, devFlags.warpFloor, { next: () => Math.random() });
+      if (node) {
+        const w = world.markerWorld({ floor: node.floor, x: node.x, z: node.z });
+        player.teleport(w.x, w.y, w.z, Math.PI);
+        player.floorIndex = node.floor;
+      }
+      devFlags.warpFloor = null;
     }
     runSeconds += dt;
 
