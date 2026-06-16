@@ -29,3 +29,45 @@ export function interiorModelById(id: string): InteriorModelEntry | undefined {
 export function interiorCategories(): string[] {
   return [...new Set(interiorModels.map((m) => m.category))].sort();
 }
+
+/** All models in a category (e.g. `Bed`, `Couch`), in catalog order. */
+export function interiorModelsByCategory(category: string): InteriorModelEntry[] {
+  return interiorModels.filter((m) => m.category === category);
+}
+
+/**
+ * Floor footprint in grid cells at the given cell size, from the model's x/z
+ * bounding box (y is up). At least 1×1. Pass the live `CELL_SIZE` so this stays
+ * correct across a grid-pitch change.
+ */
+export function footprintCells(
+  model: InteriorModelEntry,
+  cellSize: number,
+): { x: number; z: number } {
+  return {
+    x: Math.max(1, Math.ceil(model.dims.x / cellSize)),
+    z: Math.max(1, Math.ceil(model.dims.z / cellSize)),
+  };
+}
+
+/** Per-model normalization override applied at render time. */
+export interface ModelNormalization {
+  /** Uniform scale to apply to source units (default 1). */
+  scale?: number;
+  /** Yaw (degrees about +Y) to reorient the model (default 0). */
+  yawDeg?: number;
+}
+
+/**
+ * Per-model normalization overrides, keyed by model id. Empty by default — the
+ * Quaternius models are upright and roughly metric, so identity is the baseline;
+ * entries are added here after visual inspection (e.g. a model authored at the
+ * wrong scale or facing). Floor-seating (sitting the model on y=0) is derived
+ * from the loaded bounding box at render time, not stored here.
+ */
+export const INTERIOR_NORMALIZATION: Readonly<Record<string, ModelNormalization>> = {};
+
+/** Normalization override for a model id (identity defaults if none). */
+export function normalizationOverride(id: string): ModelNormalization {
+  return INTERIOR_NORMALIZATION[id] ?? {};
+}

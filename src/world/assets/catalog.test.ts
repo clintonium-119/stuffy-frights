@@ -3,6 +3,9 @@ import {
   interiorModels,
   interiorModelById,
   interiorCategories,
+  interiorModelsByCategory,
+  footprintCells,
+  normalizationOverride,
 } from './catalog';
 
 describe('interior model catalog', () => {
@@ -42,5 +45,30 @@ describe('interior model catalog', () => {
     const cats = interiorCategories();
     expect(cats.length).toBeGreaterThan(0);
     expect([...cats].sort()).toEqual(cats);
+  });
+});
+
+describe('interior registry', () => {
+  it('lists models by category', () => {
+    for (const cat of interiorCategories()) {
+      const models = interiorModelsByCategory(cat);
+      expect(models.length).toBeGreaterThan(0);
+      expect(models.every((m) => m.category === cat)).toBe(true);
+    }
+    expect(interiorModelsByCategory('NoSuchCategory')).toEqual([]);
+  });
+
+  it('computes a floor footprint in cells (>=1, scales with cell size)', () => {
+    const m = { id: 't', file: 't.glb', category: 't', dims: { x: 1.6, y: 1, z: 3.9 } };
+    expect(footprintCells(m, 0.5)).toEqual({ x: 4, z: 8 });
+    expect(footprintCells(m, 2)).toEqual({ x: 1, z: 2 });
+    const tiny = { ...m, dims: { x: 0.1, y: 0.1, z: 0.1 } };
+    expect(footprintCells(tiny, 0.5)).toEqual({ x: 1, z: 1 });
+  });
+
+  it('defaults normalization to identity (no overrides yet)', () => {
+    const o = normalizationOverride(interiorModels[0].id);
+    expect(o.scale ?? 1).toBe(1);
+    expect(o.yawDeg ?? 0).toBe(0);
   });
 });
