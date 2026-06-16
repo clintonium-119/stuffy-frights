@@ -37,7 +37,7 @@ import { NoiseBus, PlayerSnapshot, canSee } from './ai/Perception';
 import { Rng } from './core/rng';
 import { GameState } from './core/GameState';
 import { Objectives } from './systems/Objectives';
-import { MapOverlay } from './ui/MapOverlay';
+import { MapOverlay, type EnemyMarker } from './ui/MapOverlay';
 import { HUD } from './ui/HUD';
 import { Menus, ENEMY_NAMES } from './ui/Menus';
 import { AudioEngine } from './audio/AudioEngine';
@@ -820,6 +820,16 @@ else menus.showTitle();
 let footstepDistance = 0;
 const prevPos = new THREE.Vector3().copy(player.position);
 
+/** Dev reveal cheat: enemy positions for the map, or undefined when off/prod. */
+function revealMarkers(): EnemyMarker[] | undefined {
+  if (!(import.meta.hot && devFlags.revealEnemies)) return undefined;
+  return director.residents.map((r) => ({
+    x: r.enemy.position.x,
+    z: r.enemy.position.z,
+    floor: r.enemy.floorIndex,
+  }));
+}
+
 engine.addUpdatable({
   update(dt: number) {
     if (!gs.simulationTicks) {
@@ -902,14 +912,17 @@ engine.addUpdatable({
     ambientLight.intensity += (ambTarget - ambientLight.intensity) * Math.min(1, 3 * dt);
     hemisphereLight.intensity += (hemTarget - hemisphereLight.intensity) * Math.min(1, 3 * dt);
 
-    const catchable = hiding.active === null && !jumpscare.running;
+    // Dev cheats fold to no-ops in production (`import.meta.hot` is undefined).
+    const catchable =
+      hiding.active === null && !jumpscare.running && !(import.meta.hot && devFlags.invincible);
     const snapshot: PlayerSnapshot = {
       position: player.position,
       eyePosition: player.eyePosition,
+      undetectable: !!(import.meta.hot && devFlags.invisible),
       floor: player.floorIndex,
       lightOn: flashlight.isOn,
       crouched: player.isCrouched,
-      noiseLevel: player.noiseLevel,
+      noiseLevel: import.meta.hot && devFlags.inaudible ? 0 : player.noiseLevel,
       hidden: hiding.active !== null,
       nearCover: player.isCrouched ? playerNearCover() : false,
     };
@@ -945,7 +958,7 @@ engine.addUpdatable({
     }
     audio.update(dt, nearest, anyChasing, nearestWindow);
 
-    if (map.visible) map.update(player.position.x, player.position.z, player.yaw, player.floorIndex);
+    if (map.visible) map.update(player.position.x, player.position.z, player.yaw, player.floorIndex, revealMarkers());
 
     input.endStep();
     controls.endStep();
@@ -1057,7 +1070,7 @@ if (import.meta.env.DEV) {
   if (params.get('map') === '1') {
     if (gs.transition('openMap')) {
       map.open();
-      map.update(player.position.x, player.position.z, player.yaw, player.floorIndex);
+      map.update(player.position.x, player.position.z, player.yaw, player.floorIndex, revealMarkers());
     }
   }
   if (params.get('report') === '1') {

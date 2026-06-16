@@ -14,6 +14,7 @@ import {
 import { buildAiSection } from './aiSection';
 import { buildAtmosphereSection } from './atmosphereSection';
 import { buildDifficultyWarpSection } from './difficultyWarpSection';
+import { buildCheatsSection } from './cheatsSection';
 
 /** Registers a collapsible section; section builders (per phase) receive this. */
 export type AddSection = (
@@ -94,7 +95,7 @@ export function mountDevOverlay(ctx: DevOverlayCtx): void {
   buildAiSection(addSection, ctx);
   buildAtmosphereSection(addSection, ctx);
   buildDifficultyWarpSection(addSection, ctx, syncAllRows);
-  // buildCheatsSection(addSection, ctx);
+  buildCheatsSection(addSection, ctx);
 
   // Backtick toggles the panel; release pointer-lock while open so the cursor
   // can reach the controls. The keypress is consumed so game input never sees it.

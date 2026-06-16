@@ -7,6 +7,8 @@ export interface PlayerSnapshot {
   position: THREE.Vector3;
   /** World-space eye point for eye-contact gaze; falls back to `position`. */
   eyePosition?: THREE.Vector3;
+  /** Dev cheat: when true, enemies can never see the player (sight short-circuits). */
+  undetectable?: boolean;
   floor: number;
   lightOn: boolean;
   crouched: boolean;
@@ -78,6 +80,7 @@ export function canSee(
   /** Per-enemy sight-range multiplier (1 = the global baseline). */
   visionFactor = 1
 ): boolean {
+  if (player.undetectable) return false; // dev cheat: invisible to sight
   if (player.hidden) return false;
   if (player.floor !== enemyFloor) return false;
 

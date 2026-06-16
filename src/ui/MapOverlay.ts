@@ -1,4 +1,16 @@
-import { CELL_SIZE, FLOOR_NAMES, House, worldToCell } from '../world/layoutTypes';
+import { CELL_SIZE, FLOOR_NAMES, House } from '../world/layoutTypes';
+
+/** A world XZ position projected to map-canvas pixels at the given scale. */
+export function mapProject(worldX: number, worldZ: number, scale: number): { x: number; y: number } {
+  return { x: (worldX / CELL_SIZE) * scale, y: (worldZ / CELL_SIZE) * scale };
+}
+
+/** An enemy position for the dev reveal overlay. */
+export interface EnemyMarker {
+  x: number;
+  z: number;
+  floor: number;
+}
 
 export interface MapDrawOp {
   kind: 'wall' | 'door' | 'stair' | 'hide' | 'station' | 'exit';
@@ -83,7 +95,13 @@ export class MapOverlay {
   }
 
   /** Per-frame while open: redraw the player marker layer over the cached floor. */
-  update(playerX: number, playerZ: number, playerYaw: number, floor: number): void {
+  update(
+    playerX: number,
+    playerZ: number,
+    playerYaw: number,
+    floor: number,
+    enemies?: EnemyMarker[]
+  ): void {
     if (!this.visible) return;
     const base = this.floorCanvas(floor);
     const s = this.scale;
@@ -94,11 +112,22 @@ export class MapOverlay {
 
     this.title.textContent = `— ${FLOOR_NAMES[floor]} —`;
 
+    // Dev reveal: enemy markers on this floor (drawn under the player marker).
+    if (enemies) {
+      ctx.fillStyle = '#e8c33a';
+      for (const e of enemies) {
+        if (e.floor !== floor) continue;
+        const p = mapProject(e.x, e.z, s);
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, 4.5, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+
     // Player marker: pulsing dot + facing wedge.
-    const cell = worldToCell(playerX, playerZ);
-    const px = (playerX / CELL_SIZE) * s;
-    const pz = (playerZ / CELL_SIZE) * s;
-    void cell;
+    const player = mapProject(playerX, playerZ, s);
+    const px = player.x;
+    const pz = player.y;
     const pulse = 1 + Math.sin(performance.now() / 220) * 0.18;
     ctx.fillStyle = '#b03a2e';
     ctx.beginPath();

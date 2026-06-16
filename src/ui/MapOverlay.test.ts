@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { floorDrawRecord } from './MapOverlay';
+import { floorDrawRecord, mapProject } from './MapOverlay';
 import { house } from '../world/houseLayout';
+import { CELL_SIZE } from '../world/layoutTypes';
 
 describe('map information rules', () => {
   it('shows hiding spots and stations on their floors', () => {
@@ -57,5 +58,21 @@ describe('map information rules', () => {
         }
       }
     }
+  });
+});
+
+describe('mapProject (dev enemy markers)', () => {
+  it('projects world XZ to canvas pixels at the given scale', () => {
+    const scale = 8;
+    expect(mapProject(CELL_SIZE, 0, scale)).toEqual({ x: scale, y: 0 });
+    expect(mapProject(0, CELL_SIZE, scale)).toEqual({ x: 0, y: scale });
+    expect(mapProject(0, 0, scale)).toEqual({ x: 0, y: 0 });
+  });
+
+  it('scales linearly with world distance', () => {
+    const a = mapProject(10, 6, 4);
+    const b = mapProject(20, 12, 4);
+    expect(b.x).toBeCloseTo(a.x * 2, 6);
+    expect(b.y).toBeCloseTo(a.y * 2, 6);
   });
 });
