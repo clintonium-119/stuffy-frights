@@ -99,6 +99,8 @@ export interface GameConfig {
     awarenessAlertRatchet: number; // s after alert that awareness can't fall below suspicious
     sightStimDarkFactor: number; // sight stimulus scale when the player's light is off
     hearingStimCap: number; // hearing alone tops out here (< alert), so sound never chases
+    soundDoorCost: number; // extra path-cost (≈ cells) a sound loses passing a door
+    soundRecomputeTicks: number; // ticks between pathed-hearing BFS recomputes (cached between)
     /** Seconds spent looking around at an investigation point. */
     investigateLinger: number;
     /** Seconds idling after losing interest before resuming patrol. */
@@ -324,6 +326,8 @@ export const config: GameConfig = {
     awarenessAlertRatchet: 1.5,
     sightStimDarkFactor: 0.85,
     hearingStimCap: 0.7, // below awarenessAlert: hearing investigates, never chases
+    soundDoorCost: 2, // a door muffles sound by ~4 m of travel (CELL_SIZE = 2)
+    soundRecomputeTicks: 6, // recompute pathed hearing ~10×/s, reuse the cache between
     investigateLinger: 2,
     loseInterestSeconds: 1.5,
     searchProbLightOn: 0.75,

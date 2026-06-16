@@ -1,11 +1,12 @@
 import * as THREE from 'three';
 import { config } from '../core/config';
 import { Rng } from '../core/rng';
-import { House, cellToWorld, floorY } from '../world/layoutTypes';
+import { CELL_SIZE, House, cellToWorld, floorY } from '../world/layoutTypes';
 import { HidingSpot, HidingSystem } from '../systems/HidingSpot';
 import { NavGraph, PathFollower } from './NavGraph';
 import { PerceptionMemory, PlayerSnapshot, canSee, movementNoiseRadius } from './Perception';
 import { AwarenessLevel, EnemyAttention, createAttention } from './EnemyAttention';
+import { SoundResult, propagateSound } from './SoundPropagation';
 import { EnemyTuning } from '../enemies/tuningConfig';
 
 /** What the brain needs from its body (EnemyBase satisfies this; tests stub it). */
@@ -72,6 +73,10 @@ export class EnemyBrain {
   /** Awareness integrator state: how long a rising stimulus has been held + last alert. */
   private stimulusHeldFor = 0;
   private lastAlertAt = -Infinity;
+  /** Last pathed-hearing result for the player, cached between recomputes. */
+  private lastHearing: SoundResult = { audible: false, intensity: 0, arrivalDir: null };
+  /** Ticks since the hearing BFS last ran (throttle: recompute every N ticks). */
+  private hearingAge = Infinity;
   /** Director pacing knobs. */
   passive = false; // grace period / mercy window
   speedFactor = 1;
@@ -132,6 +137,8 @@ export class EnemyBrain {
     this.gazeLostFor = 0;
     this.stimulusHeldFor = 0;
     this.lastAlertAt = -Infinity;
+    this.lastHearing = { audible: false, intensity: 0, arrivalDir: null };
+    this.hearingAge = Infinity;
     Object.assign(this._attention, createAttention());
   }
 
@@ -149,8 +156,9 @@ export class EnemyBrain {
 
   hearNoise(pos: THREE.Vector3, radius: number): void {
     if (this.passive) return;
-    const d = this.enemy.position.distanceTo(pos);
-    if (d > radius * (this.enemy.tuning?.gameplay.hearingMult ?? 1)) return;
+    const snd = this.audibleAt(pos, radius * (this.enemy.tuning?.gameplay.hearingMult ?? 1));
+    if (!snd.audible) return; // walls/closed doors can muffle a one-shot noise away
+    this._attention.heardDir = snd.arrivalDir;
     if (this.state === 'patrol' || this.state === 'loseInterest') {
       this.memory.lastNoisePos = pos.clone();
       this.transition('investigate');
@@ -205,14 +213,12 @@ export class EnemyBrain {
     if (seen) this.memory.recordSeen(player.position, this.now);
     this.updateAttention(dt, seen, player);
 
-    // Continuous movement noise.
-    if (!this.passive && player.noiseLevel > 0 && player.floor === this.enemy.floorIndex) {
-      const radius = movementNoiseRadius(player.noiseLevel);
-      if (this.enemy.position.distanceTo(player.position) <= radius) {
-        if (this.state === 'patrol' || this.state === 'loseInterest') {
-          this.memory.lastNoisePos = player.position.clone();
-          this.transition('investigate');
-        }
+    // Continuous movement noise — occlusion-aware (uses the pathed result
+    // computed for this tick in updateAttention).
+    if (this.lastHearing.audible) {
+      if (this.state === 'patrol' || this.state === 'loseInterest') {
+        this.memory.lastNoisePos = player.position.clone();
+        this.transition('investigate');
       }
     }
 
@@ -459,7 +465,15 @@ export class EnemyBrain {
     // with a reaction-delayed bounded rise + a gradual decay, then ratchet so a
     // freshly-alert enemy can't drop straight back to oblivious.
     const sightStim = seen ? (player.lightOn ? 1 : config.ai.sightStimDarkFactor) : 0;
-    const hearStim = this.hearingStimulus(player);
+    // The hearing BFS is too costly per-frame; recompute every N ticks and reuse
+    // the cached result between (a sound's audibility changes slowly).
+    this.hearingAge += 1;
+    if (this.hearingAge >= config.ai.soundRecomputeTicks) {
+      this.lastHearing = this.evaluateHearing(player);
+      this.hearingAge = 0;
+    }
+    a.heardDir = this.lastHearing.audible ? this.lastHearing.arrivalDir : null;
+    const hearStim = Math.min(config.ai.hearingStimCap, this.lastHearing.intensity);
     const drive = Math.max(sightStim, hearStim);
     if (drive > a.awareness) this.stimulusHeldFor += dt;
     else this.stimulusHeldFor = 0;
@@ -479,14 +493,30 @@ export class EnemyBrain {
     a.level = awarenessBand(a.awareness, config.ai.awarenessSuspicious, config.ai.awarenessAlert);
   }
 
-  /** Per-tick hearing stimulus [0..hearingStimCap] from the player's movement noise. */
-  private hearingStimulus(player: PlayerSnapshot): number {
-    if (this.passive || player.noiseLevel <= 0 || player.floor !== this.enemy.floorIndex) return 0;
+  /**
+   * Pathed audibility of the player's movement noise: the noise radius (scaled
+   * by the per-enemy hearing multiplier) becomes the propagation budget, so a
+   * wall between enemy and player attenuates or blocks the sound and the result
+   * carries the direction it arrives from. Inaudible when silent / cross-floor.
+   */
+  private evaluateHearing(player: PlayerSnapshot): SoundResult {
+    if (this.passive || player.noiseLevel <= 0 || player.floor !== this.enemy.floorIndex) {
+      return { audible: false, intensity: 0, arrivalDir: null };
+    }
     const radius = movementNoiseRadius(player.noiseLevel) * (this.enemy.tuning?.gameplay.hearingMult ?? 1);
-    if (radius <= 0) return 0;
-    const dist = this.enemy.position.distanceTo(player.position);
-    if (dist >= radius) return 0;
-    return Math.min(config.ai.hearingStimCap, 1 - dist / radius);
+    if (radius <= 0) return { audible: false, intensity: 0, arrivalDir: null };
+    return propagateSound(this.ctx.nav, this.ctx.house, this.enemy.position, player.position, {
+      maxCost: radius / CELL_SIZE,
+      doorCost: config.ai.soundDoorCost,
+    });
+  }
+
+  /** Pathed audibility of a one-shot noise at a world point (NoiseBus events). */
+  private audibleAt(pos: THREE.Vector3, radiusMeters: number): SoundResult {
+    return propagateSound(this.ctx.nav, this.ctx.house, this.enemy.position, pos, {
+      maxCost: radiusMeters / CELL_SIZE,
+      doorCost: config.ai.soundDoorCost,
+    });
   }
 
   private nearestSpot(at: THREE.Vector3): HidingSpot | null {

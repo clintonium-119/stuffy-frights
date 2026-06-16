@@ -165,9 +165,9 @@ describe('EnemyBrain transitions', () => {
 
   it('patrol → investigate on noise within radius', () => {
     const { hiding } = makeHiding();
-    const body = stubBody(15, 3.5, 13);
+    const body = stubBody(15, 3.5, 19); // foyer (a walkable nav cell)
     const brain = brainWith(body, hiding, new Rng(1));
-    brain.hearNoise(new THREE.Vector3(16, 3.5, 14), 6);
+    brain.hearNoise(new THREE.Vector3(15, 3.5, 22), 6); // ~3 m down an open path
     expect(brain.state).toBe('investigate');
   });
 
@@ -182,12 +182,14 @@ describe('EnemyBrain transitions', () => {
   it('a per-enemy hearing multiplier widens the heard radius', () => {
     const { hiding } = makeHiding();
     const tuning: EnemyTuning = { anim: DEFAULT_ANIM, height: 1, gameplay: { ...DEFAULT_GAMEPLAY, hearingMult: 2 } };
-    // Noise 9 m away with radius 6: ignored at 1×, heard at 2× (radius → 12).
-    const far = new THREE.Vector3(15, 3.5, 22);
-    const deaf = stubBody(15, 3.5, 13);
+    // Noise down an open path beyond the 1× budget but inside the 2× budget.
+    const far = new THREE.Vector3(15, 3.5, 27);
+    const deaf = stubBody(15, 3.5, 19);
     expect(deaf.position.distanceTo(far)).toBeGreaterThan(6);
-    brainWith(deaf, hiding, new Rng(1)).hearNoise(far, 6);
-    const sharp = stubBody(15, 3.5, 13);
+    const deafBrain = brainWith(deaf, hiding, new Rng(1));
+    deafBrain.hearNoise(far, 6);
+    expect(deafBrain.state).toBe('patrol'); // 1× can't hear that far
+    const sharp = stubBody(15, 3.5, 19);
     sharp.tuning = tuning;
     const brain = brainWith(sharp, hiding, new Rng(1));
     brain.hearNoise(far, 6);
@@ -482,9 +484,9 @@ describe('gaze gating', () => {
 
   it('never gazes at a player it has only heard (no line of sight)', () => {
     const { hiding } = makeHiding();
-    const body = stubBody(15, 3.5, 13);
+    const body = stubBody(15, 3.5, 19);
     const brain = brainWith(body, hiding, new Rng(1));
-    brain.hearNoise(new THREE.Vector3(16, 3.5, 14), 6);
+    brain.hearNoise(new THREE.Vector3(15, 3.5, 22), 6);
     expect(brain.state).toBe('investigate');
     // Player behind the enemy (it faces +Z) and far: heard, never in view.
     const heard = snapshot({ position: new THREE.Vector3(15, 3.5, 5) });
@@ -558,6 +560,27 @@ describe('graduated awareness', () => {
     // Well past the ratchet → free to decay below suspicious.
     for (let i = 0; i < (config.ai.awarenessAlertRatchet + 1) / DT; i++) brain.update(DT, gone);
     expect(brain.attention.awareness).toBeLessThan(config.ai.awarenessSuspicious);
+  });
+});
+
+describe('hearing throttle', () => {
+  beforeEach(() => clearSearchClaims());
+
+  it('reuses the cached pathed-hearing result between recomputes', () => {
+    const { hiding } = makeHiding();
+    const body = stubBody(15, 3.5, 19);
+    const brain = brainWith(body, hiding, new Rng(1));
+    // Hidden but noisy: pure hearing, never seen, so the enemy can't move into sight.
+    const noisy = snapshot({ position: new THREE.Vector3(15, 3.5, 22), noiseLevel: 3, hidden: true });
+    brain.update(DT, noisy); // first tick recomputes (age was Infinity)
+    const cached = brain.attention.heardDir;
+    expect(cached).not.toBeNull();
+    // Within the cadence the same result object is reused, not recomputed.
+    brain.update(DT, noisy);
+    expect(brain.attention.heardDir).toBe(cached);
+    // After a full cadence interval it recomputes (a fresh result object).
+    for (let i = 0; i < config.ai.soundRecomputeTicks; i++) brain.update(DT, noisy);
+    expect(brain.attention.heardDir).not.toBe(cached);
   });
 });
 

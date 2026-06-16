@@ -92,6 +92,22 @@ export class NavGraph {
     return null;
   }
 
+  /**
+   * Ordinary (non-passage) adjacency of a cell, resolved to node ids with edge
+   * costs — the graph sound propagates over. Vent/chute passage edges are
+   * excluded (sound follows walkable space, not crawl bores).
+   */
+  soundNeighbors(node: NavNodeId): { to: NavNodeId; cost: number }[] {
+    const edges = this.adjacency.get(key(node.floor, node.x, node.z)) ?? [];
+    const out: { to: NavNodeId; cost: number }[] = [];
+    for (const e of edges) {
+      if (e.passage) continue;
+      const n = this.cells.get(e.to);
+      if (n) out.push({ to: n, cost: e.cost });
+    }
+    return out;
+  }
+
   /** A* between cells. Returns the cell path including both endpoints. */
   findPath(from: NavNodeId, to: NavNodeId, opts: PathOptions = {}): NavNodeId[] | null {
     const startId = key(from.floor, from.x, from.z);

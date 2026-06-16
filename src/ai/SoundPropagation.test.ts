@@ -1,0 +1,111 @@
+import { describe, it, expect } from 'vitest';
+import * as THREE from 'three';
+import { CellKind, House, cellToWorld, worldToCell } from '../world/layoutTypes';
+import { NavNodeId } from './NavGraph';
+import { SoundGraph, propagateSound } from './SoundPropagation';
+
+// Build a tiny single-floor sound graph + house from an ASCII map.
+//   '.' open floor, '#' wall (not a node), 'D' door (node, attenuates).
+// rows[z] is a string of x-cells. Deterministic, no DOM.
+function makeGrid(rows: string[]): { graph: SoundGraph; house: House } {
+  const open = new Map<string, NavNodeId>();
+  const kindAt = (x: number, z: number): CellKind => {
+    const ch = rows[z]?.[x];
+    if (ch === '#' || ch === undefined) return 'wall';
+    if (ch === 'D') return 'door';
+    return 'floor';
+  };
+  rows.forEach((row, z) => {
+    for (let x = 0; x < row.length; x++) {
+      if (row[x] !== '#') open.set(`0:${x},${z}`, { floor: 0, x, z });
+    }
+  });
+  const grids: CellKind[][][] = [
+    rows.map((row, z) => Array.from({ length: row.length }, (_, x) => kindAt(x, z))),
+  ];
+  const graph: SoundGraph = {
+    nearestNode(world: THREE.Vector3) {
+      const c = worldToCell(world.x, world.z);
+      return open.get(`0:${c.x},${c.z}`) ?? null;
+    },
+    soundNeighbors(node) {
+      const out: { to: NavNodeId; cost: number }[] = [];
+      for (const [dx, dz] of [
+        [1, 0],
+        [-1, 0],
+        [0, 1],
+        [0, -1],
+      ]) {
+        const n = open.get(`0:${node.x + dx},${node.z + dz}`);
+        if (n) out.push({ to: n, cost: 1 });
+      }
+      return out;
+    },
+  };
+  return { graph, house: { grids } as House };
+}
+
+const world = (x: number, z: number): THREE.Vector3 => {
+  const w = cellToWorld(x, z);
+  return new THREE.Vector3(w.x, 0, w.z);
+};
+
+describe('SoundPropagation', () => {
+  it('occlusion: a wall with no in-budget detour is inaudible', () => {
+    // Listener (0,0) and source (2,0) separated by a wall column at x=1, with
+    // the only detour far away (beyond budget).
+    const { graph, house } = makeGrid([
+      '.#.',
+      '.#.',
+      '.#.',
+      '.#.',
+      '...', // the detour is 8+ cells around — beyond a budget of 3
+    ]);
+    const r = propagateSound(graph, house, world(0, 0), world(2, 0), { maxCost: 3, doorCost: 0 });
+    expect(r.audible).toBe(false);
+    expect(r.intensity).toBe(0);
+  });
+
+  it('an open path within budget is audible', () => {
+    const { graph, house } = makeGrid(['......']);
+    const r = propagateSound(graph, house, world(0, 0), world(3, 0), { maxCost: 6, doorCost: 0 });
+    expect(r.audible).toBe(true);
+    expect(r.intensity).toBeGreaterThan(0);
+  });
+
+  it('attenuation: a longer path is quieter', () => {
+    const { graph, house } = makeGrid(['..........']);
+    const near = propagateSound(graph, house, world(0, 0), world(2, 0), { maxCost: 10, doorCost: 0 });
+    const far = propagateSound(graph, house, world(0, 0), world(6, 0), { maxCost: 10, doorCost: 0 });
+    expect(near.intensity).toBeGreaterThan(far.intensity);
+  });
+
+  it('a door on the path attenuates further than open floor', () => {
+    const open = makeGrid(['.....']);
+    const door = makeGrid(['..D..']);
+    const through = (g: ReturnType<typeof makeGrid>) =>
+      propagateSound(g.graph, g.house, world(0, 0), world(4, 0), { maxCost: 12, doorCost: 3 });
+    expect(through(door).intensity).toBeLessThan(through(open).intensity);
+  });
+
+  it('direction: arrivalDir is the first step toward the source', () => {
+    const { graph, house } = makeGrid(['....']);
+    const r = propagateSound(graph, house, world(0, 0), world(3, 0), { maxCost: 6, doorCost: 0 });
+    expect(r.arrivalDir).not.toBeNull();
+    expect(r.arrivalDir!.x).toBeGreaterThan(0.9); // points +x toward the source
+    expect(Math.abs(r.arrivalDir!.z)).toBeLessThan(1e-6);
+  });
+
+  it('sound arrives from the corner it rounds, not through the wall', () => {
+    // Listener at (0,0); source at (0,2) directly south but walled; the path
+    // must go east around a wall, so the first step is +x, not +z.
+    const { graph, house } = makeGrid([
+      '..',
+      '#.',
+      '..',
+    ]);
+    const r = propagateSound(graph, house, world(0, 0), world(0, 2), { maxCost: 8, doorCost: 0 });
+    expect(r.audible).toBe(true);
+    expect(r.arrivalDir!.x).toBeGreaterThan(0.5); // rounds the corner east
+  });
+});
