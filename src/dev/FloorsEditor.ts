@@ -40,6 +40,8 @@ export class FloorsEditor {
   private readonly hemisphere = new THREE.HemisphereLight(0x303a52, 0x14100c, 0.1);
   private readonly fog = new THREE.FogExp2(0x05060a, 0.1);
   private readonly flashlight = new THREE.SpotLight(0xffe3b0, 0, 26, 0.52, 0.9);
+  private readonly flashTarget = new THREE.Object3D();
+  private readonly _dir = new THREE.Vector3();
 
   protected floorIndex = 1;
   protected target: FloorTarget = 'baseline';
@@ -67,9 +69,11 @@ export class FloorsEditor {
     this.scene.add(this.ambient, this.hemisphere);
 
     // Flashlight follows the camera (readability aid; not the real player light).
+    // Aimed straight ahead (horizontal) each frame so it lights the room rather
+    // than pooling on the near floor; target lives in the scene (not parented).
     this.flashlight.penumbra = 0.9;
-    this.flashlight.target.position.set(0, 0, -1);
-    this.camera.add(this.flashlight, this.flashlight.target);
+    this.flashlight.target = this.flashTarget;
+    this.scene.add(this.flashlight, this.flashTarget);
     this.scene.add(this.camera);
 
     // Clone the per-difficulty overrides so the sliders edit copies, not the imports.
@@ -91,6 +95,7 @@ export class FloorsEditor {
     window.addEventListener('resize', () => this.onResize());
     this.renderer.setAnimationLoop(() => {
       this.controls.update();
+      this.updateFlashlight();
       this.renderer.render(this.scene, this.camera);
     });
   }
@@ -167,6 +172,16 @@ export class FloorsEditor {
     this.scene.background = new THREE.Color(eff.fogColor);
     this.renderer.toneMappingExposure = eff.toneExposure;
     this.scene.environmentIntensity = eff.environmentIntensity;
+  }
+
+  /** Keep the flashlight at the eye, aimed straight ahead (horizontal). */
+  private updateFlashlight(): void {
+    this.camera.getWorldPosition(this.flashlight.position);
+    this.camera.getWorldDirection(this._dir);
+    this._dir.y = 0; // horizontal "straight ahead", not the camera's downward tilt
+    if (this._dir.lengthSq() < 1e-6) this._dir.set(0, 0, -1);
+    this._dir.normalize();
+    this.flashTarget.position.copy(this.flashlight.position).add(this._dir);
   }
 
   private onResize(): void {
