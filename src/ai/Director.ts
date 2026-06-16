@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { config } from '../core/config';
 import { Rng } from '../core/rng';
-import { House, cellToWorld, floorY, isWalkable, worldToCell } from '../world/layoutTypes';
+import { House, cellToWorld, floorY, worldToCell } from '../world/layoutTypes';
 import { EnemyBase } from '../enemies/EnemyBase';
 import { LittleTimmy } from '../enemies/LittleTimmy';
 import { Pou } from '../enemies/Pou';
@@ -146,29 +146,20 @@ export class Director {
     this.seedSafeSpawns(playerPos, playerCell, playerFloor);
   }
 
-  /** Cells reachable from `start` without crossing a door — the player's room. */
+  /**
+   * The player's room: every cell on `floor` sharing the start cell's room id.
+   * Room membership is precomputed once on the `House` by flooding walkable cells
+   * over open edges (wall/door/secret edges enclose a room), so a multi-tile room
+   * is one region and a doorway separates two rooms. Returns `"x,z"` keys.
+   */
   private floodRoom(floor: number, start: { x: number; z: number }): Set<string> {
-    const grid = this.house.grids[floor];
+    const rooms = this.house.roomId[floor];
     const seen = new Set<string>();
-    if (!grid || !isWalkable(grid[start.z]?.[start.x])) return seen;
-    seen.add(`${start.x},${start.z}`);
-    const queue: { x: number; z: number }[] = [{ x: start.x, z: start.z }];
-    while (queue.length) {
-      const c = queue.shift()!;
-      for (const [dx, dz] of [
-        [1, 0],
-        [-1, 0],
-        [0, 1],
-        [0, -1],
-      ] as const) {
-        const nx = c.x + dx;
-        const nz = c.z + dz;
-        const kind = grid[nz]?.[nx];
-        if (kind === undefined || kind === 'door' || !isWalkable(kind)) continue;
-        const k = `${nx},${nz}`;
-        if (seen.has(k)) continue;
-        seen.add(k);
-        queue.push({ x: nx, z: nz });
+    const id = rooms?.[start.z]?.[start.x];
+    if (id === undefined || id < 0) return seen; // non-walkable / off-grid start
+    for (let z = 0; z < this.house.depth; z++) {
+      for (let x = 0; x < this.house.width; x++) {
+        if (rooms[z][x] === id) seen.add(`${x},${z}`);
       }
     }
     return seen;

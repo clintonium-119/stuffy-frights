@@ -3,6 +3,7 @@ import {
   CellPos,
   House,
   Stair,
+  FLOOR_SPACING,
   cellToWorld,
   floorY,
   isWalkable,
@@ -40,10 +41,12 @@ export class NavGraph {
   private adjacency = new Map<string, Edge[]>();
   private cells = new Map<string, NavNodeId>();
   private stairs: Stair[] = [];
+  private floorCount = 1;
 
   constructor(house: House, solidCells: Set<string>) {
     const chuteMouths = new Set(house.chutes.map((c) => key(c.from.floor, c.from.x, c.from.z)));
     this.stairs = house.stairs;
+    this.floorCount = house.grids.length;
     const blockedStairs = house.navBlockedStairCells;
 
     for (let f = 0; f < house.grids.length; f++) {
@@ -75,7 +78,7 @@ export class NavGraph {
   }
 
   nearestNode(worldPos: THREE.Vector3): NavNodeId | null {
-    const floor = Math.max(0, Math.min(3, Math.round(worldPos.y / 3.5)));
+    const floor = Math.max(0, Math.min(this.floorCount - 1, Math.round(worldPos.y / FLOOR_SPACING)));
     const { x, z } = worldToCell(worldPos.x, worldPos.z);
     const direct = this.cells.get(key(floor, x, z));
     if (direct) return direct;

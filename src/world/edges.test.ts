@@ -7,7 +7,7 @@ import {
   soundCrossing,
   computeRoomIds,
 } from './edges';
-import type { CellKind } from './layoutTypes';
+import { isWalkable, type CellKind } from './layoutTypes';
 import { house } from './houseLayout';
 
 describe('edge model', () => {
@@ -94,6 +94,33 @@ describe('edge model', () => {
     }
     expect(walkableLabeled).toBe(true);
     expect(voidUnlabeled).toBe(true);
+  });
+
+  it('room ids enclose by edges: cells joined by an open edge share a room', () => {
+    // Across the whole house, any two orthogonally-adjacent walkable cells with
+    // an open (`none`) edge between them belong to the same room — the flood
+    // never splits an open span, and never spills past a wall/door edge.
+    const eg = { edgesV: house.edgesV, edgesH: house.edgesH };
+    for (let f = 0; f < house.grids.length; f++) {
+      for (let z = 0; z < house.depth; z++) {
+        for (let x = 0; x < house.width; x++) {
+          if (!isWalkable(house.grids[f][z][x])) continue;
+          for (const [dx, dz] of [
+            [1, 0],
+            [0, 1],
+          ] as const) {
+            const nx = x + dx;
+            const nz = z + dz;
+            if (nx >= house.width || nz >= house.depth) continue;
+            if (!isWalkable(house.grids[f][nz][nx])) continue;
+            if (edgeBetween(eg, f, { x, z }, { x: nx, z: nz }) !== 'none') continue;
+            expect(house.roomId[f][z][x], `${f}:${x},${z}~${nx},${nz}`).toBe(
+              house.roomId[f][nz][nx]
+            );
+          }
+        }
+      }
+    }
   });
 
   it('the parsed legacy house has edges sized to its grid', () => {

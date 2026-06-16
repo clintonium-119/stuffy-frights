@@ -233,11 +233,13 @@ export interface GameConfig {
     ambientColor: number;
     ambientIntensity: number;
     hemisphereIntensity: number;
-    /** Per-floor ambient/hemisphere intensity (basement darkest). */
-    ambientIntensityByFloor: [number, number, number, number];
-    hemisphereIntensityByFloor: [number, number, number, number];
-    /** FogExp2 density per floor index (basement, main, upstairs, attic). */
-    fogDensityByFloor: [number, number, number, number];
+    /** Per-floor ambient/hemisphere intensity (basement darkest); one entry per
+     *  floor, sized to the house's floor count. Reads are bounds-clamped, so a
+     *  shorter array degrades gracefully. */
+    ambientIntensityByFloor: number[];
+    hemisphereIntensityByFloor: number[];
+    /** FogExp2 density per floor index (basement, main, upstairs, attic, …). */
+    fogDensityByFloor: number[];
     fogColor: number;
     toneExposure: number;
     /** scene.environment (HDRI/IBL) contribution. Kept LOW so the unlit scene

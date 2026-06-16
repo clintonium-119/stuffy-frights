@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import { CellKind, House, cellToWorld, worldToCell } from '../world/layoutTypes';
 import { NavNodeId } from './NavGraph';
 import { SoundGraph, propagateSound } from './SoundPropagation';
+import { legacyGridToEdges } from '../world/edges';
 
 // Build a tiny single-floor sound graph + house from an ASCII map.
 //   '.' open floor, '#' wall (not a node), 'D' door (node, attenuates).
@@ -20,9 +21,13 @@ function makeGrid(rows: string[]): { graph: SoundGraph; house: House } {
       if (row[x] !== '#') open.set(`0:${x},${z}`, { floor: 0, x, z });
     }
   });
+  const width = rows[0].length;
+  const depth = rows.length;
   const grids: CellKind[][][] = [
-    rows.map((row, z) => Array.from({ length: row.length }, (_, x) => kindAt(x, z))),
+    rows.map((_row, z) => Array.from({ length: width }, (_, x) => kindAt(x, z))),
   ];
+  // Door cost is now an edge crossing, so the synthetic house needs edges too.
+  const { edgesV, edgesH } = legacyGridToEdges(grids, width, depth);
   const graph: SoundGraph = {
     nearestNode(world: THREE.Vector3) {
       const c = worldToCell(world.x, world.z);
@@ -42,7 +47,7 @@ function makeGrid(rows: string[]): { graph: SoundGraph; house: House } {
       return out;
     },
   };
-  return { graph, house: { grids } as House };
+  return { graph, house: { grids, edgesV, edgesH, width, depth } as House };
 }
 
 const world = (x: number, z: number): THREE.Vector3 => {
@@ -86,6 +91,18 @@ describe('SoundPropagation', () => {
     const through = (g: ReturnType<typeof makeGrid>) =>
       propagateSound(g.graph, g.house, world(0, 0), world(4, 0), { maxCost: 12, doorCost: 3 });
     expect(through(door).intensity).toBeLessThan(through(open).intensity);
+  });
+
+  it('charges a doorway once, regardless of how many door cells span it', () => {
+    // Both maps are 5 wide with the same 4-step path; the door region differs
+    // only in thickness. With edge-based door cost (charged on entry), the
+    // doorway penalty is identical — so the intensities match. A per-door-cell
+    // charge would make the thick doorway markedly quieter.
+    const thin = makeGrid(['..D..']);
+    const thick = makeGrid(['.DDD.']);
+    const through = (g: ReturnType<typeof makeGrid>) =>
+      propagateSound(g.graph, g.house, world(0, 0), world(4, 0), { maxCost: 12, doorCost: 3 });
+    expect(through(thick).intensity).toBeCloseTo(through(thin).intensity);
   });
 
   it('direction: arrivalDir is the first step toward the source', () => {

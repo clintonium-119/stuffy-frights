@@ -1,5 +1,6 @@
 import * as THREE from 'three';
-import { CellKind, House, cellToWorld } from '../world/layoutTypes';
+import { House, cellToWorld } from '../world/layoutTypes';
+import { edgeBetween } from '../world/edges';
 import { NavNodeId } from './NavGraph';
 
 /** Result of a pathed-hearing query from a listener to a sound source. */
@@ -16,7 +17,7 @@ export interface SoundResult {
 export interface SoundParams {
   /** Attenuation budget: beyond this travelled cost the sound is inaudible. */
   maxCost: number;
-  /** Extra cost added when the path passes through a door cell. */
+  /** Extra cost added once when the path crosses a door edge (a doorway). */
   doorCost: number;
 }
 
@@ -29,9 +30,18 @@ export interface SoundGraph {
 const cellKey = (n: NavNodeId): string => `${n.floor}:${n.x},${n.z}`;
 const INAUDIBLE: SoundResult = { audible: false, intensity: 0, arrivalDir: null };
 
-function doorPenalty(house: House, n: NavNodeId, doorCost: number): number {
-  const kind: CellKind | undefined = house.grids[n.floor]?.[n.z]?.[n.x];
-  return kind === 'door' ? doorCost : 0;
+/**
+ * Door attenuation as an edge crossing: charge `doorCost` once when stepping
+ * into a `door` edge from a non-door cell (entering a doorway). Stepping deeper
+ * within a multi-cell door region (the legacy upscale renders a doorway as a
+ * block of door cells) is free, so a doorway costs the same regardless of its
+ * cell thickness. Cross-floor (stair) steps have no edge and never attenuate.
+ */
+function doorEdgeCost(house: House, from: NavNodeId, to: NavNodeId, doorCost: number): number {
+  if (from.floor !== to.floor) return 0;
+  if (edgeBetween(house, from.floor, from, to) !== 'door') return 0;
+  const fromKind = house.grids[from.floor]?.[from.z]?.[from.x];
+  return fromKind === 'door' ? 0 : doorCost;
 }
 
 /**
@@ -83,7 +93,7 @@ export function propagateSound(
     for (const { to, cost } of graph.soundNeighbors(cur)) {
       const tKey = cellKey(to);
       if (settled.has(tKey)) continue;
-      const nd = best + cost + doorPenalty(house, to, params.doorCost);
+      const nd = best + cost + doorEdgeCost(house, cur, to, params.doorCost);
       if (nd < (dist.get(tKey) ?? Infinity)) {
         dist.set(tKey, nd);
         prev.set(tKey, cur);

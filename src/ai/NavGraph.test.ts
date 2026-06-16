@@ -4,8 +4,9 @@ import { NavGraph, PathFollower } from './NavGraph';
 import { house } from '../world/houseLayout';
 import { PROP_PLACEMENTS } from '../world/Props';
 import { Rng } from '../core/rng';
-import { floorY } from '../world/layoutTypes';
-import { UPSCALE } from '../world/houseLayout';
+import { floorY, cellToWorld, isWalkable, FLOOR_SPACING } from '../world/layoutTypes';
+import { UPSCALE, neighbors } from '../world/houseLayout';
+import { edgeBetween, blocksMovement } from '../world/edges';
 
 function solidCells(): Set<string> {
   const solid = new Set<string>();
@@ -163,5 +164,60 @@ describe('stairs: no void crossing, no clipping', () => {
     expect(ys[0]).toBeCloseTo(floorY(s.lower));
     expect(ys[ys.length - 1]).toBeCloseTo(floorY(s.upper));
     for (let i = 1; i < ys.length; i++) expect(ys[i]).toBeGreaterThan(ys[i - 1]);
+  });
+
+  it('same-floor adjacency is present iff the shared edge is non-blocking', () => {
+    const dirs = [
+      [1, 0],
+      [-1, 0],
+      [0, 1],
+      [0, -1],
+    ] as const;
+    for (let f = 0; f < house.grids.length; f++) {
+      for (let z = 0; z < house.depth; z++) {
+        for (let x = 0; x < house.width; x++) {
+          if (!isWalkable(house.grids[f][z][x]) || house.grids[f][z][x] === 'stair') continue;
+          // Same-floor, single-cell, non-chute steps from the adjacency builder.
+          const present = new Set(
+            neighbors(house, { floor: f, x, z })
+              .filter(
+                (n) =>
+                  n.pos.floor === f &&
+                  !n.viaChute &&
+                  Math.abs(n.pos.x - x) + Math.abs(n.pos.z - z) === 1
+              )
+              .map((n) => `${n.pos.x},${n.pos.z}`)
+          );
+          for (const [dx, dz] of dirs) {
+            const nx = x + dx;
+            const nz = z + dz;
+            if (nx < 0 || nz < 0 || nx >= house.width || nz >= house.depth) continue;
+            // Stair-run adjacency is layered separately; skip stair endpoints here.
+            if (house.grids[f][nz][nx] === 'stair') continue;
+            const expected =
+              isWalkable(house.grids[f][nz][nx]) &&
+              !blocksMovement(edgeBetween(house, f, { x, z }, { x: nx, z: nz }));
+            expect(present.has(`${nx},${nz}`), `${f}:${x},${z} -> ${nx},${nz}`).toBe(expected);
+          }
+        }
+      }
+    }
+  });
+
+  it('nearestNode snaps to the correct floor for every floor (dynamic count)', () => {
+    for (let f = 0; f < house.grids.length; f++) {
+      const node = nav.nodesOnFloor(f)[0];
+      expect(node, `floor ${f} has nodes`).toBeDefined();
+      const w = cellToWorld(node.x, node.z);
+      const got = nav.nearestNode(new THREE.Vector3(w.x, floorY(f), w.z));
+      expect(got, `floor ${f}`).not.toBeNull();
+      expect(got!.floor).toBe(f);
+    }
+    // A y far above the top floor clamps to the top floor (no overflow past N-1).
+    const top = house.grids.length - 1;
+    const tn = nav.nodesOnFloor(top)[0];
+    const tw = cellToWorld(tn.x, tn.z);
+    const got = nav.nearestNode(new THREE.Vector3(tw.x, floorY(top) + FLOOR_SPACING * 3, tw.z));
+    expect(got!.floor).toBe(top);
   });
 });

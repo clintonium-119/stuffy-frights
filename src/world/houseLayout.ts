@@ -8,7 +8,7 @@ import {
   House,
   isWalkable,
 } from './layoutTypes';
-import { legacyGridToEdges, computeRoomIds } from './edges';
+import { legacyGridToEdges, computeRoomIds, edgeBetween, blocksMovement } from './edges';
 
 /**
  * The legacy ASCII grids were authored at a 2 m pitch (one cell ≈ a 2 m tile).
@@ -392,6 +392,10 @@ export function neighbors(house: House, pos: CellPos): Neighbor[] {
     if (x < 0 || z < 0 || x >= house.width || z >= house.depth) continue;
     const kind = grid[z][x];
     if (!isWalkable(kind)) continue;
+    // Edge-aware adjacency: two cells connect only when the shared edge passes
+    // (a `none` or open `door` edge). A `wall` edge or an undiscovered `secret`
+    // edge blocks — so thin authored walls separate rooms without a wall cell.
+    if (blocksMovement(edgeBetween(house, pos.floor, pos, { x, z }))) continue;
     const viaPassage = kind === 'vent' || grid[pos.z][pos.x] === 'vent';
     out.push({ pos: { floor: pos.floor, x, z }, viaPassage, viaChute: false });
   }
