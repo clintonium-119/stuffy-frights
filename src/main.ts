@@ -43,6 +43,7 @@ import { Menus, ENEMY_NAMES } from './ui/Menus';
 import { AudioEngine } from './audio/AudioEngine';
 import { SettingsStore } from './core/Settings';
 import { applyDifficulty, DIFFICULTY_META, DIFFICULTY_ORDER, type DifficultyLevel } from './core/difficulty';
+import { parseDevStart } from './core/devStart';
 
 // Apply the persisted difficulty into `config` BEFORE any system reads it — every
 // importer shares the same config object, so this one in-place merge sets the
@@ -52,9 +53,13 @@ const settings = new SettingsStore();
 // `let` so the VR menu can switch difficulty / ironman live (applyDifficulty is
 // safe to re-apply; see difficulty.ts). Desktop still persists + reloads.
 let ironmanOnBoot = settings.isIronmanActive();
+// Dev-only boot overrides (?floor=N&difficulty=D) — the floors editor's
+// "Test in-game" jump; inert for a normal launch with no params.
+const devStart = parseDevStart(location.search);
 let bootDifficulty = ironmanOnBoot
   ? settings.getIronman().currentLevel
   : settings.getLastDifficulty();
+if (devStart.difficulty) bootDifficulty = devStart.difficulty;
 applyDifficulty(bootDifficulty);
 
 /** Set the auto-start flag and reload into the (already-persisted) boot level. */
@@ -347,6 +352,17 @@ const spawnWorld = world.markerWorld(objectives.setup.playerSpawn);
 player.teleport(spawnWorld.x, spawnWorld.y, spawnWorld.z, Math.PI);
 // Fair start: no enemy in the player's room or walking toward them.
 director.seedSafeSpawns(spawnWorld, objectives.setup.playerSpawn, objectives.setup.playerSpawn.floor);
+// Dev floor jump: relocate the player to a walkable cell on the requested floor
+// and re-seed the fair start there. Inert when ?floor= is absent.
+if (devStart.floor !== undefined && devStart.floor !== objectives.setup.playerSpawn.floor) {
+  const node = nav.randomNodeOnFloor(devStart.floor, { next: () => Math.random() });
+  if (node) {
+    const w = world.markerWorld({ floor: node.floor, x: node.x, z: node.z });
+    player.teleport(w.x, w.y, w.z, Math.PI);
+    player.floorIndex = devStart.floor;
+    director.seedSafeSpawns(w, { x: node.x, z: node.z }, devStart.floor);
+  }
+}
 const keyProp = new KeyProp();
 engine.scene.add(keyProp.group);
 let keyWorld = world.markerWorld(objectives.setup.keyLocation);

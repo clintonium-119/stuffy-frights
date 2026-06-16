@@ -312,6 +312,7 @@ export class FloorsEditor {
     this.panel.appendChild(fl);
 
     this.panel.appendChild(this.saveButton());
+    this.panel.appendChild(this.testInGameButton());
   }
 
   /**
@@ -319,29 +320,58 @@ export class FloorsEditor {
    * `visibility` block; Easy/Hard/Nightmare → that preset's override in
    * difficulty.ts. (Medium has no override and routes to the baseline.)
    */
+  protected saveCurrent(): Promise<{ ok: boolean; error?: string }> {
+    const o = this.overrideFor(this.target);
+    if (o?.ambientIntensityByFloor && o?.hemisphereIntensityByFloor) {
+      return saveConfigBlock(
+        'src/core/difficulty.ts',
+        `vis-${this.target}`,
+        serializeDifficultyVisibility({
+          ambientIntensityByFloor: o.ambientIntensityByFloor,
+          hemisphereIntensityByFloor: o.hemisphereIntensityByFloor,
+        })
+      );
+    }
+    return saveConfigBlock('src/core/config.ts', 'visibility', serializeVisibility(this.baseline));
+  }
+
   protected saveButton(): HTMLElement {
     const b = document.createElement('button');
-    const o = this.overrideFor(this.target);
-    const toDifficulty = !!(o?.ambientIntensityByFloor && o?.hemisphereIntensityByFloor);
-    const label = toDifficulty ? `save ${this.target}` : 'save baseline';
+    const isDiff = this.target !== 'baseline' && this.target !== 'medium';
+    const label = isDiff ? `save ${this.target}` : 'save baseline';
     b.textContent = label;
     b.style.cssText =
       'width:100%;margin-top:8px;padding:5px;border:0;border-radius:5px;cursor:pointer;color:#fff;background:#2a6';
     b.onclick = () => {
       b.textContent = 'saving…';
-      const save = toDifficulty
-        ? saveConfigBlock(
-            'src/core/difficulty.ts',
-            `vis-${this.target}`,
-            serializeDifficultyVisibility({
-              ambientIntensityByFloor: o!.ambientIntensityByFloor!,
-              hemisphereIntensityByFloor: o!.hemisphereIntensityByFloor!,
-            })
-          )
-        : saveConfigBlock('src/core/config.ts', 'visibility', serializeVisibility(this.baseline));
-      void save.then((r) => {
+      void this.saveCurrent().then((r) => {
         b.textContent = r.ok ? 'saved ✓' : `save failed: ${r.error ?? ''}`;
         setTimeout(() => (b.textContent = label), 1600);
+      });
+    };
+    return b;
+  }
+
+  /** Save, then open the real game at the current floor + matching difficulty. */
+  protected testInGameButton(): HTMLElement {
+    const b = document.createElement('button');
+    b.textContent = 'Test in-game ▶';
+    b.style.cssText =
+      'width:100%;margin-top:6px;padding:5px;border:0;border-radius:5px;cursor:pointer;color:#fff;background:#a64';
+    b.onclick = () => {
+      b.textContent = 'saving…';
+      void this.saveCurrent().then((r) => {
+        if (!r.ok) {
+          b.textContent = `save failed: ${r.error ?? ''}`;
+          setTimeout(() => (b.textContent = 'Test in-game ▶'), 1600);
+          return;
+        }
+        // Baseline previews as Medium (which has no override); else the target.
+        const difficulty = this.target === 'baseline' ? 'medium' : this.target;
+        const url = `${import.meta.env.BASE_URL}index.html?floor=${this.floorIndex}&difficulty=${difficulty}`;
+        window.open(url, '_blank');
+        b.textContent = 'launched ▶';
+        setTimeout(() => (b.textContent = 'Test in-game ▶'), 1600);
       });
     };
     return b;
