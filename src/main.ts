@@ -20,11 +20,14 @@ import { Flashlight } from './player/Flashlight';
 import { config } from './core/config';
 import { house } from './world/houseLayout';
 import { HouseBuilder } from './world/HouseBuilder';
+import { InteriorLibrary } from './world/assets/ModelLibrary';
 import { initMaterials } from './world/materialLibrary';
 import { worldToCell, CELL_SIZE, floorY } from './world/layoutTypes';
+import { edgeBetween } from './world/edges';
 import { floorVisibilityTargets } from './world/floorVisibility';
 import { HidingSystem } from './systems/HidingSpot';
 import { PassageSystem } from './systems/SecretPassage';
+import { SecretDoorSystem } from './systems/SecretDoor';
 import { WeatherSystem } from './systems/Weather';
 import { ChargingStation } from './systems/ChargingStation';
 import { ExitDoor, KeyProp } from './world/ExitDoor';
@@ -152,6 +155,21 @@ initMaterials(engine.renderer);
 const world = HouseBuilder.build(house);
 engine.scene.add(world.group);
 
+// Interior furniture: load the catalog GLBs and batch them into the scene as
+// InstancedMesh. Their nav footprints are already solid from the synchronous
+// build, so a slow or failed load only delays/skips the visuals.
+if (world.furniturePlacements.length > 0) {
+  const interior = new InteriorLibrary();
+  interior
+    .preload(world.furniturePlacements.map((p) => p.id))
+    .then(() => {
+      for (const mesh of interior.buildInstanced(world.furniturePlacements)) {
+        world.group.add(mesh);
+      }
+    })
+    .catch((err) => console.warn('interior furniture failed to load', err));
+}
+
 const ambientLight = new THREE.AmbientLight(config.visibility.ambientColor, initialFloorVis.ambient);
 engine.scene.add(ambientLight);
 const hemisphereLight = new THREE.HemisphereLight(0x303a52, 0x14100c, initialFloorVis.hemisphere);
@@ -207,6 +225,12 @@ const charging = new ChargingSystem(
 const rng = new Rng((Math.random() * 0xffffffff) >>> 0);
 const nav = new NavGraph(house, world.solidCells);
 const noiseBus = new NoiseBus();
+
+// Secret doors: searching a concealed panel opens it (drops its collider, hides
+// the flush wall, flips the edge to passable) and rebuilds nav so enemies can use
+// the shortcut too.
+const secretDoors = new SecretDoorSystem(house, world.secretDoors, world.colliders, interactions);
+secretDoors.onReveal = () => nav.rebuild();
 const jumpscare = new Jumpscare();
 
 const director = new Director(
@@ -427,11 +451,10 @@ const exitDoors = house.exits.map((def) => {
 
 const stations = house.chargingStations.map((cell) => {
   const wp = world.markerWorld(cell);
-  const grid = house.grids[cell.floor];
-  // Charging stations must mount flush against an adjacent wall. The layout
-  // guarantees every station cell abuts one (asserted in the layout tests); if
-  // that invariant is ever broken, surface it loudly rather than floating the
-  // unit in open space.
+  // Charging stations mount flush against an adjacent wall. On the edge model a
+  // wall is a `wall` edge on a cell boundary (or the house envelope); the layout
+  // guarantees every station cell abuts one (asserted in markers.test). If that
+  // invariant is ever broken, surface it loudly rather than floating the unit.
   let dir = new THREE.Vector3(0, 0, 0);
   for (const [dx, dz] of [
     [1, 0],
@@ -439,7 +462,10 @@ const stations = house.chargingStations.map((cell) => {
     [0, 1],
     [0, -1],
   ] as const) {
-    if (grid[cell.z + dz]?.[cell.x + dx] === 'wall') {
+    const nx = cell.x + dx;
+    const nz = cell.z + dz;
+    const envelope = nx < 0 || nz < 0 || nx >= house.width || nz >= house.depth;
+    if (envelope || edgeBetween(house, cell.floor, cell, { x: nx, z: nz }) === 'wall') {
       dir = new THREE.Vector3(dx, 0, dz);
       break;
     }

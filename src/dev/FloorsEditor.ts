@@ -17,8 +17,8 @@ type Visibility = GameConfig['visibility'];
 /** Edit/preview target: the baseline or a difficulty's per-floor override. */
 export type FloorTarget = 'baseline' | DifficultyLevel;
 
-/** Floor index → display name (basement, main, upstairs, attic). */
-const FLOOR_NAMES = ['Basement', 'Main', 'Upstairs', 'Attic'];
+/** Floor index → display name (sub-level → attic; mirrors layoutTypes FLOOR_NAMES). */
+const FLOOR_NAMES = ['Sub-level', 'Basement', 'Main', 'Upstairs', 'Attic'];
 const TARGETS: FloorTarget[] = ['baseline', 'easy', 'medium', 'hard', 'nightmare'];
 
 /**

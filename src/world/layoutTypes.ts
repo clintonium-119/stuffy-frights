@@ -19,11 +19,11 @@ export const WALL_HEIGHT = 3.0; // meters
 
 /**
  * A floor index is an arbitrary non-negative integer — the house carries as many
- * floors as its data defines (no fixed cap). `FLOOR_NAMES` supplies labels for
- * the known legacy floors; an authored house may extend the list.
+ * floors as its data defines (no fixed cap). `FLOOR_NAMES` labels the authored
+ * mansion's five levels, bottom→top (see `mansion/layout.ts` `MANSION_FLOOR_NAMES`).
  */
 export type FloorIndex = number;
-export const FLOOR_NAMES = ['Basement', 'Main Floor', 'Upstairs', 'Attic'] as const;
+export const FLOOR_NAMES = ['Sub-level', 'Basement', 'Main Floor', 'Upstairs', 'Attic'] as const;
 
 export type CellKind = 'wall' | 'floor' | 'void' | 'door' | 'stair' | 'vent';
 

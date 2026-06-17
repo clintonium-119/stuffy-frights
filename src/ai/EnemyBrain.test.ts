@@ -16,7 +16,8 @@ import { NavGraph } from './NavGraph';
 import { canSee, movementNoiseRadius, PlayerSnapshot } from './Perception';
 import { DEFAULT_ANIM, DEFAULT_GAMEPLAY, EnemyTuning } from '../enemies/tuningConfig';
 import { house } from '../world/houseLayout';
-import { PROP_PLACEMENTS } from '../world/Props';
+import { resolveFurniture } from '../world/Props';
+import { FURNITURE } from '../world/mansion/markers';
 import { HidingSystem } from '../systems/HidingSpot';
 import { InteractionSystem } from '../player/Interaction';
 import { PlayerController } from '../player/PlayerController';
@@ -28,10 +29,7 @@ import { config } from '../core/config';
 const DT = 1 / 60;
 
 function solidCells(): Set<string> {
-  const solid = new Set<string>();
-  PROP_PLACEMENTS.forEach((p) => {
-    if (p.kind !== 'coatRack') solid.add(`${p.pos.floor}:${p.pos.x},${p.pos.z}`);
-  });
+  const solid = resolveFurniture(FURNITURE, house.width, house.depth).solidCells;
   house.hidingSpots.forEach((h) => solid.add(`${h.pos.floor}:${h.pos.x},${h.pos.z}`));
   return solid;
 }

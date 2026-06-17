@@ -7,8 +7,7 @@ import { HidingSystem } from '../systems/HidingSpot';
 import { house } from '../world/houseLayout';
 import { Rng } from '../core/rng';
 import { config } from '../core/config';
-import { isWalkable, worldToCell, cellToWorld, floorY } from '../world/layoutTypes';
-import { UPSCALE } from '../world/houseLayout';
+import { worldToCell, cellToWorld, floorY } from '../world/layoutTypes';
 
 /** Cell → world using the real engine pitch (mirrors production marker placement). */
 const markerWorld = (p: { floor: number; x: number; z: number }) => {
@@ -46,32 +45,22 @@ function makeDirector() {
 }
 
 describe('Director safe spawns', () => {
-  // A main-floor room cell, upscaled from the authored (2,2) to the engine grid.
-  const playerCell = { x: 2 * UPSCALE, z: 2 * UPSCALE };
+  // A basement room cell (floor 1 = basement); the basement resident (pou) is
+  // forced onto the player here so the relocation logic has to move it out.
+  const playerCell = { x: 10, z: 10 }; // coal cellar
   const playerFloor = 1;
   const playerPos = markerWorld({ floor: 1, x: playerCell.x, z: playerCell.z });
 
-  // Mirror Director.floodRoom for assertions (room = walls + doors bounded).
+  // Mirror Director.floodRoom on the edge model: the player's room is every cell
+  // sharing the start cell's precomputed room id (wall/door/secret edges enclose
+  // a room — the mansion has no wall cells, so a cell-based flood won't do).
   function playerRoom(): Set<string> {
-    const grid = house.grids[playerFloor];
-    const seen = new Set<string>([`${playerCell.x},${playerCell.z}`]);
-    const q = [{ ...playerCell }];
-    while (q.length) {
-      const c = q.shift()!;
-      for (const [dx, dz] of [
-        [1, 0],
-        [-1, 0],
-        [0, 1],
-        [0, -1],
-      ] as const) {
-        const nx = c.x + dx;
-        const nz = c.z + dz;
-        const k = grid[nz]?.[nx];
-        if (k === undefined || k === 'door' || !isWalkable(k)) continue;
-        const key = `${nx},${nz}`;
-        if (seen.has(key)) continue;
-        seen.add(key);
-        q.push({ x: nx, z: nz });
+    const rooms = house.roomId[playerFloor];
+    const id = rooms[playerCell.z][playerCell.x];
+    const seen = new Set<string>();
+    for (let z = 0; z < house.depth; z++) {
+      for (let x = 0; x < house.width; x++) {
+        if (rooms[z][x] === id) seen.add(`${x},${z}`);
       }
     }
     return seen;
@@ -124,7 +113,7 @@ describe('Director floor migration', () => {
     for (const e of events) {
       expect(Math.abs(e.from - e.to)).toBe(1); // exactly one floor at a time
       expect(e.to).toBeGreaterThanOrEqual(0);
-      expect(e.to).toBeLessThanOrEqual(3);
+      expect(e.to).toBeLessThanOrEqual(house.grids.length - 1);
     }
   });
 });

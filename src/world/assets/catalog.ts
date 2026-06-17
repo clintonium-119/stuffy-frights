@@ -67,7 +67,14 @@ export interface ModelNormalization {
  */
 export const INTERIOR_NORMALIZATION: Readonly<Record<string, ModelNormalization>> = {};
 
-/** Normalization override for a model id (identity defaults if none). */
+/**
+ * Uniform scale applied to every interior model unless a per-id entry overrides
+ * it. The Quaternius pack is authored at ~2 source units per metre, so 0.5 brings
+ * models to metric (a single bed reads ~1 × 2 m). Fine-tune per-id in the registry.
+ */
+export const INTERIOR_SCALE = 0.5;
+
+/** Normalization override for a model id (the global scale unless overridden). */
 export function normalizationOverride(id: string): ModelNormalization {
-  return INTERIOR_NORMALIZATION[id] ?? {};
+  return { scale: INTERIOR_SCALE, ...INTERIOR_NORMALIZATION[id] };
 }

@@ -7,7 +7,7 @@ export interface ObjectiveSetup {
   correctExit: ExitId;
 }
 
-const MAIN_FLOOR = 1;
+const MAIN_FLOOR = 2;
 /** Relative weight of a main-floor key candidate vs an off-main one. */
 const MAIN_FLOOR_KEY_WEIGHT = 0.12;
 

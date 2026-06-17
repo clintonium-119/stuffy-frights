@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { ColliderSet, aabb } from '../core/Collision';
+import { Aabb, ColliderSet, aabb } from '../core/Collision';
 import {
   CELL_SIZE,
   FLOOR_SPACING,
@@ -14,8 +14,9 @@ import {
   worldToCell,
   isWalkable,
 } from './layoutTypes';
-import { UPSCALE } from './houseLayout';
-import { PROP_PLACEMENTS, buildProp, hidingHostKind } from './Props';
+import { buildProp, hidingHostKind, resolveFurniture } from './Props';
+import { FURNITURE } from './mansion/markers';
+import type { ModelPlacement } from './assets/ModelLibrary';
 import { pbrMaterial } from './materialLibrary';
 import { config } from '../core/config';
 
@@ -269,13 +270,34 @@ export function slabHoleSet(floorCount: number, stairs: Stair[], chutes: Chute[]
   return holes;
 }
 
+/**
+ * A concealed secret door: a flush wall panel on a `secret` edge, with the data a
+ * discovery system needs to open it (hide the panel, drop its collider, flip the
+ * edge to passable). See `SecretDoorSystem`.
+ */
+export interface SecretDoorRender {
+  floor: number;
+  /** The cell-boundary edges this panel spans (flipped to `door` on reveal). */
+  edges: { a: { x: number; z: number }; b: { x: number; z: number } }[];
+  /** The flush wall panel (hidden on reveal). */
+  mesh: THREE.Mesh;
+  /** The panel's collider (removed on reveal). */
+  collider: Aabb;
+  /** World-space centre of the panel (for the interaction prompt). */
+  center: THREE.Vector3;
+}
+
 export interface BuiltWorld {
   group: THREE.Group;
   colliders: ColliderSet;
+  /** Concealed secret doors (flush until a discovery system reveals them). */
+  secretDoors: SecretDoorRender[];
   /** Cells with a hole in this floor's slab (stair runs above, chute mouths). */
   slabHoles: Set<string>[];
   /** "floor:x,z" cells filled by solid props — excluded from enemy navigation. */
   solidCells: Set<string>;
+  /** Catalog furniture placements for the async GLB-instancing pass (see main.ts). */
+  furniturePlacements: ModelPlacement[];
   windowPanes: THREE.Mesh[];
   /** World positions of every window (for rain-proximity audio). */
   windowWorldPositions: THREE.Vector3[];
@@ -296,6 +318,7 @@ export class HouseBuilder {
     const mats = makeMaterials();
     const windowPanes: THREE.Mesh[] = [];
     const windowWorldPositions: THREE.Vector3[] = [];
+    const secretDoors: SecretDoorRender[] = [];
     const windowLights: THREE.PointLight[] = []; // per-window lightning spill
     // Shared scrolling rain texture + overlay material for all window glass.
     const rainTex = canvasTexture(128, paintRain, 1, 2);
@@ -410,7 +433,27 @@ export class HouseBuilder {
         mesh.position.set(cx, yBase + height / 2, cz);
         mesh.castShadow = mesh.receiveShadow = true;
         floorGroup.add(mesh);
-        colliders.add(aabb(cx - w / 2, yBase, cz - d / 2, cx + w / 2, yBase + height, cz + d / 2));
+        const collider = aabb(cx - w / 2, yBase, cz - d / 2, cx + w / 2, yBase + height, cz + d / 2);
+        colliders.add(collider);
+        // A secret run renders as flush wall now; record what a discovery system
+        // needs to open it later (hide the panel, drop the collider, flip edges).
+        if (run.state === 'secret') {
+          const edges: { a: { x: number; z: number }; b: { x: number; z: number } }[] = [];
+          for (let i = run.i0; i <= run.i1; i++) {
+            edges.push(
+              run.axis === 'v'
+                ? { a: { x: run.b, z: i }, b: { x: run.b + 1, z: i } }
+                : { a: { x: i, z: run.b }, b: { x: i, z: run.b + 1 } }
+            );
+          }
+          secretDoors.push({
+            floor: f,
+            edges,
+            mesh,
+            collider,
+            center: new THREE.Vector3(cx, y0 + WALL_HEIGHT / 2, cz),
+          });
+        }
       }
 
       // ---- Vent bores (cells inside wall lines). Doors are rendered as `door`
@@ -600,11 +643,17 @@ export class HouseBuilder {
       group.add(rim4);
     }
 
-    // ---- Props: landmark placements + hiding-host furniture from markers.
+    // ---- Props: catalog furniture (footprints solid for nav; the GLB meshes are
+    // instanced in a later async pass via `furniturePlacements`), procedural
+    // fallbacks for any non-catalog marker, plus hiding-host furniture from the
+    // gameplay markers. Furniture footprint cells are folded into `solidCells` so
+    // the nav graph (built synchronously after this) routes enemies around them.
     const solidCells = new Set<string>();
     const closetDoors = new Map<string, { pivot: THREE.Object3D; angle: number; target: number }>();
+    const furniture = resolveFurniture(FURNITURE, house.width, house.depth);
+    for (const c of furniture.solidCells) solidCells.add(c);
     const placements = [
-      ...PROP_PLACEMENTS,
+      ...furniture.fallback,
       ...house.hidingSpots.map((h) => ({ pos: h.pos, kind: hidingHostKind(h.kind), rot: 0 })),
     ];
     for (const placement of placements) {
@@ -642,23 +691,21 @@ export class HouseBuilder {
     const ceil = atticY + WALL_HEIGHT;
     const centerX = (house.width / 2) * CELL_SIZE;
     const centerZ = (house.depth / 2) * CELL_SIZE;
-    // Corner webs (cell coords) angled across the wall/ceiling junction to face
-    // the room, plus a couple smaller rafter webs.
+    // Corner webs (mansion attic cell coords, rooms x32..66 z14..30) angled
+    // across the wall/ceiling junction to face the room, plus a few rafter webs.
     const webSpots: { x: number; z: number; size: number }[] = [
-      { x: 1.4, z: 1.4, size: 1.6 },
-      { x: 13.6, z: 1.4, size: 1.5 },
-      { x: 1.4, z: 13.6, size: 1.4 },
-      { x: 13.6, z: 13.6, size: 1.7 },
-      { x: 7, z: 2, size: 1.0 },
-      { x: 4.5, z: 8, size: 0.9 },
-      { x: 10.5, z: 11, size: 1.2 },
+      { x: 33, z: 15, size: 1.6 },
+      { x: 65, z: 15, size: 1.5 },
+      { x: 33, z: 29, size: 1.4 },
+      { x: 65, z: 29, size: 1.7 },
+      { x: 49, z: 22, size: 1.0 },
+      { x: 40, z: 18, size: 0.9 },
+      { x: 58, z: 26, size: 1.2 },
     ];
-    // Coords below are authored against the legacy 2 m grid; scale by UPSCALE to
-    // land at the same physical spots on the upscaled engine grid.
     for (const s of webSpots) {
       const web = new THREE.Mesh(new THREE.PlaneGeometry(s.size, s.size), webMat);
-      const wx = s.x * UPSCALE * CELL_SIZE;
-      const wz = s.z * UPSCALE * CELL_SIZE;
+      const wx = s.x * CELL_SIZE;
+      const wz = s.z * CELL_SIZE;
       // Face the room center, tucked high and tilted down like a hanging web.
       web.position.set(wx, ceil - 0.5, wz);
       web.rotation.y = Math.atan2(centerX - wx, centerZ - wz);
@@ -666,20 +713,22 @@ export class HouseBuilder {
       group.add(web);
     }
 
-    // ---- Moonlight pools: small cool lights at a few windows (no shadows).
+    // ---- Moonlight pools: small cool lights just inside a few mansion windows
+    // (no shadows). Cells are one in from the window edge so the pool sits in the
+    // room (main floor = index 2, upstairs = index 3).
     const moonPositions = [
-      { floor: 1, x: 6, z: 0.6 }, // back hall window
-      { floor: 1, x: 6, z: 13.4 }, // foyer-side front window
-      { floor: 2, x: 10, z: 0.6 }, // master window
-      { floor: 2, x: 10, z: 13.4 }, // playroom window
+      { floor: 2, x: 12, z: 2 }, // study, front window
+      { floor: 2, x: 40, z: 45 }, // entrance hall, garden window
+      { floor: 3, x: 12, z: 2 }, // guest bedroom 1, front window
+      { floor: 3, x: 40, z: 45 }, // boudoir, garden window
     ];
     for (const m of moonPositions) {
       if (m.floor >= house.grids.length) continue; // skip floors this house lacks
       // Faint cool pool — just enough to make a window a dim orientation beacon,
       // not enough to light the room. The flashlight is the only real light.
       const light = new THREE.PointLight(0x4a5d8a, 0.6, 7, 1.8);
-      const { x, z } = cellToWorld(m.x * UPSCALE, Math.round(m.z * UPSCALE));
-      light.position.set(x, floorY(m.floor) + 2.0, m.z < 7 ? z + 1 : z - 1);
+      const { x, z } = cellToWorld(m.x, m.z);
+      light.position.set(x, floorY(m.floor) + 2.0, z);
       group.add(light);
     }
 
@@ -689,12 +738,12 @@ export class HouseBuilder {
     const fixtures: { light: THREE.PointLight; bulb: THREE.Mesh; phase: number; drop: number }[] =
       [];
     const fixtureSpots = [
-      { floor: 0, x: 7, z: 5 },
-      { floor: 3, x: 7, z: 6 },
+      { floor: 1, x: 40, z: 28 }, // basement service spine
+      { floor: 4, x: 49, z: 22 }, // attic spine
     ];
     for (const spot of fixtureSpots) {
       if (spot.floor >= house.grids.length) continue; // skip floors this house lacks
-      const { x, z } = cellToWorld(spot.x * UPSCALE, spot.z * UPSCALE);
+      const { x, z } = cellToWorld(spot.x, spot.z);
       const y = floorY(spot.floor) + WALL_HEIGHT - 0.35;
       const bulbMat = new THREE.MeshStandardMaterial({
         color: 0x886622,
@@ -719,6 +768,8 @@ export class HouseBuilder {
       colliders,
       slabHoles,
       solidCells,
+      secretDoors,
+      furniturePlacements: furniture.instanced,
       windowPanes,
       windowWorldPositions,
       updateWindows(dt: number, flash: number) {

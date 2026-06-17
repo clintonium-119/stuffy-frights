@@ -1,16 +1,14 @@
 import { describe, it, expect } from 'vitest';
 import { NavGraph } from '../ai/NavGraph';
 import { house } from '../world/houseLayout';
-import { PROP_PLACEMENTS } from '../world/Props';
+import { resolveFurniture } from '../world/Props';
+import { FURNITURE } from '../world/mansion/markers';
 import { Rng } from '../core/rng';
 import { FLOOR_NAMES } from '../world/layoutTypes';
 import { clampFloor, floorWarpNode } from './floorWarp';
 
 function solidCells(): Set<string> {
-  const solid = new Set<string>();
-  PROP_PLACEMENTS.forEach((p) => {
-    if (p.kind !== 'coatRack') solid.add(`${p.pos.floor}:${p.pos.x},${p.pos.z}`);
-  });
+  const solid = resolveFurniture(FURNITURE, house.width, house.depth).solidCells;
   house.hidingSpots.forEach((h) => solid.add(`${h.pos.floor}:${h.pos.x},${h.pos.z}`));
   return solid;
 }

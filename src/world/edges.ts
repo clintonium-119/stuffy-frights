@@ -2,10 +2,8 @@ import { isWalkable, type CellKind, type EdgeState } from './layoutTypes';
 
 /**
  * Wall/door/secret state carried on the boundaries *between* cells (walls-as-
- * edges), the model the authored mansion will use. Introduced additively: the
- * legacy ASCII house still keeps its `CellKind` grid; `legacyGridToEdges`
- * synthesizes equivalent edges so edge-aware consumers (nav, sound, room flood,
- * rendering) can migrate one at a time without breaking the current house.
+ * edges) — the model the authored mansion uses directly (no wall cells). The
+ * `MansionBuilder` writes these as rooms/doors/secrets are stamped.
  *
  *   edgesV[floor][z][x] = boundary between (x,z) and (x+1,z)   ("vertical" wall)
  *   edgesH[floor][z][x] = boundary between (x,z) and (x,z+1)   ("horizontal" wall)
@@ -57,40 +55,6 @@ export function edgeBetween(edges: EdgeGrids, floor: number, a: Cell, b: Cell): 
     return edges.edgesV[floor]?.[a.z]?.[Math.min(a.x, b.x)] ?? 'none';
   }
   return edges.edgesH[floor]?.[Math.min(a.z, b.z)]?.[a.x] ?? 'none';
-}
-
-function edgeFromCells(a: CellKind, b: CellKind): EdgeState {
-  if (a === 'door' || b === 'door') return 'door';
-  if (a === 'wall' || b === 'wall' || a === 'void' || b === 'void') return 'wall';
-  return 'none';
-}
-
-/**
- * Derive an `EdgeGrids` from the legacy `CellKind` grids: a boundary is a `door`
- * if either side is a door cell, a `wall` if either side is a wall/void cell,
- * else `none` (open between two walkable cells). Transitional — removed once the
- * authored mansion supplies edges directly.
- */
-export function legacyGridToEdges(grids: CellKind[][][], width: number, depth: number): EdgeGrids {
-  const edgesV: EdgeState[][][] = [];
-  const edgesH: EdgeState[][][] = [];
-  for (const grid of grids) {
-    const v: EdgeState[][] = [];
-    const h: EdgeState[][] = [];
-    for (let z = 0; z < depth; z++) {
-      const vrow: EdgeState[] = [];
-      const hrow: EdgeState[] = [];
-      for (let x = 0; x < width; x++) {
-        vrow.push(x < width - 1 ? edgeFromCells(grid[z][x], grid[z][x + 1]) : 'none');
-        hrow.push(z < depth - 1 ? edgeFromCells(grid[z][x], grid[z + 1][x]) : 'none');
-      }
-      v.push(vrow);
-      h.push(hrow);
-    }
-    edgesV.push(v);
-    edgesH.push(h);
-  }
-  return { edgesV, edgesH };
 }
 
 /**

@@ -5,7 +5,7 @@ import { CELL_SIZE } from '../world/layoutTypes';
 
 describe('map information rules', () => {
   it('shows hiding spots and stations on their floors', () => {
-    for (let floor = 0; floor < 4; floor++) {
+    for (let floor = 0; floor < house.grids.length; floor++) {
       const ops = floorDrawRecord(house, floor);
       const hides = ops.filter((o) => o.kind === 'hide');
       const stations = ops.filter((o) => o.kind === 'station');
@@ -17,8 +17,8 @@ describe('map information rules', () => {
   });
 
   it('shows the exits only on the main floor', () => {
-    expect(floorDrawRecord(house, 1).filter((o) => o.kind === 'exit')).toHaveLength(3);
-    for (const floor of [0, 2, 3]) {
+    expect(floorDrawRecord(house, 2).filter((o) => o.kind === 'exit')).toHaveLength(3);
+    for (const floor of [0, 1, 3, 4]) {
       expect(floorDrawRecord(house, floor).filter((o) => o.kind === 'exit')).toHaveLength(0);
     }
   });
@@ -35,7 +35,7 @@ describe('map information rules', () => {
   });
 
   it('never marks chute mouths, enemies, or the key (no such op kinds exist)', () => {
-    for (let floor = 0; floor < 4; floor++) {
+    for (let floor = 0; floor < house.grids.length; floor++) {
       const kinds = new Set(floorDrawRecord(house, floor).map((o) => o.kind));
       for (const k of kinds) {
         expect(['wall', 'door', 'stair', 'hide', 'station', 'exit']).toContain(k);

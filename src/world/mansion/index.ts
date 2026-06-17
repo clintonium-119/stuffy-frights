@@ -14,6 +14,7 @@ import { authorMain } from './main';
 import { authorUpstairs } from './upstairs';
 import { authorAttic } from './attic';
 import { authorCourtyard } from './courtyard';
+import { applyMarkers } from './markers';
 
 export function buildMansion(): House {
   const b = new MansionBuilder(MANSION_WIDTH, MANSION_DEPTH, FLOOR_COUNT);
@@ -23,5 +24,7 @@ export function buildMansion(): House {
   authorUpstairs(b);
   authorAttic(b);
   authorCourtyard(b);
-  return b.build();
+  const house = b.build();
+  applyMarkers(house);
+  return house;
 }

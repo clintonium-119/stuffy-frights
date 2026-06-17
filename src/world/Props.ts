@@ -1,7 +1,10 @@
 import * as THREE from 'three';
 import { Aabb, aabb } from '../core/Collision';
-import { CellPos, cellToWorld, floorY } from './layoutTypes';
+import { CELL_SIZE, CellPos, cellToWorld, floorY } from './layoutTypes';
 import { pbrMaterial } from './materialLibrary';
+import { footprintCells, interiorModelById, INTERIOR_SCALE } from './assets/catalog';
+import type { ModelPlacement } from './assets/ModelLibrary';
+import type { FurnitureMarker } from './mansion/markers';
 
 export type PropKind =
   | 'wardrobe'
@@ -238,35 +241,91 @@ export function hidingHostKind(
   }
 }
 
-/** Landmark props per room (hand-placed; hiding hosts come from markers). */
-export const PROP_PLACEMENTS: PropPlacement[] = [
-  // Basement
-  { pos: { floor: 0, x: 11, z: 1 }, kind: 'washer', rot: 2 },
-  { pos: { floor: 0, x: 1, z: 7 }, kind: 'boiler' }, // tucked in the utility-room corner, clear of the doorway spine
-  { pos: { floor: 0, x: 1, z: 9 }, kind: 'shelf', rot: 1 },
-  { pos: { floor: 0, x: 13, z: 11 }, kind: 'crates' },
-  { pos: { floor: 0, x: 7, z: 12 }, kind: 'shelf' },
-  // Main
-  { pos: { floor: 1, x: 2, z: 1 }, kind: 'cabinet', rot: 2 }, // kitchen counter
-  { pos: { floor: 1, x: 11, z: 1 }, kind: 'table' }, // dining table
-  { pos: { floor: 1, x: 13, z: 2 }, kind: 'cabinet', rot: 3 },
-  { pos: { floor: 1, x: 2, z: 6 }, kind: 'shelf', rot: 1 }, // pantry shelving
-  { pos: { floor: 1, x: 2, z: 10 }, kind: 'couch', rot: 1 }, // living room
-  { pos: { floor: 1, x: 3, z: 13 }, kind: 'bookshelf', rot: 2 },
-  { pos: { floor: 1, x: 8, z: 12 }, kind: 'coatRack' }, // foyer
-  { pos: { floor: 1, x: 13, z: 10 }, kind: 'bookshelf', rot: 3 }, // study
-  { pos: { floor: 1, x: 11, z: 12 }, kind: 'table' }, // study desk
-  // Upstairs
-  { pos: { floor: 2, x: 3, z: 1 }, kind: 'bed' }, // kid bedroom
-  { pos: { floor: 2, x: 11, z: 1 }, kind: 'bed' }, // master
-  { pos: { floor: 2, x: 11, z: 5 }, kind: 'bed' }, // bedroom2
-  { pos: { floor: 2, x: 3, z: 6 }, kind: 'cabinet', rot: 1 }, // bath vanity
-  { pos: { floor: 2, x: 13, z: 9 }, kind: 'toyChest' }, // playroom
-  { pos: { floor: 2, x: 3, z: 12 }, kind: 'cabinet' }, // bedroom3 dresser
-  // Attic
-  { pos: { floor: 3, x: 8, z: 9 }, kind: 'dollhouse' },
-  { pos: { floor: 3, x: 4, z: 6 }, kind: 'crates' },
-  { pos: { floor: 3, x: 9, z: 4 }, kind: 'crates' },
-  { pos: { floor: 3, x: 10, z: 12 }, kind: 'crates' },
-  { pos: { floor: 3, x: 13, z: 7 }, kind: 'shelf', rot: 3 },
-];
+const PROP_KINDS: ReadonlySet<string> = new Set<PropKind>(
+  Object.keys(builders) as PropKind[]
+);
+
+/** A marker `model` that isn't a catalog id falls back to a procedural prop:
+ *  the same string if it names a `PropKind`, else a generic crate. */
+function fallbackKind(model: string): PropKind {
+  return PROP_KINDS.has(model) ? (model as PropKind) : 'crates';
+}
+
+/**
+ * The cells a furniture footprint covers, centred on its marker cell. The
+ * catalog footprint is in cells (from the model's x/z bounding box); a quarter
+ * turn (odd `rot`) swaps the two extents. Cells are clamped to the envelope.
+ */
+export function furnitureFootprint(
+  marker: FurnitureMarker,
+  fx: number,
+  fz: number,
+  width: number,
+  depth: number
+): { x: number; z: number }[] {
+  const swap = (marker.rot ?? 0) % 2 === 1;
+  const cx = swap ? fz : fx;
+  const cz = swap ? fx : fz;
+  const x0 = marker.pos.x - Math.floor((cx - 1) / 2);
+  const z0 = marker.pos.z - Math.floor((cz - 1) / 2);
+  const out: { x: number; z: number }[] = [];
+  for (let dz = 0; dz < cz; dz++) {
+    for (let dx = 0; dx < cx; dx++) {
+      const x = x0 + dx;
+      const z = z0 + dz;
+      if (x >= 0 && z >= 0 && x < width && z < depth) out.push({ x, z });
+    }
+  }
+  return out;
+}
+
+/** Authored furniture resolved against the interior catalog. */
+export interface ResolvedFurniture {
+  /** Catalog-instanced placements (loaded + batched into `InstancedMesh` later). */
+  instanced: ModelPlacement[];
+  /** Markers with no catalog match — built as procedural fallback props. */
+  fallback: PropPlacement[];
+  /** `"floor:x,z"` cells filled by furniture footprints (enemy-nav exclusion). */
+  solidCells: Set<string>;
+}
+
+/**
+ * Resolve furniture markers: a catalog id becomes a floor-seated `ModelPlacement`
+ * (the model's own normalization/seating is applied at instancing time); a
+ * non-catalog id becomes a procedural fallback prop. Either way the footprint
+ * cells (from the catalog box, or 1×1 for a fallback) are reported solid so the
+ * nav graph routes enemies around the furniture.
+ */
+export function resolveFurniture(
+  markers: readonly FurnitureMarker[],
+  width: number,
+  depth: number
+): ResolvedFurniture {
+  const instanced: ModelPlacement[] = [];
+  const fallback: PropPlacement[] = [];
+  const solidCells = new Set<string>();
+  for (const marker of markers) {
+    const model = interiorModelById(marker.model);
+    const { x: wx, z: wz } = cellToWorld(marker.pos.x, marker.pos.z);
+    const y = floorY(marker.pos.floor);
+    if (model) {
+      const matrix = new THREE.Matrix4()
+        .makeTranslation(wx, y, wz)
+        .multiply(new THREE.Matrix4().makeRotationY(((marker.rot ?? 0) % 4) * (Math.PI / 2)));
+      instanced.push({ id: model.id, matrix });
+      // Footprint at the rendered (normalized) size — the catalog primitive is
+      // pure, so the global scale is folded into the cell size it's asked about.
+      // Floor-flat decor (rugs) is walked over, so it never blocks nav.
+      if (model.category !== 'Carpet') {
+        const fp = footprintCells(model, CELL_SIZE / INTERIOR_SCALE);
+        for (const c of furnitureFootprint(marker, fp.x, fp.z, width, depth)) {
+          solidCells.add(`${marker.pos.floor}:${c.x},${c.z}`);
+        }
+      }
+    } else {
+      fallback.push({ pos: marker.pos, kind: fallbackKind(marker.model), rot: marker.rot });
+      solidCells.add(`${marker.pos.floor}:${marker.pos.x},${marker.pos.z}`);
+    }
+  }
+  return { instanced, fallback, solidCells };
+}

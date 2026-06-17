@@ -196,9 +196,10 @@ export class Director {
       }
     }
 
+    const topFloor = this.house.grids.length - 1;
     this.residents.forEach((r, i) => {
       // Track floor for perception.
-      r.enemy.floorIndex = Math.max(0, Math.min(3, Math.round(r.enemy.position.y / 3.5)));
+      r.enemy.floorIndex = Math.max(0, Math.min(topFloor, Math.round(r.enemy.position.y / 3.5)));
 
       // Migration: occasionally adopt an adjacent floor as the new home —
       // but never the player's current floor while passive, and never
@@ -209,7 +210,7 @@ export class Director {
           config.ai.migrationInterval * (0.7 + this.rng.next() * 0.6);
         if (r.brain.state === 'patrol') {
           const delta = this.rng.chance(0.5) ? 1 : -1;
-          const next = Math.max(0, Math.min(3, r.brain.homeFloor + delta));
+          const next = Math.max(0, Math.min(topFloor, r.brain.homeFloor + delta));
           if (next !== r.brain.homeFloor && !(r.brain.passive && next === playerFloor)) {
             const from = r.brain.homeFloor;
             r.brain.homeFloor = next;

@@ -43,7 +43,26 @@ export class NavGraph {
   private stairs: Stair[] = [];
   private floorCount = 1;
 
-  constructor(house: House, solidCells: Set<string>) {
+  constructor(
+    private readonly house: House,
+    private readonly solidCells: Set<string>
+  ) {
+    this.build();
+  }
+
+  /**
+   * Rebuild the adjacency from the (possibly mutated) house — e.g. after a secret
+   * door is revealed and its edge flips from blocking to passable.
+   */
+  rebuild(): void {
+    this.adjacency.clear();
+    this.cells.clear();
+    this.build();
+  }
+
+  private build(): void {
+    const house = this.house;
+    const solidCells = this.solidCells;
     const chuteMouths = new Set(house.chutes.map((c) => key(c.from.floor, c.from.x, c.from.z)));
     this.stairs = house.stairs;
     this.floorCount = house.grids.length;

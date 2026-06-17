@@ -8,7 +8,7 @@ title: "Coding Standards"
 status: in_progress
 owner: ""
 created: '2026-06-12'
-updated: '2026-06-13'
+updated: '2026-06-16'
 reviewed_on: '2026-06-13'
 related_notes: []
 tags: [apovault, knowledge, standards]
@@ -72,3 +72,4 @@ Source lives under `src/`, split by subsystem directory (`core`, `player`, `worl
 - **Convention:** co-located `*.test.ts` (17 files).
 - **Rendering avoidance:** tests never touch WebGL. AI/collision/nav/objectives tests are math-only over plain data; enemy/brain tests use lightweight stub bodies (`{ position, group.rotation.y, setMoveTarget() }`) instead of real Three.js meshes.
 - **Coverage gaps (by design):** `Props.ts` builders, `AudioEngine` synthesis, and `Menus` DOM logic have no unit tests (cost of mocking WebAudio/DOM outweighs value); they're verified in-browser instead.
+- **Do:** plan unit tests as pure-logic in the default node env (no jsdom configured, none wanted). When a feature has DOM/canvas/WebXR glue, extract the testable math into a pure exported function (e.g. a vector-from-joystick helper, a yaw-from-quaternion helper) and unit-test that function; verify the DOM wiring itself in-browser via chrome-devtools. Do not construct DOM-heavy classes in tests or add a jsdom environment — the project deliberately avoids it.

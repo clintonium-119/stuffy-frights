@@ -66,9 +66,9 @@ describe('interior registry', () => {
     expect(footprintCells(tiny, 0.5)).toEqual({ x: 1, z: 1 });
   });
 
-  it('defaults normalization to identity (no overrides yet)', () => {
+  it('defaults normalization to the global interior scale (no per-id overrides yet)', () => {
     const o = normalizationOverride(interiorModels[0].id);
-    expect(o.scale ?? 1).toBe(1);
+    expect(o.scale).toBe(0.5);
     expect(o.yawDeg ?? 0).toBe(0);
   });
 });

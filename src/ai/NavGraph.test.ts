@@ -1,18 +1,15 @@
 import { describe, it, expect } from 'vitest';
 import * as THREE from 'three';
 import { NavGraph, PathFollower } from './NavGraph';
-import { house } from '../world/houseLayout';
-import { PROP_PLACEMENTS } from '../world/Props';
+import { house, neighbors } from '../world/houseLayout';
+import { resolveFurniture } from '../world/Props';
+import { FURNITURE } from '../world/mansion/markers';
 import { Rng } from '../core/rng';
 import { floorY, cellToWorld, isWalkable, FLOOR_SPACING } from '../world/layoutTypes';
-import { UPSCALE, neighbors } from '../world/houseLayout';
 import { edgeBetween, blocksMovement } from '../world/edges';
 
 function solidCells(): Set<string> {
-  const solid = new Set<string>();
-  PROP_PLACEMENTS.forEach((p) => {
-    if (p.kind !== 'coatRack') solid.add(`${p.pos.floor}:${p.pos.x},${p.pos.z}`);
-  });
+  const solid = resolveFurniture(FURNITURE, house.width, house.depth).solidCells;
   house.hidingSpots.forEach((h) => solid.add(`${h.pos.floor}:${h.pos.x},${h.pos.z}`));
   return solid;
 }
@@ -45,31 +42,36 @@ describe('NavGraph on the real house', () => {
     expect(d2(next!)).toBeLessThanOrEqual(d2(far!));
   });
 
-  it('cross-floor paths traverse stairs through every floor', () => {
-    const p = nav.findPath({ floor: 3, x: 6, z: 5 }, { floor: 0, x: 13, z: 6 });
+  it('cross-floor paths traverse stairs through the upper floors', () => {
+    // Attic (4) → basement (1): the only vertical route runs 4→3→2→1, so the
+    // path threads every floor in between. (Floors 0/1 hang off the main floor,
+    // so an attic→basement walk visits 1..4.)
+    const p = nav.findPath({ floor: 4, x: 50, z: 22 }, { floor: 1, x: 40, z: 28 });
     expect(p).not.toBeNull();
-    expect(new Set(p!.map((n) => n.floor))).toEqual(new Set([0, 1, 2, 3]));
+    expect(new Set(p!.map((n) => n.floor))).toEqual(new Set([1, 2, 3, 4]));
   });
 
   it('passage edges are excluded by default and shortcut when allowed', () => {
-    // A main-floor vent bores through a wall; cells one authored-cell to each
-    // side of its mouth are in different rooms, joined only by the crawl.
-    const vent = house.vents.find((v) => v.floor === 1)!;
+    // The upstairs kids' vent (floor 3) bores between the boy's and girl's rooms;
+    // the cells flanking its single-cell bore are in different rooms, joined
+    // directly only by the crawl (otherwise the route detours via the nursery).
+    const vent = house.vents.find((v) => v.floor === 3)!;
     const mouth = vent.cells[0];
-    const a = { floor: 1, x: mouth.x - UPSCALE, z: mouth.z };
-    const b = { floor: 1, x: mouth.x + UPSCALE, z: mouth.z };
+    const a = { floor: 3, x: mouth.x - 1, z: mouth.z };
+    const b = { floor: 3, x: mouth.x + 1, z: mouth.z };
     const around = nav.findPath(a, b);
     const through = nav.findPath(a, b, { allowPassages: true });
     expect(around).not.toBeNull();
     expect(through).not.toBeNull();
     expect(through!.length).toBeLessThan(around!.length);
     // The default path never enters the vent mouth cell.
-    expect(around!.some((n) => n.floor === 1 && n.x === mouth.x && n.z === mouth.z)).toBe(false);
+    expect(around!.some((n) => n.floor === 3 && n.x === mouth.x && n.z === mouth.z)).toBe(false);
   });
 
   it('chute drops are one-way and only with passages allowed', () => {
-    const chute = house.chutes.find((c) => c.from.floor === 1)!;
-    const approach = { floor: 1, x: chute.from.x + UPSCALE, z: chute.from.z };
+    // The garage trap chute drops from the main floor (2) into the basement (1).
+    const chute = house.chutes.find((c) => c.from.floor === 2)!;
+    const approach = { floor: 2, x: chute.from.x - 1, z: chute.from.z };
     const down = nav.findPath(approach, chute.to, { allowPassages: true });
     expect(down).not.toBeNull();
     // Going back UP through the chute is impossible — the route must use stairs.
@@ -155,7 +157,7 @@ describe('stairs: no void crossing, no clipping', () => {
   });
 
   it('stair waypoints rise monotonically from the lower to the upper floor', () => {
-    const s = house.stairs[0]; // run 0 → 1
+    const s = house.stairs.find((st) => st.cells.length >= 3)!; // a full run with interior steps
     const entrance = { floor: s.lower, x: s.cells[0].x, z: s.cells[0].z };
     const last = s.cells[s.cells.length - 1];
     const landing = { floor: s.upper, x: last.x, z: last.z };

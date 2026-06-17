@@ -25,7 +25,7 @@ describe('objective randomization', () => {
     const N = 300;
     for (let seed = 0; seed < N; seed++) {
       const roll = rollObjectives(house, seed * 104729 + 17);
-      if (roll.keyLocation.floor === 1) mainCount++;
+      if (roll.keyLocation.floor === 2) mainCount++; // main floor = index 2
     }
     expect(mainCount / N).toBeLessThan(0.2); // rarely on the main floor
   });
@@ -38,7 +38,7 @@ describe('objective randomization', () => {
     }
   });
 
-  it('spawns are all main-floor and away from stairs; the pick varies by seed', () => {
+  it('spawns are all in the children-bedroom floor and away from stairs; the pick varies by seed', () => {
     const stairCells = new Set<string>();
     for (const s of house.stairs)
       for (const fl of [s.lower, s.upper]) for (const c of s.cells) stairCells.add(`${fl}:${c.x},${c.z}`);
@@ -52,7 +52,7 @@ describe('objective randomization', () => {
       ].some(([dx, dz]) => stairCells.has(`${c.floor}:${c.x + dx},${c.z + dz}`));
     expect(house.playerSpawns.length).toBeGreaterThanOrEqual(3);
     for (const s of house.playerSpawns) {
-      expect(s.floor).toBe(1);
+      expect(s.floor).toBe(3); // upstairs (the children's bedrooms)
       expect(stairAdjacent(s), `spawn ${ck(s)} is stair-adjacent`).toBe(false);
     }
     const picked = new Set<string>();

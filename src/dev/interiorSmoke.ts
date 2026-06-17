@@ -8,7 +8,7 @@ import {
 import { InteriorLibrary, type ModelPlacement } from '../world/assets/ModelLibrary';
 
 /**
- * Throwaway dev smoke for the interior asset library (PHASE-06 STEP-06-04):
+ * Throwaway dev smoke for the interior asset library:
  * instances one representative model per category in a grid, plus 64 copies of
  * one model to exercise instancing, and exposes draw-call / triangle counts on
  * `window.__smoke` for an in-browser perf check. Not a shipped entry.

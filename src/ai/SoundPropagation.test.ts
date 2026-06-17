@@ -1,9 +1,40 @@
 import { describe, it, expect } from 'vitest';
 import * as THREE from 'three';
-import { CellKind, House, cellToWorld, worldToCell } from '../world/layoutTypes';
+import { CellKind, EdgeState, House, cellToWorld, worldToCell } from '../world/layoutTypes';
 import { NavNodeId } from './NavGraph';
 import { SoundGraph, propagateSound } from './SoundPropagation';
-import { legacyGridToEdges } from '../world/edges';
+import type { EdgeGrids } from '../world/edges';
+
+// Test fixture: synthesize edges from a toy CellKind grid (a door edge if either
+// side is a door cell, a wall edge if either side is wall/void, else open). The
+// production house authors edges directly; this only builds tiny grids for tests.
+function gridToEdges(grids: CellKind[][][], width: number, depth: number): EdgeGrids {
+  const between = (a: CellKind, b: CellKind): EdgeState =>
+    a === 'door' || b === 'door'
+      ? 'door'
+      : a === 'wall' || b === 'wall' || a === 'void' || b === 'void'
+        ? 'wall'
+        : 'none';
+  const edgesV: EdgeState[][][] = [];
+  const edgesH: EdgeState[][][] = [];
+  for (const grid of grids) {
+    const v: EdgeState[][] = [];
+    const h: EdgeState[][] = [];
+    for (let z = 0; z < depth; z++) {
+      const vrow: EdgeState[] = [];
+      const hrow: EdgeState[] = [];
+      for (let x = 0; x < width; x++) {
+        vrow.push(x < width - 1 ? between(grid[z][x], grid[z][x + 1]) : 'none');
+        hrow.push(z < depth - 1 ? between(grid[z][x], grid[z + 1][x]) : 'none');
+      }
+      v.push(vrow);
+      h.push(hrow);
+    }
+    edgesV.push(v);
+    edgesH.push(h);
+  }
+  return { edgesV, edgesH };
+}
 
 // Build a tiny single-floor sound graph + house from an ASCII map.
 //   '.' open floor, '#' wall (not a node), 'D' door (node, attenuates).
@@ -27,7 +58,7 @@ function makeGrid(rows: string[]): { graph: SoundGraph; house: House } {
     rows.map((_row, z) => Array.from({ length: width }, (_, x) => kindAt(x, z))),
   ];
   // Door cost is now an edge crossing, so the synthetic house needs edges too.
-  const { edgesV, edgesH } = legacyGridToEdges(grids, width, depth);
+  const { edgesV, edgesH } = gridToEdges(grids, width, depth);
   const graph: SoundGraph = {
     nearestNode(world: THREE.Vector3) {
       const c = worldToCell(world.x, world.z);

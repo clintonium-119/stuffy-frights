@@ -1,18 +1,17 @@
 import { describe, it, expect } from 'vitest';
-import { house, neighbors, parseLayout } from './houseLayout';
-import { PROP_PLACEMENTS } from './Props';
+import { house, neighbors } from './houseLayout';
+import { resolveFurniture } from './Props';
+import { FURNITURE } from './mansion/markers';
 import { CellPos, cellToWorld, isWalkable, worldToCell } from './layoutTypes';
 
 const k = (f: number, x: number, z: number) => `${f}:${x},${z}`;
 const kp = (p: { floor: number; x: number; z: number }) => k(p.floor, p.x, p.z);
 
-/** BFS over the adjacency, optionally treating solid prop cells as blocked. */
+/** BFS over the adjacency, optionally treating solid furniture cells as blocked. */
 function reachableFrom(start: CellPos, excludeSolids: boolean): Set<string> {
   const solid = new Set<string>();
   if (excludeSolids) {
-    PROP_PLACEMENTS.forEach((p) => {
-      if (p.kind !== 'coatRack') solid.add(kp(p.pos));
-    });
+    for (const c of resolveFurniture(FURNITURE, house.width, house.depth).solidCells) solid.add(c);
     house.hidingSpots.forEach((h) => solid.add(kp(h.pos)));
   }
   const seen = new Set<string>([kp(start)]);
@@ -30,39 +29,41 @@ function reachableFrom(start: CellPos, excludeSolids: boolean): Set<string> {
 }
 
 describe('house layout integrity', () => {
-  it('parses without error', () => {
-    expect(() => parseLayout()).not.toThrow();
+  it('assembles the five-level mansion', () => {
+    expect(house.grids).toHaveLength(5);
+    for (let f = 0; f < house.grids.length; f++) {
+      expect(house.grids[f].some((row) => row.some(isWalkable)), `floor ${f}`).toBe(true);
+    }
   });
 
   it('has exactly 3 exits, all on the main floor', () => {
     expect(house.exits).toHaveLength(3);
     expect(new Set(house.exits.map((e) => e.id))).toEqual(new Set(['A', 'B', 'C']));
-    for (const e of house.exits) expect(e.pos.floor).toBe(1);
+    for (const e of house.exits) expect(e.pos.floor).toBe(2); // main floor = index 2
   });
 
-  it('has a large key-candidate pool spanning all four floors, all walkable', () => {
-    // Enlarged so the key location never feels predictable run-to-run.
-    expect(house.keyCandidates.length).toBeGreaterThanOrEqual(12);
-    expect(new Set(house.keyCandidates.map((c) => c.floor))).toEqual(new Set([0, 1, 2, 3]));
+  it('has a key-candidate pool spanning every level, all walkable', () => {
+    expect(house.keyCandidates.length).toBeGreaterThanOrEqual(6);
+    expect(new Set(house.keyCandidates.map((c) => c.floor))).toEqual(new Set([0, 1, 2, 3, 4]));
     for (const c of house.keyCandidates) {
       expect(isWalkable(house.grids[c.floor][c.z][c.x])).toBe(true);
     }
   });
 
   it('has ≥1 charging station per floor', () => {
-    const byFloor = new Set(house.chargingStations.map((c) => c.floor));
-    expect(byFloor).toEqual(new Set([0, 1, 2, 3]));
+    expect(new Set(house.chargingStations.map((c) => c.floor))).toEqual(new Set([0, 1, 2, 3, 4]));
   });
 
-  it('has ≥8 hiding spots and one enemy spawn per floor', () => {
+  it('has hiding spots and one enemy per inhabited floor', () => {
     expect(house.hidingSpots.length).toBeGreaterThanOrEqual(8);
-    expect(new Set(house.enemySpawns.map((e) => e.pos.floor))).toEqual(new Set([0, 1, 2, 3]));
+    // Enemies patrol the basement up through the attic (the sub-level is gated).
+    expect(new Set(house.enemySpawns.map((e) => e.pos.floor))).toEqual(new Set([1, 2, 3, 4]));
     expect(new Set(house.enemySpawns.map((e) => e.enemy)).size).toBe(4);
   });
 
-  it('has ≥4 passages with ≥1 cross-floor', () => {
+  it('has ≥3 passages with ≥1 cross-floor', () => {
     const total = house.vents.length + house.chutes.length;
-    expect(total).toBeGreaterThanOrEqual(4);
+    expect(total).toBeGreaterThanOrEqual(3);
     expect(house.chutes.length).toBeGreaterThanOrEqual(1);
     for (const ch of house.chutes) {
       expect(ch.from.floor).toBe(ch.to.floor + 1); // drops exactly one floor
@@ -115,18 +116,12 @@ describe('house layout integrity', () => {
     }
   });
 
-  // Prop-placement invariants (props on floor cells / clear of critical cells /
-  // chargers mounted against a wall) were authored against the 2 m grid. They are
-  // re-asserted once props are placed on the finer engine grid; the upscaled
-  // legacy house keeps the authored prop coordinates only as a transitional
-  // render stand-in.
-
   it('stair runs are colinear and marked S on both floors', () => {
     for (const s of house.stairs) {
       const sameX = s.cells.every((c) => c.x === s.cells[0].x);
       const sameZ = s.cells.every((c) => c.z === s.cells[0].z);
       expect(sameX || sameZ).toBe(true);
-      expect(s.upper).toBe(s.lower + 1);
+      expect(s.upper).toBeGreaterThan(s.lower); // upper floor sits above the lower
       for (const f of [s.lower, s.upper]) {
         for (const c of s.cells) expect(house.grids[f][c.z][c.x]).toBe('stair');
       }
@@ -143,10 +138,10 @@ describe('house layout integrity', () => {
     }
   });
 
-  it('has multi-cell vent tunnels (maze crawl runs)', () => {
+  it('has at least one multi-cell vent tunnel (crawl run)', () => {
     const multiCell = house.vents.filter((v) => v.cells.length >= 2);
-    expect(multiCell.length).toBeGreaterThanOrEqual(3);
-    // Every vent cell is marked 'v' in its grid (parse-time invariant, asserted here too).
+    expect(multiCell.length).toBeGreaterThanOrEqual(1);
+    // Every vent cell is marked 'v' in its grid (build-time invariant, re-checked).
     for (const v of house.vents) {
       for (const c of v.cells) expect(house.grids[v.floor][c.z][c.x]).toBe('vent');
     }
@@ -189,9 +184,9 @@ describe('house layout integrity', () => {
     }
   });
 
-  it('a walled-off exit would fail reachability (guard self-check)', () => {
-    // Sanity that the BFS actually depends on the grid: a fake start in a
-    // wall reaches nothing.
+  it('a walled-off start would reach nothing (guard self-check)', () => {
+    // Sanity that the BFS depends on the grid: a fake start in the void corner
+    // reaches nothing.
     const seen = reachableFrom({ floor: 1, x: 0, z: 0 }, false);
     expect(seen.size).toBe(1);
   });

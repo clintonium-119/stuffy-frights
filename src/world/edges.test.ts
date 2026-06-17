@@ -1,31 +1,46 @@
 import { describe, it, expect } from 'vitest';
 import {
-  legacyGridToEdges,
   edgeBetween,
   blocksMovement,
   blocksSight,
   soundCrossing,
   computeRoomIds,
+  type EdgeGrids,
 } from './edges';
 import { isWalkable, type CellKind } from './layoutTypes';
 import { house } from './houseLayout';
 
 describe('edge model', () => {
-  // 3x2 single-floor grid:  row0: floor|wall|floor   row1: floor|door|floor
+  // A 3x2 single-floor fixture authored directly on the edge model: a left room
+  // and a right room split by a wall (row 0) and a doorway (row 1).
+  //   grid  row0: floor|wall|floor   row1: floor|door|floor
   const grids: CellKind[][][] = [
     [
       ['floor', 'wall', 'floor'],
       ['floor', 'door', 'floor'],
     ],
   ];
-  const edges = legacyGridToEdges(grids, 3, 2);
+  const edges: EdgeGrids = {
+    edgesV: [
+      [
+        ['wall', 'wall', 'none'], // z0: floor|wall, wall|floor
+        ['door', 'door', 'none'], // z1: floor|door, door|floor
+      ],
+    ],
+    edgesH: [
+      [
+        ['none', 'door', 'none'], // z0→z1: open, wall|door, open
+        ['none', 'none', 'none'],
+      ],
+    ],
+  };
 
-  it('synthesizes wall edges from wall cells', () => {
+  it('has wall edges between the wall cell and its neighbours', () => {
     expect(edgeBetween(edges, 0, { x: 0, z: 0 }, { x: 1, z: 0 })).toBe('wall');
     expect(edgeBetween(edges, 0, { x: 1, z: 0 }, { x: 2, z: 0 })).toBe('wall');
   });
 
-  it('synthesizes door edges from door cells', () => {
+  it('has door edges between the door cell and its neighbours', () => {
     expect(edgeBetween(edges, 0, { x: 0, z: 1 }, { x: 1, z: 1 })).toBe('door');
     expect(edgeBetween(edges, 0, { x: 1, z: 1 }, { x: 2, z: 1 })).toBe('door');
   });
@@ -46,9 +61,14 @@ describe('edge model', () => {
     expect(blocksMovement('secret', true)).toBe(false);
   });
 
-  it('blocks sight on wall, not open doors', () => {
+  it('blocks sight on wall and undiscovered secrets, not open doors', () => {
     expect(blocksSight('wall')).toBe(true);
     expect(blocksSight('door')).toBe(false);
+    // A secret edge conceals until revealed, then passes sight + movement.
+    expect(blocksSight('secret')).toBe(true);
+    expect(blocksSight('secret', true)).toBe(false);
+    expect(blocksMovement('secret')).toBe(true);
+    expect(blocksMovement('secret', true)).toBe(false);
   });
 
   it('classifies sound crossings', () => {
@@ -123,7 +143,7 @@ describe('edge model', () => {
     }
   });
 
-  it('the parsed legacy house has edges sized to its grid', () => {
+  it('the mansion house has edges sized to its grid', () => {
     expect(house.edgesV.length).toBe(house.grids.length);
     expect(house.edgesH.length).toBe(house.grids.length);
     expect(house.edgesV[0].length).toBe(house.depth);
